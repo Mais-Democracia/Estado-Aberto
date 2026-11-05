@@ -33,27 +33,23 @@
   const navDate = (d, delta) => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + delta); return x.toISOString().slice(0, 10); };
 
   const topbar = (d, extra = "") => `<div class="ed-bar"><div>
-      <button class="btn-ed" data-go="${navDate(d.data, -1)}" title="Tecla ←">‹ Anterior</button>
+      <button class="btn-ed" data-go="${(d.navegacao || {}).anterior || ""}" ${(d.navegacao || {}).anterior ? "" : "disabled"} title="Tecla ←">‹ Anterior</button>
       <span style="position:relative"><button class="btn-ed" id="arch-btn" aria-haspopup="true">Arquivo ▾</button><div class="pop" id="pop" hidden></div></span>
-      <button class="btn-ed" data-go="${navDate(d.data, 1)}" ${d.data >= d.max ? "disabled" : ""} title="Tecla →">Seguinte ›</button>
+      <button class="btn-ed" data-go="${(d.navegacao || {}).seguinte || ""}" ${(d.navegacao || {}).seguinte ? "" : "disabled"} title="Tecla →">Seguinte ›</button>
       <button class="btn-ed" data-go="">Última edição</button>${extra}</div>
     <div><form class="ed-search" id="ed-s" autocomplete="off"><input type="search" id="ed-q" placeholder="Pesquisar entidade, contrato, lei, tema…" aria-label="Pesquisar"><div class="ed-results" id="ed-r" hidden></div></form>
       <a class="btn-ed" href="#/painel">A minha lista</a><button class="btn-ed ed-menu" onclick="document.body.classList.toggle('nav-open')">Menu</button>${EATheme.html("btn-ed")}<a class="btn-ed gh-link" href="https://github.com/Mais-Democracia/Estado-Aberto" target="_blank" rel="noopener" aria-label="Código aberto no GitHub (abre num novo separador)"><svg class="gh-mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></div></div>`;
 
   const plateHost = () => { let h = document.getElementById("ed-plate"); if (h) { h.classList.remove("sk-plate"); h.removeAttribute("aria-hidden"); } if (!h) { h = document.createElement("div"); h.id = "ed-plate"; h.className = "wrap"; const m = document.querySelector("header.masthead"); m.insertBefore(h, m.firstChild); } return h; };
 
-  async function renderEdition(date) {
-    const d = await api("edicao/dia" + (date ? "?data=" + date : ""));
+  function renderLegacy(d) {
     window.onscroll = null;
-    state.cur = d.data; state.max = d.max;
+    state.cur = d.data; state.max = d.max; state.min = d.min; state.vista = "";
     document.title = `Edição de ${d.extenso}, n.º ${nf0.format(d.numero)} · Estado Aberto`;
     const S = d.seccoes, n = d.numeros, L = d.lead;
     const tick = d.ticker.concat(d.ticker).map((t) => `<a href="${href(t.ref)}"><b>${esc(t.k)}</b>${esc(t.t)}</a>`).join("");
     const why = d.leadWhy;
-    const host = plateHost();
-    host.innerHTML = `<div class="ed-head">
-        <div class="plate"><span class="k reveal" style="--i:0">Dados abertos de Portugal</span><h1 class="reveal" style="--i:1"><a href="#/"><span>Estado <i>Aberto</i></span></a></h1><span class="s reveal" style="--i:3">Diário da democracia portuguesa</span></div>
-      </div><div class="flagbar"></div>`;
+    renderPlate();
     $app.innerHTML = `<div class="ed">
       ${topbar(d)}
       <div class="dateline"><span><b>Edição de ${esc(d.extenso)}</b> · ${esc(d.diaSemana)}</span>
@@ -91,7 +87,7 @@
         <div class="col"><h2 class="sec-h" style="--tag:var(--ed-red)">Quem mais contratou</h2><p class="muted" style="font-size:.76rem;margin:0 0 10px;font-family:var(--sans)">Valor publicado entre ${pd(n.janela.a)} e ${pd(n.janela.b)}</p>${(() => { const mx = Math.max(...n.topBuyers.map((b) => b.v), 1); return n.topBuyers.map((b) => `<div class="hb"><a href="${b.eid ? "#/artigo/entidade/" + b.eid : "#/contratos?buyer=" + b.nif}" title="${esc(b.name)}">${esc(b.name)}</a><span>${fmtV(b.v)}</span><i style="--w:${((b.v / mx) * 100).toFixed(1)}%"></i></div>`).join(""); })()}</div>
         <div class="col" id="arquivo"><h2 class="sec-h" style="--tag:var(--ed-gold)">Arquivo de edições</h2><div class="edcal" id="cal-inline"></div></div>
       </div>
-      <div class="colophon"><div>Edição n.º ${nf0.format(d.numero)}, contada desde 1 de janeiro de 2012, início da série de contratos públicos. Os textos são gerados por modelos a partir das bases de dados abertas (Assembleia da República, Presidência da República, Diário da República, Tribunal de Contas, Provedor de Justiça, IGF, reguladores, CReSAP, Portal BASE); todos os números, nomes e datas vêm diretamente dos registos. Quando uma fonte não tem dados recentes, o texto indica o período a que se refere.</div><div>Os indicadores de risco são sinais estatísticos e não constituem acusação. <a href="#/painel-classico">Painel clássico e novidades</a> · <a href="#/roadmap">Roadmap</a> · menu superior para todas as secções.</div></div>
+      <div class="colophon"><div>Edição n.º ${nf0.format(d.numero)}, contada desde 6 de novembro de 2026, data da primeira edição. Os textos são gerados por modelos a partir das bases de dados abertas (Assembleia da República, Presidência da República, Diário da República, Tribunal de Contas, Provedor de Justiça, IGF, reguladores, CReSAP, Portal BASE); todos os números, nomes e datas vêm diretamente dos registos. Quando uma fonte não tem dados recentes, o texto indica o período a que se refere.</div><div>Os indicadores de risco são sinais estatísticos e não constituem acusação. <a href="#/painel-classico">Painel clássico e novidades</a> · <a href="#/roadmap">Roadmap</a> · menu superior para todas as secções.</div></div>
     </div>`;
     wire(d);
     mountCal(document.getElementById("cal-inline"), d, false);
@@ -99,7 +95,7 @@
   }
 
   function wire(d) {
-    $app.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { location.hash = b.dataset.go ? "#/edicao/" + b.dataset.go : "#/"; }));
+    $app.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { location.hash = edHash(b.dataset.go, state.vista); }));
     const ab = document.getElementById("arch-btn"), pop = document.getElementById("pop");
     if (ab) ab.onclick = (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; if (!pop.hidden) mountCal(pop, d, true); };
     const form = document.getElementById("ed-s"), inp = document.getElementById("ed-q"), res = document.getElementById("ed-r");
@@ -119,8 +115,8 @@
   document.addEventListener("keydown", (e) => {
     if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
     const cur = state.cur; if (!cur || !document.querySelector('.ed-head')) return;
-    if (e.key === "ArrowLeft") location.hash = "#/edicao/" + navDate(cur, -1);
-    if (e.key === "ArrowRight" && cur < state.max) location.hash = "#/edicao/" + navDate(cur, 1);
+    if (e.key === "ArrowLeft" && cur > state.min) location.hash = edHash(navDate(cur, -1), state.vista);
+    if (e.key === "ArrowRight" && cur < state.max) location.hash = edHash(navDate(cur, 1), state.vista);
     if (e.key === "Escape") { const p = document.getElementById("pop"); if (p) p.hidden = true; }
   });
 
@@ -129,15 +125,15 @@
     const draw = async () => {
       const r = await api("edicao/arquivo?mes=" + mes);
       el.dataset.mes = mes;
-      const [y, m] = mes.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)), off = (first.getUTCDay() + 6) % 7;
-      const mx = Math.max(...r.dias.map((x) => x.c), 1);
+      const [y, m] = mes.split("-").map(Number), first = new Date(Date.UTC(y, m - 1, 1)), off = (new Date(r.dias.length ? r.dias[0].d + "T00:00:00Z" : first).getUTCDay() + 6) % 7;
+      const mx = Math.max(...r.dias.map((x) => x.n ?? x.c), 1), minM = r.min.slice(0, 7), maxM = r.max.slice(0, 7);
       const cells = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'].map((x) => `<span class="dow">${x}</span>`).join("") + "<span></span>".repeat(off) +
-        r.dias.map((x) => `<a href="#/edicao/${x.d}" class="${x.d === d.data ? "sel" : ""} ${x.d === d.defaultData ? "def" : ""} ${x.d > d.max ? "fut" : ""}" style="--k:${(x.c / mx).toFixed(2)}" title="${pd(x.d)}: ${nf0.format(x.c)} contratos, ${x.v} votações, ${x.r} atos">${Number(x.d.slice(8))}</a>`).join("");
-      el.innerHTML = `<div class="edcal-h"><button data-m="-1" aria-label="Mês anterior">‹</button><span>${MES[m - 1]} ${y}</span><button data-m="1" aria-label="Mês seguinte">›</button></div><div class="edcal-g">${cells}</div>
-        <div class="edcal-note">A barra vermelha indica o volume de contratos publicados em cada dia. Cada edição é recalculada com consultas filtradas por data. Contorno vermelho: edição mais recente com dados.</div>
+        r.dias.map((x) => `<a href="${edHash(x.d, state.vista)}" class="${x.d === d.data ? "sel" : ""} ${x.d === r.defaultData ? "def" : ""}" style="--k:${((x.n ?? x.c) / mx).toFixed(2)}" title="${pd(x.d)}: ${r.fonte === "diario" ? nf0.format(x.n) + " registos" : nf0.format(x.c) + " contratos, " + x.v + " votações, " + x.r + " atos"}">${Number(x.d.slice(8))}</a>`).join("");
+      el.innerHTML = `<div class="edcal-h"><button data-m="-1" aria-label="Mês anterior" ${mes <= minM ? "disabled" : ""}>‹</button><span>${MES[m - 1]} ${y}</span><button data-m="1" aria-label="Mês seguinte" ${mes >= maxM ? "disabled" : ""}>›</button></div><div class="edcal-g">${cells}</div>
+        <div class="edcal-note">A barra vermelha indica o volume de registos de cada edição. A série começa na edição de ${pd(r.min)}. Contorno vermelho: edição de hoje.</div>
         ${withInput ? `<input type="date" id="pick" min="${r.min}" max="${r.max}" value="${d.data}" aria-label="Escolher data">` : ""}`;
       el.querySelectorAll("[data-m]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); const dt = new Date(Date.UTC(y, m - 1 + Number(b.dataset.m), 1)); mes = dt.toISOString().slice(0, 7); draw(); }));
-      const pk = el.querySelector("#pick"); if (pk) pk.onchange = () => { if (pk.value) location.hash = "#/edicao/" + pk.value; };
+      const pk = el.querySelector("#pick"); if (pk) pk.onchange = () => { if (pk.value) location.hash = edHash(pk.value, state.vista); };
     };
     await draw();
   }
@@ -196,7 +192,150 @@
     window.scrollTo(0, 0);
   }
 
-  Portal.page("", () => renderEdition(""));
-  Portal.page("edicao", (arg) => renderEdition(/^\d{4}-\d{2}-\d{2}$/.test(arg || "") ? arg : ""));
+  const edHash = (date, vista, home) => {
+    const v = vista === "tudo";
+    if (!date) return "#/" + (v ? "?vista=tudo" : "");
+    if (home) return "#/?d=" + date + (v ? "&vista=tudo" : "");
+    return "#/edicao/" + date + (v ? "?vista=tudo" : "");
+  };
+  const dayUrl = (date, vista) => "edicao/dia" + (date || vista === "tudo" ? "?" : "") + [date && "data=" + date, vista === "tudo" && "vista=tudo"].filter(Boolean).join("&");
+  const SECTAG = { parlamento: "tag-par", governo: "tag-gov", fiscalizacao: "tag-jus", nomeacoes: "tag-nom", "poder-local": "tag-loc", dinheiro: "tag-din", indicadores: "tag-ind" };
+  const safeHref = (u) => (/^https?:\/\//i.test(u || "") ? esc(u) : "");
+  const itemLink = (it) => {
+    if (it.rota) return `<a href="${esc(it.rota.startsWith("#") ? it.rota : href(it.rota))}">${esc(it.titulo)}</a>`;
+    if (safeHref(it.source_url)) return `<a href="${safeHref(it.source_url)}" target="_blank" rel="noopener">${esc(it.titulo)}</a>`;
+    return esc(it.titulo);
+  };
+  const srcLink = (it) => (safeHref(it.source_url) && it.rota ? `<a class="srcl" href="${safeHref(it.source_url)}" target="_blank" rel="noopener">Fonte original</a>` : "");
+  const lateTag = (it) => (it.atrasado ? `<div class="late">${esc(it.atraso || "Registo tardio")}</div>` : "");
+  const iaTag = (d, it) => `<a class="ia-tag" href="#/edicao/${d.data}/ia/${it.artigo_id}" title="Coberto por artigo gerado por IA">IA</a>`;
+  const colItem = (it) => `<article class="st dst"><span class="kick">${esc(it.tipo || "")}</span><h3>${itemLink(it)}</h3>${it.resumo_curto ? `<p>${esc(cutTxt(it.resumo_curto, 170))}</p>` : ""}${lateTag(it)}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</article>`;
+  const colSection = (s) => `<section class="blk dsec ${SECTAG[s.secao] || ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${nf0.format(s.total)}</small></h2>${s.itens.map(colItem).join("")}${s.mais ? `<button type="button" class="linkbtn" data-open-tudo>+${nf0.format(s.mais)} na lista completa</button>` : ""}</section>`;
+  const rowItem = (d, it) => `<li class="rw${it.ia ? " is-ia" : ""}"><span class="hh">${esc(it.hora || "—")}</span><div><div class="rk"><span class="kick">${esc(it.tipo || "")}</span>${it.ia ? iaTag(d, it) : ""}</div><div class="rt">${itemLink(it)}</div>${it.resumo_curto ? `<p>${esc(it.resumo_curto)}</p>` : ""}${lateTag(it)}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</div></li>`;
+  const fullSection = (d, s) => `<section class="blk fsec ${SECTAG[s.secao] || ""}${s.vazio ? " vazio" : ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${s.vazio ? "sem registos" : nf0.format(s.itens.length)}</small></h2>${s.vazio ? `<p class="motivo">${esc(s.motivo || "Sem registos para este dia")}</p>` : `<ul class="rows">${s.itens.map((it) => rowItem(d, it)).join("")}</ul>`}</section>`;
+  const iaCard = (d, a) => `<article class="ia-card" id="ia-${a.id}"><div class="ia-top"><span class="kick">${esc(a.secao_titulo)}</span><span class="ia-badge" title="Revisto por ${esc(a.revisor || "—")}">Gerado por IA · ${esc(a.modelo)} · verificado</span></div>
+      <h2 class="ia-h"><a href="${esc(a.rota_detalhe)}">${esc(a.titulo)}</a></h2>
+      <p class="ia-lead">${esc(a.lead)}</p>
+      ${a.pontos_chave.length ? `<ul class="ia-pts">${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+      ${a.fontes.length ? `<div class="ia-src"><b>Fontes</b>${a.fontes.map((f) => (safeHref(f.href) ? `<a href="${safeHref(f.href)}" target="_blank" rel="noopener">${esc(f.label)}</a>` : `<span>${esc(f.label)}</span>`)).join("")}</div>` : ""}
+      <a class="more" href="${esc(a.rota_detalhe)}">Ler o artigo completo</a></article>`;
+  const staleNotice = (d) => {
+    const late = (d.frescura || []).filter((f) => f.atrasada), msgs = [];
+    if (late.length) msgs.push("Atualização incompleta: " + late.map((f) => (f.ultima_data ? `${esc(f.fonte)} só até ${pd(f.ultima_data)}` : `${esc(f.fonte)} sem data`)).join("; ") + ".");
+    for (const a of d.avisos || []) msgs.push(esc(a));
+    return msgs.length ? `<div class="stale" role="note">${msgs.join(" ")}</div>` : "";
+  };
+  const emptyList = (d) => `<p class="muted dempty">${d.divisao.total ? "Todos os registos do dia estão cobertos pelos artigos acima." : "Sem registos nesta edição."}</p>`;
+  const listHtml = (d, v) => (v === "tudo" ? `<div class="fullgrid">${d.tudo.map((s) => fullSection(d, s)).join("")}</div>` : d.secoes.length ? `<div class="dgrid">${d.secoes.map(colSection).join("")}</div>` : emptyList(d));
+  const listTitle = (v) => (v === "tudo" ? "Lista completa do dia" : "Mais registos do dia");
+
+  const renderPlate = () => {
+    plateHost().innerHTML = `<div class="ed-head">
+        <div class="plate"><span class="k reveal" style="--i:0">Dados abertos de Portugal</span><h1 class="reveal" style="--i:1"><a href="#/"><span>Estado <i>Aberto</i></span></a></h1><span class="s reveal" style="--i:3">Diário da democracia portuguesa</span></div>
+      </div><div class="flagbar"></div>`;
+  };
+
+  function renderSemEdicao(d) {
+    window.onscroll = null;
+    state.cur = null;
+    document.title = "Sem edição · Estado Aberto";
+    renderPlate();
+    $app.innerHTML = `<div class="ed">${topbar({ data: d.data, navegacao: { anterior: null, seguinte: d.primeira } })}<div class="dateline"><span><b>${esc(d.extenso)}</b></span><span>Sem edição</span></div>
+      <section class="semed"><h1>Ainda não há edição para esta data</h1><p>A primeira edição do Estado Aberto é a de ${pd(d.primeira)}. A edição de cada dia reporta o que aconteceu no dia anterior.</p><p><a class="more" href="${edHash(d.primeira)}">Abrir a primeira edição</a></p></section></div>`;
+    wire(d);
+    window.scrollTo(0, 0);
+  }
+
+  function renderDaily(d, vista, home, explicit) {
+    window.onscroll = null;
+    state.cur = d.data; state.max = d.max; state.min = d.min; state.vista = vista;
+    document.title = `Edição de ${d.extenso}, n.º ${nf0.format(d.numero)} · Estado Aberto`;
+    const full = vista === "tudo";
+    renderPlate();
+    const upd = d.atualizado_em ? new Date(d.atualizado_em) : null, updTxt = upd && !isNaN(upd) ? upd.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "";
+    $app.innerHTML = `<div class="ed">
+      ${topbar(d)}
+      <div class="dateline"><span><b>Edição de ${esc(d.extenso)}</b> · ${esc(d.diaSemana)} · notícias de ${esc(d.reporta_extenso)}</span>
+        <span>Edição n.º ${nf0.format(d.numero)} · ${d.estado === "fechada" ? "fechada" : "preliminar"}${updTxt && d.estado !== "fechada" ? " · atualizada às " + updTxt : ""}</span></div>
+      ${staleNotice(d)}
+      ${d.ia.length ? `<section class="ia-col" aria-label="Artigos gerados por IA">${d.ia.map((a) => iaCard(d, a)).join("")}</section>` : ""}
+      <div class="divwrap"><button type="button" class="divbar" id="ed-div" aria-expanded="${full}" aria-controls="ed-lista"><span class="divbar-t">${esc(d.divisao.rotulo)}</span><span class="divbar-n">${nf0.format(d.divisao.total)} ${d.divisao.total === 1 ? "registo" : "registos"}</span><span class="divbar-a" aria-hidden="true">${full ? "Fechar" : "Abrir"}</span><svg class="chev" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
+      <div id="ed-lista" role="region" aria-labelledby="ed-lista-h"><h2 id="ed-lista-h" class="lista-h" tabindex="-1">${listTitle(vista)}</h2><div id="ed-lista-body">${listHtml(d, vista)}</div></div>
+      <div class="ed-sr" id="ed-live" aria-live="polite" role="status"></div>
+      <div class="band2 dband"><div class="col" id="arquivo"><h2 class="sec-h" style="--tag:var(--ed-gold)">Arquivo de edições</h2><div class="edcal" id="cal-inline"></div></div></div>
+      <div class="colophon"><div>Edição n.º ${nf0.format(d.numero)}, publicada a ${esc(d.extenso)}, a primeira de uma série diária iniciada a 6 de novembro de 2026. Cada edição reporta o que aconteceu no dia anterior. Os artigos assinalados «Gerado por IA» são redigidos por modelos de linguagem exclusivamente a partir dos registos listados, verificados automaticamente contra as fontes e publicados com os modelos e os números usados. Todos os restantes registos vêm diretamente das bases oficiais.</div><div>Os indicadores de risco são sinais estatísticos e não constituem acusação. <a href="#/painel-classico">Painel clássico e novidades</a> · <a href="#/roadmap">Roadmap</a> · menu superior para todas as secções.</div></div>
+    </div>`;
+    wire(d);
+    mountCal(document.getElementById("cal-inline"), d, false);
+    const key = d.data, live = document.getElementById("ed-live"), host = document.getElementById("ed-lista-body"), h = document.getElementById("ed-lista-h"), btn = document.getElementById("ed-div");
+    const cache = { resumo: d, tudo: full ? d : null };
+    const load = async (v) => { if (v === "tudo" && !cache.tudo) cache.tudo = await api(dayUrl(explicit, "tudo")); return cache[v] || cache.tudo; };
+    const paint = (v, data) => {
+      state.vista = v;
+      host.innerHTML = listHtml(data, v);
+      h.textContent = listTitle(v);
+      btn.setAttribute("aria-expanded", String(v === "tudo"));
+      btn.querySelector(".divbar-a").textContent = v === "tudo" ? "Fechar" : "Abrir";
+      bindOpen();
+    };
+    const set = async (v) => {
+      if (state.cur !== key || state.vista === v) return;
+      const data = await load(v);
+      if (state.cur !== key) return;
+      paint(v, data);
+      live.textContent = v === "tudo" ? `Lista completa: ${data.divisao.total} registos em ${data.tudo.filter((s) => !s.vazio).length} secções.` : "Resumo da edição.";
+      h.focus({ preventScroll: true });
+      history.pushState(null, "", home ? edHash(explicit, v, true) : edHash(d.data, v));
+    };
+    const bindOpen = () => host.querySelectorAll("[data-open-tudo]").forEach((b) => (b.onclick = () => set("tudo")));
+    bindOpen();
+    btn.onclick = () => set(state.vista === "tudo" ? "resumo" : "tudo");
+    if (!full) idle(() => { if (state.cur === key && !cache.tudo) api(dayUrl(explicit, "tudo"), true).then((x) => { cache.tudo = x; }).catch(() => {}); }, 2500);
+    window.scrollTo(0, 0);
+  }
+
+  async function renderEdition(date, vista, home) {
+    const v = vista === "tudo" ? "tudo" : "resumo";
+    const d = await api(dayUrl(date, v));
+    if (d.sem_edicao) return renderSemEdicao(d);
+    if (d.fonte === "legado") return renderLegacy(d);
+    renderDaily(d, v, home, date);
+  }
+
+  async function renderIa(date, id) {
+    const a = await api("edicao/artigo?id=" + encodeURIComponent(id)).catch(() => null);
+    window.onscroll = null;
+    renderPlate();
+    state.cur = null;
+    if (!a) { $app.innerHTML = `<div class="ed"><p class="note warn">Artigo não encontrado. <a href="${edHash(date)}">Voltar à edição</a></p></div>`; return; }
+    document.title = `${a.titulo} · Estado Aberto`;
+    const words = a.paragraphs.join(" ").split(/\s+/).length, mins = Math.max(1, Math.round(words / 190));
+    const conf = a.confianca != null && !isNaN(a.confianca) ? Math.round(Number(a.confianca) * 100) + "%" : "";
+    const nums = (a.numeros_citados || []).map((x) => (typeof x === "string" ? x : [x.valor, x.fonte && "(" + x.fonte + ")", x.descricao].filter(Boolean).join(" "))).filter(Boolean);
+    $app.innerHTML = `<div class="ed"><div class="progress" id="prog"></div>
+      <div class="art-wrap"><div class="art-nav"><a href="${edHash(a.data)}">‹ Voltar à edição de ${pd(a.data)}</a><div><button class="btn-ed" id="fs-" aria-label="Diminuir letra">A−</button><button class="btn-ed" id="fs+" aria-label="Aumentar letra">A+</button></div></div>
+      <header class="art-head"><span class="kick">${esc(a.secao_titulo)}</span><h1>${esc(a.titulo)}</h1><p class="dek">${esc(a.lead)}</p>
+        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div></header>
+      <div class="art-grid"><aside class="ficha"><h4>Ficha</h4><dl><dt>Modelo</dt><dd>${esc(a.modelo)}</dd><dt>Revisão</dt><dd>${esc(a.revisor || "—")}</dd>${conf ? `<dt>Confiança</dt><dd>${conf}</dd>` : ""}<dt>Estado</dt><dd>Verificado e publicado</dd>${a.entidades.length ? `<dt>Entidades</dt><dd>${a.entidades.map(esc).join(", ")}</dd>` : ""}</dl>${nums.length ? `<h4>Números citados</h4><ul class="nc">${nums.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</aside>
+      <div class="art-body">${a.pontos_chave.length ? `<div class="flags ia-key"><b>Pontos-chave</b><ul>${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+        ${a.paragraphs.map((p, k) => `<p class="${k === 0 ? "first" : ""}">${esc(p)}</p>`).join("")}
+        ${a.fontes.length ? `<div class="fnotes"><h4>Fontes</h4><ol>${a.fontes.map((f) => `<li>${safeHref(f.href) ? `<a href="${safeHref(f.href)}" target="_blank" rel="noopener">${esc(f.label)}</a>` : esc(f.label)}</li>`).join("")}</ol></div>` : ""}
+        ${a.eventos.length ? `<div class="fnotes"><h4>Registos em que o artigo se baseia</h4><ul class="evl">${a.eventos.map((e) => `<li>${itemLink(e)}${e.atrasado ? ` <span class="late">${esc(e.atraso || "")}</span>` : ""}</li>`).join("")}</ul></div>` : ""}
+        <div class="fnotes"><p style="color:var(--ed-mute)">Este texto foi gerado por um modelo de linguagem a partir dos registos acima e verificado automaticamente contra as fontes antes de ser publicado. Em caso de dúvida, os registos e as fontes originais prevalecem.</p></div></div></div></div></div>`;
+    let fs = 1; const root = $app.querySelector(".art-body");
+    document.getElementById("fs+").onclick = () => { fs = Math.min(1.4, fs + 0.1); root.style.setProperty("--fs", fs); };
+    document.getElementById("fs-").onclick = () => { fs = Math.max(0.8, fs - 0.1); root.style.setProperty("--fs", fs); };
+    const prog = document.getElementById("prog");
+    window.onscroll = () => { const h = document.documentElement; prog.style.width = Math.min(100, (h.scrollTop / Math.max(1, h.scrollHeight - h.clientHeight)) * 100) + "%"; };
+    window.scrollTo(0, 0);
+  }
+
+  const DATE_RE = /^(\d{4}-\d{2}-\d{2})(?:\/ia\/(\d+))?$/;
+  Portal.page("", (_, p) => renderEdition(/^\d{4}-\d{2}-\d{2}$/.test((p || {}).d || "") ? p.d : "", (p || {}).vista, true));
+  Portal.page("edicao", (arg, p) => {
+    const m = DATE_RE.exec(arg || "");
+    if (m && m[2]) return renderIa(m[1], m[2]);
+    return renderEdition(m ? m[1] : "", (p || {}).vista, false);
+  });
   Portal.page("artigo", (arg) => renderArticle(arg));
 })();

@@ -512,6 +512,7 @@ const CC_API = "public, max-age=30, stale-while-revalidate=300";
 const CC_STATIC = "public, max-age=3600, stale-while-revalidate=86400";
 const CC_IMMUTABLE = "public, max-age=31536000, immutable";
 const WARM_RE = /^\/api\/(overview|changes|contracts|edicao\/dia|[a-z_]+\/overview)$/;
+const SEED_EXTRA = [{ path: "/api/edicao/dia", query: "vista=tudo" }];
 const gzipAsync = promisify(zlib.gzip), brotliAsync = promisify(zlib.brotliCompress);
 const sha = (b) => crypto.createHash("sha1").update(b).digest("base64url").slice(0, 22);
 const enc = new TextEncoder();
@@ -762,7 +763,7 @@ async function main() {
     const raw = Buffer.from(r.body.buffer, r.body.byteOffset, r.body.byteLength);
     if (raw.length > MAX_ENTRY) return null;
     const old = cache.peek(key);
-    const seed = q === "" && WARM_RE.test(p);
+    const seed = (q === "" && WARM_RE.test(p)) || SEED_EXTRA.some((x) => x.path === p && x.query === q);
     const e = { raw, size: raw.length, tag: null, v: {}, key, path: p, query: q, at: Date.now(), sig: r.sig, ms: r.ms, hot: !!(old && old.hot) || r.ms >= HOT_MS || seed, seed, last: old ? old.last : Date.now(), lru: null };
     cache.set(key, e);
     if (e.hot) persist(e);
@@ -790,6 +791,7 @@ async function main() {
     if (!pool.ready || busy()) return;
     const now = Date.now();
     for (const p of pool.routes) if (WARM_RE.test(p) && !cache.peek(p + "?") && !refreshing.has(p + "?")) return void refresh({ path: p, query: "" });
+    for (const x of SEED_EXTRA) if (pool.routes.has(x.path) && !cache.peek(x.path + "?" + x.query) && !refreshing.has(x.path + "?" + x.query)) return void refresh(x);
     let pick = null;
     for (const e of cache.map.values()) {
       if (!e.hot || refreshing.has(e.key)) continue;
@@ -802,6 +804,7 @@ async function main() {
   const forceWarm = () => {
     let n = 0;
     for (const p of pool.routes) if (WARM_RE.test(p)) { refresh({ path: p, query: "" }); n++; }
+    for (const x of SEED_EXTRA) if (pool.routes.has(x.path)) { refresh(x); n++; }
     for (const e of cache.map.values()) if (e.hot && !e.seed) { refresh(e); n++; }
     refreshDetail();
     return n;

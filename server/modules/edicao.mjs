@@ -1,5 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
+
 export default function (ctx) {
-  const { routes, all, one, openData, unavailable } = ctx;
+  const { routes, all, one, openData, unavailable, dataDir } = ctx;
   const vot = openData("votacoes"), jus = openData("justica"), pres = openData("presidencia"), dre = openData("dre"), apo = openData("apoios"), resp = openData("responsaveis"), reg = openData("reguladores"), prov = openData("provedor"), igf = openData("igf"), pos = openData("posicoes"), ivn = openData("intervencoes"), dvd = openData("divida");
   const Q = (db, sql, ...p) => { try { return db ? db.prepare(sql).all(...p) : []; } catch { return []; } };
   const Q1 = (db, sql, ...p) => Q(db, sql, ...p)[0] || null;
@@ -22,7 +25,7 @@ export default function (ctx) {
   const ST = (d) => d.toISOString().slice(0, 10);
   const add = (s, n) => { const d = DT(s); d.setUTCDate(d.getUTCDate() + n); return ST(d); };
   const yearAgo = (s) => { const d = DT(s), m = d.getUTCMonth(); d.setUTCFullYear(d.getUTCFullYear() - 1); if (d.getUTCMonth() !== m) d.setUTCDate(0); return ST(d); };
-  const todayStr = () => ST(new Date());
+  const todayStr = () => process.env.ESTADO_ABERTO_TODAY || new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/Lisbon" });
   const pdate = (s) => { const d = DT(s.slice(0, 10)); return `${d.getUTCDate()} de ${MES[d.getUTCMonth()]} de ${d.getUTCFullYear()}`; };
   const pshort = (s) => { const d = DT(s.slice(0, 10)); return `${d.getUTCDate()} de ${MES[d.getUTCMonth()]}`; };
   const range = (a, b) => {
@@ -90,13 +93,11 @@ export default function (ctx) {
   let mxAt = 0, mxVal = null;
   const MX = () => { if (!mxVal || Date.now() - mxAt > 600000) { mxVal = maxes(); mxAt = Date.now(); } return mxVal; };
   const defaultDate = () => { const m = MX(); return [m.pub, m.vote, m.tc, m.pres, m.dre, m.reg, m.nom].filter(Boolean).sort().pop(); };
-  const MIN_DATE = "2013-01-01";
-  const normDate = (s) => {
-    const mx = defaultDate();
-    if (!mx) return undefined;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "") || isNaN(DT(s))) return mx;
+  const MIN_DATE = "2026-11-06";
+  const clampDate = (s) => {
     const t = todayStr();
-    return s < MIN_DATE ? MIN_DATE : s > t ? t : s;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "") || isNaN(DT(s))) return t;
+    return s > t ? t : s;
   };
   const refOf = (d, mx) => (mx && mx < d ? mx : d);
 
@@ -459,8 +460,8 @@ export default function (ctx) {
     const d = DT(D);
     const leadNote = lead && lead.date && lead.date < D ? `Último registo disponível à data desta edição: ${pdate(lead.date)}.` : null;
     return {
-      data: D, extenso: pdate(D), diaSemana: DIA[d.getUTCDay()], numero: days("2012-01-01", D) + 1,
-      defaultData: defaultDate(), min: MIN_DATE, max: todayStr(),
+      data: D, extenso: pdate(D), diaSemana: DIA[d.getUTCDay()], numero: days(MIN_DATE, D) + 1,
+      defaultData: todayStr(), min: MIN_DATE, max: todayStr(),
       desatualizado: rc < add(D, -3) ? { contratos: rc } : null,
       lead, leadNote, leadWhy: leadC ? { tipo: leadC.tipo, score: pct0(leadC.score), why: leadC.why, outros: runners } : null,
       seccoes: S, numeros, haUmAno: ago, ticker: tick.slice(0, 20),
@@ -468,22 +469,149 @@ export default function (ctx) {
     };
   }
 
+  const SECS = [["parlamento", "Parlamento"], ["governo", "Governo e Presidente"], ["fiscalizacao", "Fiscalização"], ["nomeacoes", "Nomeações"], ["poder-local", "Poder local"], ["dinheiro", "Dinheiro público"], ["indicadores", "Indicadores"]];
+  const SEC_TITLE = Object.fromEntries(SECS);
+  const SEC_ORDER = Object.fromEntries(SECS.map(([k], i) => [k, i]));
+  const RESUMO_MAX = 12;
+  const stateDir = () => process.env.ESTADO_ABERTO_STATE || process.env.STATE_DIR || path.join(dataDir, "state");
+  const readJson = (f) => { try { return JSON.parse(fs.readFileSync(path.join(stateDir(), f), "utf8")); } catch { return null; } };
+  const J = (v, d) => { if (v == null || v === "") return d; if (typeof v !== "string") return v; try { return JSON.parse(v); } catch { return d; } };
+  const S = (v) => (v == null ? "" : String(v));
+  const day10 = (v) => (/^\d{4}-\d{2}-\d{2}/.test(S(v)) ? S(v).slice(0, 10) : "");
+  const safeUrl = (u) => (/^https?:\/\//i.test(S(u)) ? S(u) : null);
+  const fontesOf = (v) => (Array.isArray(J(v, [])) ? J(v, []) : []).map((f) => (typeof f === "string" ? { label: f, href: null } : { label: S(f && f.label), href: safeUrl(f && f.href) })).filter((f) => f.label);
+  const listOf = (v) => { const a = J(v, []); return Array.isArray(a) ? a : []; };
+  const horaOf = (v) => (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(S(v)) ? S(v).slice(11, 16) : "");
+
+  const frescura = (dia, D) => {
+    const m = new Map();
+    const put = (fonte, ultima, ok) => {
+      fonte = S(fonte); if (!fonte) return;
+      const cur = m.get(fonte) || { fonte, ultima_data: "", ok: "" };
+      if (day10(ultima) > cur.ultima_data) cur.ultima_data = day10(ultima);
+      if (S(ok) > cur.ok) cur.ok = S(ok);
+      m.set(fonte, cur);
+    };
+    for (const r of Q(dia, "SELECT fonte, max_data, atualizado_em FROM cursores")) put(r.fonte, r.max_data, r.atualizado_em);
+    const st = readJson(".ingest_state.json");
+    const steps = st && typeof st === "object" ? (st.steps && typeof st.steps === "object" ? st.steps : st) : {};
+    for (const [k, v] of Object.entries(steps)) if (v && typeof v === "object") put(k, v.last_data_date, v.last_ok);
+    const lim = add(D, -1);
+    return [...m.values()].map((x) => ({ fonte: x.fonte, ultima_data: x.ultima_data || null, atrasada: !x.ultima_data || x.ultima_data < lim, ultima_ok: x.ok || null })).sort((x, y) => (x.fonte < y.fonte ? -1 : 1));
+  };
+
+  const avisos = () => {
+    const a = readJson("alerts.json");
+    const arr = Array.isArray(a) ? a : Array.isArray(a && a.alerts) ? a.alerts : [];
+    return arr.map((x) => (typeof x === "string" ? x : S(x && (x.mensagem || x.message || x.msg)))).filter(Boolean).slice(0, 5);
+  };
+
+  const navOf = (D) => {
+    const t = todayStr();
+    return { anterior: D > MIN_DATE ? add(D, -1) : null, seguinte: D < t ? add(D, 1) : null, primeira: MIN_DATE, ultima: t };
+  };
+  const head = (D) => ({ data: D, numero: days(MIN_DATE, D) + 1, extenso: pdate(D), diaSemana: DIA[DT(D).getUTCDay()], reporta: add(D, -1), reporta_extenso: pdate(add(D, -1)), min: MIN_DATE, max: todayStr(), defaultData: todayStr(), navegacao: navOf(D) });
+
+  const itemOf = (e, D, art) => {
+    const late = !!e.atrasado;
+    const it = { id: e.id, titulo: S(e.titulo), resumo_curto: S(e.resumo_curto), rota: S(e.rota), source_url: safeUrl(e.source_url), atrasado: late, tipo: S(e.tipo), hora: horaOf(e.ingerido_em), data_evento: day10(e.data_evento) };
+    if (late && it.data_evento) it.atraso = `${D === todayStr() ? "Registado hoje" : "Registado a " + pshort(D)} · ocorreu a ${pdate(it.data_evento)}`;
+    if (art) { it.ia = true; it.artigo_id = art; }
+    return it;
+  };
+
+  const ledgerDay = (D, vista) => {
+    const dia = openData("diario");
+    if (!dia) return null;
+    const ed = Q1(dia, "SELECT numero, data, estado, fechada_em FROM edicoes WHERE data = ?", D);
+    const evs = Q(dia, "SELECT id, data_evento, ingerido_em, secao, tipo, titulo, resumo_curto, fonte_modulo, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE edicao_data = ? ORDER BY score DESC, id", D);
+    if (!ed && !evs.length) return null;
+    const arts = Q(dia, "SELECT id, evidence_hash, evento_ids, titulo, lead, corpo, pontos_chave, fontes, entidades, confianca, modelo, revisor, verificacao, criado_em FROM artigos_ia WHERE edicao_data = ? AND estado = 'publicado' ORDER BY id", D);
+    const artIds = new Set(arts.map((a) => a.id));
+    const byEv = new Map(evs.map((e) => [e.id, e]));
+    const cover = new Map();
+    for (const a of arts) for (const id of listOf(a.evento_ids)) if (!cover.has(Number(id))) cover.set(Number(id), a.id);
+    for (const e of evs) if (e.ia_artigo_id != null && artIds.has(e.ia_artigo_id)) cover.set(e.id, e.ia_artigo_id);
+    const ia = arts.map((a) => {
+      const linked = listOf(a.evento_ids).map((id) => byEv.get(Number(id))).filter(Boolean);
+      const cnt = {};
+      for (const e of linked) cnt[e.secao] = (cnt[e.secao] || 0) + 1;
+      const secao = Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x] || (SEC_ORDER[x] ?? 99) - (SEC_ORDER[y] ?? 99))[0] || "governo";
+      return { id: a.id, secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead), corpo: S(a.corpo), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes), modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), confianca: a.confianca, rota_detalhe: `#/edicao/${D}/ia/${a.id}`, _s: linked.reduce((m, e) => Math.max(m, Number(e.score) || 0), 0) };
+    }).sort((x, y) => y._s - x._s || x.id - y.id).map(({ _s, ...r }) => r);
+    const fres = frescura(dia, D);
+    const grupos = Object.fromEntries(SECS.map(([k]) => [k, []]));
+    for (const e of evs) if (grupos[e.secao]) grupos[e.secao].push(e);
+    const secoes = SECS.map(([k, t]) => {
+      const rest = grupos[k].filter((e) => !cover.has(e.id));
+      return rest.length ? { secao: k, titulo: t, total: rest.length, mais: Math.max(0, rest.length - RESUMO_MAX), itens: rest.slice(0, RESUMO_MAX).map((e) => itemOf(e, D)) } : null;
+    }).filter(Boolean);
+    const upd = [ed && ed.fechada_em, ...evs.map((e) => e.ingerido_em), ...Q(dia, "SELECT atualizado_em FROM cursores").map((r) => r.atualizado_em)].filter(Boolean).map(S).sort().pop() || null;
+    const out = {
+      fonte: "diario", vista, ...head(D), estado: ed ? ed.estado : "preliminar", atualizado_em: upd, frescura: fres, avisos: avisos(),
+      ia, secoes, divisao: { rotulo: `Ver tudo o que aconteceu em ${pdate(add(D, -1))}`, total: evs.length },
+    };
+    if (vista === "tudo") {
+      const srcOf = {};
+      for (const r of Q(dia, "SELECT DISTINCT secao, fonte_modulo FROM eventos")) (srcOf[r.secao] ||= new Set()).add(r.fonte_modulo);
+      const stale = new Map(fres.filter((f) => f.atrasada && f.ultima_data).map((f) => [f.fonte, f]));
+      out.tudo = SECS.map(([k, t]) => {
+        const rows = grupos[k];
+        if (rows.length) return { secao: k, titulo: t, vazio: false, motivo: null, itens: rows.map((e) => itemOf(e, D, cover.get(e.id))) };
+        const late = [...(srcOf[k] || [])].map((f) => stale.get(f)).filter(Boolean);
+        const motivo = late.length ? late.map((f) => `Dados de ${f.fonte} só até ${pdate(f.ultima_data)}`).join("; ") : "Sem registos para este dia";
+        return { secao: k, titulo: t, vazio: true, motivo, itens: [] };
+      });
+    }
+    return out;
+  };
+
   routes["/api/edicao/dia"] = (q) => {
-    const d = normDate(q.get("data"));
-    if (d) return edition(d);
+    const D = clampDate(q.get("data"));
+    const vista = q.get("vista") === "tudo" ? "tudo" : "resumo";
+    if (D < MIN_DATE) return { sem_edicao: true, fonte: "diario", data: D, extenso: pdate(D), min: MIN_DATE, max: todayStr(), defaultData: todayStr(), navegacao: navOf(MIN_DATE), primeira: MIN_DATE };
+    const led = ledgerDay(D, vista);
+    if (led) return led;
     if (!one("SELECT 1 x FROM sqlite_master WHERE name = 'contracts'")) return unavailable("politica", "não foi encontrada ou está vazia");
-    return { ...edition(todayStr()), dados_parciais: true, nota: "dados em atualização" };
+    const e = edition(D);
+    return { ...e, fonte: "legado", navegacao: navOf(D) };
   };
 
   routes["/api/edicao/arquivo"] = (q) => {
-    const m = /^\d{4}-\d{2}$/.test(q.get("mes") || "") ? q.get("mes") : (defaultDate() || todayStr()).slice(0, 7);
+    const t = todayStr();
+    let m = /^\d{4}-\d{2}$/.test(q.get("mes") || "") ? q.get("mes") : t.slice(0, 7);
+    if (m < MIN_DATE.slice(0, 7)) m = MIN_DATE.slice(0, 7);
+    if (m > t.slice(0, 7)) m = t.slice(0, 7);
     const a = m + "-01", b = m + "-31";
+    const dia = openData("diario");
+    const n = new Map(dia ? Q(dia, "SELECT edicao_data d, COUNT(*) n FROM eventos WHERE edicao_data >= ? AND edicao_data <= ? GROUP BY edicao_data", a, b).map((r) => [r.d, r.n]) : []);
     const c = new Map(P("SELECT published d, COUNT(*) n FROM contracts WHERE published >= ? AND published <= ? GROUP BY published", a, b).map((r) => [r.d, r.n]));
     const v = new Map(Q(vot, "SELECT data d, COUNT(*) n FROM votos WHERE orgao = 'Plenário' AND data >= ? AND data <= ? GROUP BY data", a, b).map((r) => [r.d, r.n]));
     const r = new Map(Q(dre, "SELECT date d, COUNT(*) n FROM acts WHERE date >= ? AND date <= ? GROUP BY date", a, b).map((x) => [x.d, x.n]));
     const out = [];
-    for (let d = a; d.slice(0, 7) === m; d = add(d, 1)) out.push({ d, c: c.get(d) || 0, v: v.get(d) || 0, r: r.get(d) || 0 });
-    return { mes: m, dias: out, min: MIN_DATE, max: todayStr(), defaultData: defaultDate() };
+    for (let d = a < MIN_DATE ? MIN_DATE : a; d.slice(0, 7) === m && d <= t; d = add(d, 1)) out.push({ d, ...(dia ? { n: n.get(d) || 0 } : {}), c: c.get(d) || 0, v: v.get(d) || 0, r: r.get(d) || 0 });
+    return { mes: m, dias: out, min: MIN_DATE, max: t, defaultData: t, fonte: dia ? "diario" : "legado" };
+  };
+
+  const ledgerArticle = (id) => {
+    const dia = openData("diario");
+    if (!dia) return null;
+    const a = Q1(dia, "SELECT * FROM artigos_ia WHERE id = ? AND estado = 'publicado'", id);
+    if (!a) return null;
+    const D = day10(a.edicao_data);
+    const ids = new Set(listOf(a.evento_ids).map(Number));
+    const rows = Q(dia, "SELECT id, data_evento, ingerido_em, edicao_data, secao, tipo, titulo, resumo_curto, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE ia_artigo_id = ? OR edicao_data = ? ORDER BY score DESC, id", a.id, D);
+    const linked = rows.filter((e) => ids.has(e.id) || e.ia_artigo_id === a.id);
+    const cnt = {};
+    for (const e of linked) cnt[e.secao] = (cnt[e.secao] || 0) + 1;
+    const secao = Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x] || (SEC_ORDER[x] ?? 99) - (SEC_ORDER[y] ?? 99))[0] || "governo";
+    return {
+      tipo: "ia", id: a.id, data: D, ...head(D), secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead),
+      paragraphs: S(a.corpo).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes),
+      numeros_citados: listOf(a.numeros_citados), entidades: listOf(a.entidades).map((x) => (typeof x === "string" ? x : S(x && (x.nome || x.name || x.label)))).filter(Boolean),
+      confianca: a.confianca, modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), criado_em: S(a.criado_em), revisao: a.revisao,
+      eventos: linked.map((e) => itemOf(e, D)),
+    };
   };
 
   const chartYears = (nif, hi) => P("SELECT year, value FROM year_stats WHERE nif = ? ORDER BY year DESC LIMIT 10", nif).reverse().map((y) => ({ l: String(y.year), v: y.value, hi: y.year === hi }));
@@ -705,12 +833,13 @@ export default function (ctx) {
 
   routes["/api/edicao/artigo"] = (q) => {
     const t = q.get("tipo"), id = q.get("id");
+    if (!t && /^\d+$/.test(id || "")) return ledgerArticle(Number(id));
     const fn = { contrato: artContrato, voto: artVoto, relatorio: artRelatorio, ato: artAto, apoio: artApoio, entidade: artEntidade, regulador: artRegulador, declaracao: artDeclaracao, nomeacao: artNomeacao }[t];
     if (!fn || !id) return null;
     const a = fn(id);
     if (!a) return null;
     const rel = [];
     if (a.date && a.tipo !== "entidade") rel.push({ label: `Ver a edição de ${pdate(a.date)}`, ref: `edicao/${a.date}` });
-    return { ...a, relacionados: rel, defaultData: defaultDate() };
+    return { ...a, relacionados: rel, defaultData: todayStr() };
   };
 }
