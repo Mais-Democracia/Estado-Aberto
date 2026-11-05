@@ -2,8 +2,16 @@
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import zlib from "node:zlib";
+import { promisify } from "node:util";
+import { performance, monitorEventLoopDelay } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+
+const wt = process.env.ESTADO_ABERTO_NO_WORKER === "1" ? null : await import("node:worker_threads").catch(() => null);
+const IS_WORKER = !!wt && !wt.isMainThread && !!wt.workerData && wt.workerData.role === "routes";
+const FRESH = { on: false };
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.resolve(process.env.ESTADO_ABERTO_DATA || path.join(root, "data"));
@@ -14,6 +22,7 @@ class DataMissing extends Error {
 }
 const unavailable = (name, why) => ({ available: false, note: `A base data/${name}.db ${why || "não foi encontrada"}; ${BOOTSTRAP}.` });
 
+async function buildApp() {
 const requested = new Set(["politica"]);
 const handles = new Map();
 const readDb = (name) => {
@@ -35,9 +44,10 @@ const lazyDb = (name) => ({
 });
 const db = lazyDb("politica");
 
-let userHandle = null;
+let userHandle = null, userTouched = false;
 const userDb = {
   prepare(sql) {
+    userTouched = true;
     if (!userHandle) {
       try {
         fs.mkdirSync(dataDir, { recursive: true });
@@ -100,62 +110,51 @@ function flagsFor(e, b, topSeller, mods) {
 const memo = (fn, ttl = 3600000) => {   // stale-while-revalidate: an expired entry is served at once and refreshed right after the response
   let at = 0, val, busy = false;
   return (...a) => {
+    if (at && FRESH.on && ttl <= 3600000) { val = fn(...a); at = Date.now(); return val; }
     if (at && Date.now() - at > ttl && !busy) { busy = true; setTimeout(() => { try { val = fn(...a); at = Date.now(); } catch {} busy = false; }, 0); }
     if (!at) { val = fn(...a); at = Date.now(); }
     return val;
   };
 };
 const countOf = (name, sql) => { try { return db.prepare(sql).get().n; } catch (e) { if (e instanceof DataMissing) return 0; return 0; } };
-const BIG = 200 * 1024 * 1024;
-function dbReport(name) {
-  const file = path.join(dataDir, `${name}.db`);
-  if (!fs.existsSync(file)) return { exists: false, available: false, detail: `${name}.db não encontrada; ${BOOTSTRAP}` };
-  const st = fs.statSync(file), out = { exists: true, size_bytes: st.size, modified: st.mtime.toISOString(), tables: {}, rows: 0, approx: st.size > BIG };
-  try {
-    const h = readDb(name);
-    const names = h.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%\\_fts%' ESCAPE '\\' ORDER BY name").all().map((r) => r.name);
-    for (const t of names) {
-      let n = 0;
-      try { n = out.approx ? (h.prepare(`SELECT MAX(rowid) n FROM "${t}"`).get().n || 0) : h.prepare(`SELECT COUNT(*) n FROM "${t}"`).get().n; } catch {}
-      out.tables[t] = n; out.rows += n;
-    }
-    try { const m = h.prepare("SELECT key, value FROM meta WHERE key IN ('built','updated','contracts_updated','version')").all(); if (m.length) out.meta = Object.fromEntries(m.map((r) => [r.key, r.value])); } catch {}
-    out.available = out.rows > 0;
-    if (!out.available) out.detail = `base vazia; ${BOOTSTRAP}`;
-  } catch (e) { out.available = false; out.detail = e.message; }
+function tableCounts(name, size) {
+  const h = readDb(name), approx = size > BIG_DB, out = { tables: {}, rows: 0, approx };
+  const names = h.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%\\_fts%' ESCAPE '\\' ORDER BY name").all().map((r) => r.name);
+  for (const t of names) {
+    let n = 0;
+    try { n = approx ? (h.prepare(`SELECT MAX(rowid) n FROM "${t}"`).get().n || 0) : h.prepare(`SELECT COUNT(*) n FROM "${t}"`).get().n; } catch {}
+    out.tables[t] = n; out.rows += n;
+  }
+  try { const m = h.prepare("SELECT key, value FROM meta WHERE key IN ('built','updated','contracts_updated','version')").all(); if (m.length) out.meta = Object.fromEntries(m.map((r) => [r.key, r.value])); } catch {}
   return out;
 }
-let statusAt = 0, statusVal = null;
-function statusReport() {
-  if (statusVal && Date.now() - statusAt < 30000) return statusVal;
-  const names = new Set([...requested]);
-  try { for (const f of fs.readdirSync(dataDir)) if (/^[a-z_]+\.db$/.test(f) && f !== "user.db") names.add(f.slice(0, -3)); } catch {}
+function statusDetail() {
+  const scan = scanDbsSync(), names = new Set([...requested]);
+  for (const n of scan.keys()) if (n !== "user") names.add(n);
   const modules = {};
-  for (const n of [...names].sort()) modules[n] = dbReport(n);
-  const core = modules.politica || {};
+  for (const n of [...names].sort()) {
+    const f = scan.get(n);
+    if (!f) continue;
+    try { modules[n] = tableCounts(n, f.size); } catch (e) { modules[n] = { tables: {}, rows: 0, approx: false, error: e.message }; }
+  }
+  const core = modules.politica, ok = !!core && !core.error && core.rows > 0;
   let m = {};
   try { m = meta(); } catch {}
-  const mtimes = Object.values(modules).filter((x) => x.modified).map((x) => x.modified).sort();
-  const t = core.tables || {};
-  statusVal = {
-    ...m,
-    available: !!core.available,
-    data_dir: dataDir.startsWith(root + path.sep) ? path.relative(root, dataDir) : dataDir,
-    data_version: { built: m.built || m.contracts_updated || null, newest_file: mtimes.length ? mtimes[mtimes.length - 1] : null, oldest_file: mtimes[0] || null },
+  return {
+    at: Date.now(), m, modules,
     counts: {
-      entities: t.entities || 0, public_bodies: core.available ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE is_public = 1") : 0,
-      municipios: core.available ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE kind = 'municipio'") : 0,
-      freguesias: core.available ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE kind = 'freguesia'") : 0,
-      contracts: t.contracts || 0, events: t.events || 0, initiatives: t.initiatives || 0, votes: t.votes || 0,
-      deputies: core.available ? countOf("politica", "SELECT COUNT(*) n FROM people WHERE body = 'Assembleia da República'") : 0,
+      public_bodies: ok ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE is_public = 1") : 0,
+      municipios: ok ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE kind = 'municipio'") : 0,
+      freguesias: ok ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE kind = 'freguesia'") : 0,
+      deputies: ok ? countOf("politica", "SELECT COUNT(*) n FROM people WHERE body = 'Assembleia da República'") : 0,
     },
-    modules,
-    unavailable: Object.keys(modules).filter((k) => !modules[k].available),
-    memory: { rss_mb: Math.round(process.memoryUsage.rss() / 1048576), heap_mb: Math.round(process.memoryUsage().heapUsed / 1048576) },
   };
-  statusAt = Date.now();
-  return statusVal;
 }
+let fallbackDetail = null;
+const statusReport = () => {
+  if (!fallbackDetail || Date.now() - fallbackDetail.at > 30 * 60e3) fallbackDetail = statusDetail();
+  return composeStatus(fallbackDetail, scanDbsSync(), requested);
+};
 const procedureList = memo(() => all("SELECT procedure, COUNT(*) n FROM contracts GROUP BY procedure ORDER BY n DESC LIMIT 12"), 86400000);
 const routes = {
   "/api/status": () => statusReport(),
@@ -389,7 +388,7 @@ for (const key of Object.keys(routes).filter((k) => /^\/api\/[a-z_]+\/overview$/
   };
   routes[key] = (q, req, body) => {
     const k = key + "?" + q.toString(), hit = ovCache.get(k);
-    if (hit) {
+    if (hit && !FRESH.on) {
       if (Date.now() - hit.at > 3600000 && !hit.busy) { hit.busy = true; setTimeout(() => { try { store(k, fn(q, req, body)); } catch { hit.busy = false; } }, 0); }
       return hit.v;
     }
@@ -409,15 +408,31 @@ routes["/api/modules"] = () => ({
   client: fs.existsSync(path.join(root, "public", "modules")) ? fs.readdirSync(path.join(root, "public", "modules")).filter((x) => x.endsWith(".js")).sort() : [],
 });
 
-const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json", ".woff2": "font/woff2" };
-
-const MAX_BODY = 1 << 20;
-const readBody2 = (req) => new Promise((res) => { let d = "", n = 0; req.on("data", (c) => { n += c.length; if (n <= MAX_BODY) d += c; }); req.on("end", () => { try { res(JSON.parse(d || "{}")); } catch { res({}); } }); });
-const sendJson = (res, code, obj) => {
-  const body = JSON.stringify(obj);
-  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
-  res.end(body);
+const exec = (m) => {
+  const t0 = performance.now();
+  FRESH.on = !!m.fresh; userTouched = false;
+  const fin = (code, obj) => {
+    let json;
+    try { json = JSON.stringify(obj); } catch (e) { code = 500; json = JSON.stringify({ error: "erro_interno", detail: String(e.message) }); }
+    return { code, json, user: userTouched, ms: Math.round(performance.now() - t0) };
+  };
+  try {
+    const fn = Object.hasOwn(routes, m.path) ? routes[m.path] : null;
+    if (!fn) return fin(404, { error: "not found" });
+    let out;
+    try { out = fn(new URLSearchParams(m.query || ""), { method: m.method, headers: {} }, m.body || {}); } catch (e) {
+      const f = failure(e);
+      if (f.code === 500) console.error("route failed:", m.path, e && e.stack || e);
+      return fin(f.code, f.body);
+    }
+    const un = unavailableOf(out);
+    if (un) return fin(503, dadosIndisponiveis(un.detail, un.name));
+    return out ? fin(200, out) : fin(404, { error: "not found" });
+  } finally { FRESH.on = false; }
 };
+return { routes, loaded, requested, exec, statusDetail };
+}
+
 const dadosIndisponiveis = (detail, db) => ({ error: "dados_indisponiveis", detail, ...(db ? { db } : {}) });
 const unavailableOf = (out) => {
   if (!out || typeof out !== "object" || out.updating) return null;
@@ -433,44 +448,590 @@ const failure = (e) => {
   if (e instanceof TypeError && /null|undefined/.test(msg)) return { code: 503, body: dadosIndisponiveis(`dados em falta (${msg}); ${BOOTSTRAP}`) };
   return { code: 500, body: { error: "erro_interno", detail: msg } };
 };
-const publicDir = path.join(root, "public");
 
-http.createServer(async (req, res) => {
-  const url = new URL(req.url, "http://x");
-  try {
-    if (url.pathname.startsWith("/api/")) {
-      const fn = Object.hasOwn(routes, url.pathname) ? routes[url.pathname] : null;
-      if (!fn) return sendJson(res, 404, { error: "not found" });
-      const body = req.method === "POST" ? await readBody2(req) : {};
-      let out;
-      try { out = fn(url.searchParams, req, body); } catch (e) {
-        const f = failure(e);
-        if (f.code === 500) console.error("route failed:", url.pathname, e && e.stack || e);
-        return sendJson(res, f.code, f.body);
-      }
-      const un = unavailableOf(out);
-      if (un) return sendJson(res, 503, dadosIndisponiveis(un.detail, un.name));
-      return out ? sendJson(res, 200, out) : sendJson(res, 404, { error: "not found" });
-    }
-    let file = path.join(publicDir, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
-    if (!file.startsWith(publicDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(publicDir, "index.html");
-    const st = fs.statSync(file), etag = `W/"${st.size}-${Math.floor(st.mtimeMs)}"`;
-    const hdr = { "Content-Type": types[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag };
-    if (req.headers["if-none-match"] === etag) { res.writeHead(304, hdr); return res.end(); }
-    res.writeHead(200, hdr);
-    fs.createReadStream(file).pipe(res);
-  } catch (e) {
-    console.error("request failed:", url.pathname, e && e.message);
-    if (!res.headersSent) sendJson(res, 500, { error: "erro_interno", detail: String(e && e.message || e) });
-    else res.end();
+const BIG_DB = 64 * 1024 * 1024;
+const scanDbsSync = () => {
+  const files = new Map();
+  try { for (const f of fs.readdirSync(dataDir)) if (/^[a-z_]+\.db$/.test(f)) { try { const s = fs.statSync(path.join(dataDir, f)); files.set(f.slice(0, -3), { size: s.size, mtimeMs: s.mtimeMs }); } catch {} } } catch {}
+  return files;
+};
+function composeStatus(detail, scan, requestedNames, mem = {}) {
+  const names = new Set(requestedNames);
+  for (const n of scan.keys()) if (n !== "user") names.add(n);
+  const modules = {};
+  for (const n of [...names].sort()) {
+    const f = scan.get(n);
+    if (!f) { modules[n] = { exists: false, available: false, detail: `${n}.db não encontrada; ${BOOTSTRAP}` }; continue; }
+    const d = detail && detail.modules[n];
+    const o = { exists: true, size_bytes: f.size, modified: new Date(f.mtimeMs).toISOString(), tables: d ? d.tables : {}, rows: d ? d.rows : 0, approx: d ? d.approx : f.size > BIG_DB };
+    if (d && d.meta) o.meta = d.meta;
+    if (d) {
+      o.available = !d.error && d.rows > 0;
+      if (d.error) o.detail = d.error; else if (!o.available) o.detail = `base vazia; ${BOOTSTRAP}`;
+    } else { o.available = true; o.pending = true; }
+    modules[n] = o;
   }
-}).listen(process.env.PORT || 3000, process.env.HOST || "0.0.0.0", () => {
-  console.log("http://localhost:" + (process.env.PORT || 3000));
-  const warm = () => {
-    for (const k of Object.keys(routes).filter((x) => /^\/api\/(overview|changes|status|contracts|(saude|seguranca|justica|educacao)\/overview)$/.test(x))) {
-      try { const t0 = Date.now(); routes[k](new URLSearchParams()); console.log("warm", k, Date.now() - t0, "ms"); }
-      catch (e) { if (!(e instanceof DataMissing) && !/no such/.test(String(e.message))) console.error("warm-up failed:", k, e.message); }
+  const core = modules.politica || {}, t = core.tables || {}, c = (detail && detail.counts) || {}, m = (detail && detail.m) || {};
+  const mtimes = Object.values(modules).filter((x) => x.modified).map((x) => x.modified).sort();
+  return {
+    ...m,
+    available: !!core.available,
+    data_dir: dataDir.startsWith(root + path.sep) ? path.relative(root, dataDir) : dataDir,
+    data_version: { built: m.built || m.contracts_updated || null, newest_file: mtimes.length ? mtimes[mtimes.length - 1] : null, oldest_file: mtimes[0] || null },
+    counts: {
+      entities: t.entities || 0, public_bodies: c.public_bodies || 0, municipios: c.municipios || 0, freguesias: c.freguesias || 0,
+      contracts: t.contracts || 0, events: t.events || 0, initiatives: t.initiatives || 0, votes: t.votes || 0, deputies: c.deputies || 0,
+    },
+    modules,
+    unavailable: Object.keys(modules).filter((k) => !modules[k].available),
+    memory: { rss_mb: Math.round(process.memoryUsage.rss() / 1048576), heap_mb: Math.round(process.memoryUsage().heapUsed / 1048576), ...mem },
+  };
+}
+
+const MIME = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json",
+  ".woff2": "font/woff2", ".woff": "font/woff", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8", ".webmanifest": "application/manifest+json", ".map": "application/json",
+};
+const COMPRESSIBLE = /^(text\/|application\/(json|javascript|xml|manifest\+json)|image\/svg)/;
+const JSON_TYPE = "application/json; charset=utf-8";
+const CC_API = "public, max-age=30, stale-while-revalidate=300";
+const CC_STATIC = "public, max-age=3600, stale-while-revalidate=86400";
+const CC_IMMUTABLE = "public, max-age=31536000, immutable";
+const WARM_RE = /^\/api\/(overview|changes|contracts|edicao\/dia|[a-z_]+\/overview)$/;
+const gzipAsync = promisify(zlib.gzip), brotliAsync = promisify(zlib.brotliCompress);
+const sha = (b) => crypto.createHash("sha1").update(b).digest("base64url").slice(0, 22);
+const enc = new TextEncoder();
+
+function workerLoop(app) {
+  const { parentPort } = wt;
+  const debug = process.env.ESTADO_ABERTO_DEBUG === "1";
+  const memOf = () => { const m = process.memoryUsage(); return { heap: m.heapUsed, ext: m.external, ab: m.arrayBuffers }; };
+  parentPort.postMessage({ type: "ready", routes: Object.keys(app.routes), requested: [...app.requested], loaded: app.loaded });
+  parentPort.on("message", (m) => {
+    if (m.kind === "status") {
+      let detail = null;
+      try { detail = app.statusDetail(); } catch (e) { console.error("status detail failed:", e.message); }
+      parentPort.postMessage({ id: m.id, type: "result", detail, mem: debug ? memOf() : undefined });
+      return;
+    }
+    const r = app.exec(m);
+    const body = enc.encode(r.json);
+    parentPort.postMessage({ id: m.id, type: "result", code: r.code, user: r.user, ms: r.ms, body, mem: debug ? memOf() : undefined }, [body.buffer]);
+  });
+}
+
+class Lru {
+  constructor(max) { this.max = max; this.map = new Map(); this.bytes = 0; }
+  get(k) { const v = this.map.get(k); if (v) { this.map.delete(k); this.map.set(k, v); } return v; }
+  peek(k) { return this.map.get(k); }
+  set(k, v) { this.delete(k); this.map.set(k, v); v.lru = this; this.bytes += v.size; this.trim(); }
+  delete(k) { const v = this.map.get(k); if (v) { this.map.delete(k); this.bytes -= v.size; v.lru = null; } }
+  grow(v, n) { v.size += n; if (v.lru === this) { this.bytes += n; this.trim(); } }
+  trim() {
+    for (const pass of [0, 1]) {
+      if (this.bytes <= this.max) return;
+      for (const [k, v] of this.map) { if (this.bytes <= this.max) return; if (pass === 0 && v.hot) continue; this.delete(k); }
+    }
+  }
+}
+
+const acceptEncoding = (req) => {
+  const h = String(req.headers["accept-encoding"] || "");
+  if (!h) return null;
+  const q = {};
+  for (const part of h.split(",")) { const [name, ...ps] = part.trim().split(";"); const m = ps.join(";").match(/q=([0-9.]+)/); q[name.trim().toLowerCase()] = m ? Number(m[1]) : 1; }
+  if (q.br > 0) return "br";
+  if (q.gzip > 0 || q["*"] > 0) return "gzip";
+  return null;
+};
+const compress = (buf, e, quality) => e === "br"
+  ? brotliAsync(buf, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: quality, [zlib.constants.BROTLI_PARAM_SIZE_HINT]: buf.length } })
+  : gzipAsync(buf, { level: 6 });
+const etagMatches = (req, etag) => {
+  const h = req.headers["if-none-match"];
+  if (!h) return false;
+  if (h.trim() === "*") return true;
+  return h.split(",").some((t) => t.trim().replace(/^W\//, "") === etag);
+};
+
+async function main() {
+  const PORT = process.env.PORT || 3000;
+  const DEBUG = process.env.ESTADO_ABERTO_DEBUG === "1";
+  const cacheDir = path.resolve(process.env.ESTADO_ABERTO_CACHE || path.join(dataDir, "cache"));
+  const publicDir = path.join(root, "public");
+  const indexFile = path.join(publicDir, "index.html");
+  const moduleDir = path.join(root, "server", "modules");
+  const WAIT_MS = 6000, HOT_MS = 300, HOT_TTL = 10 * 60e3, SOFT_TTL = 30e3, SOFT_STALE = 5 * 60e3, ACTIVE_MS = 6 * 3600e3;
+  const STATUS_EVERY = 30 * 60e3, MAX_HI = 128, MAX_LO = 32, WATCHDOG = 180e3, SLOW_MS = 500, MIN_COMPRESS = 860;
+  const MAX_ENTRY = 8 * 1048576, MAX_DISK = 48, MAX_STATIC_FILE = 1048576;
+
+  const codeStamp = (() => {
+    let m = 0, v = "";
+    const bump = (f) => { try { m = Math.max(m, fs.statSync(f).mtimeMs); } catch {} };
+    bump(fileURLToPath(import.meta.url));
+    try { for (const f of fs.readdirSync(moduleDir)) bump(path.join(moduleDir, f)); } catch {}
+    try { v = fs.readFileSync(path.join(root, "VERSION"), "utf8").trim(); } catch {}
+    return sha(v + ":" + m);
+  })();
+
+  const cache = new Lru(24 * 1048576);
+  const staticCache = new Lru(20 * 1048576);
+  const refreshing = new Set();
+  const uncacheable = new Set();
+  const fsp = fs.promises;
+  let scan = new Map(), dbSig = "";
+  let detail = null, detailBusy = false;
+  let lag = null, workerMem = null, workerMemMax = 0;
+
+  if (DEBUG) { lag = monitorEventLoopDelay({ resolution: 5 }); lag.enable(); }
+
+  const rescan = async () => {
+    try {
+      const names = (await fsp.readdir(dataDir)).filter((f) => /^[a-z_]+\.db$/.test(f));
+      const files = new Map();
+      await Promise.all(names.map(async (f) => { try { const s = await fsp.stat(path.join(dataDir, f)); files.set(f.slice(0, -3), { size: s.size, mtimeMs: s.mtimeMs }); } catch {} }));
+      scan = files;
+      dbSig = sha([...files].filter(([n]) => n !== "user").sort(([a], [b]) => (a < b ? -1 : 1)).map(([n, f]) => `${n}:${f.size}:${Math.floor(f.mtimeMs)}`).join("|"));
+    } catch { scan = new Map(); }
+  };
+
+  const pool = { worker: null, app: null, ready: false, routes: new Set(), requested: [], loaded: [], inflight: null, hi: [], lo: [], byKey: new Map(), seq: 0, restarts: 0, stableTimer: null, respawn: null };
+  const busy = () => !!pool.inflight || pool.hi.length > 0 || pool.lo.length > 0;
+
+  const settle = (job, fn, v) => {
+    clearTimeout(job.timer);
+    if (job.key && pool.byKey.get(job.key) === job) pool.byKey.delete(job.key);
+    if (pool.inflight === job) pool.inflight = null;
+    fn(v);
+  };
+  const pump = () => {
+    if (!pool.ready || pool.inflight) return;
+    const job = pool.hi.shift() || pool.lo.shift();
+    if (!job) return;
+    pool.inflight = job; job.sent = true; job.sig = dbSig;
+    const msg = { id: job.id, ...job.spec };
+    if (pool.worker) {
+      job.timer = setTimeout(() => { console.error("worker watchdog:", job.spec.path || job.spec.kind); try { pool.worker.terminate(); } catch {} }, WATCHDOG);
+      pool.worker.postMessage(msg);
+    } else {
+      setImmediate(() => {
+        let r;
+        if (msg.kind === "status") r = { detail: pool.app.statusDetail() };
+        else { const x = pool.app.exec(msg); r = { code: x.code, user: x.user, ms: x.ms, body: enc.encode(x.json) }; }
+        r.sig = job.sig;
+        settle(job, job.res, r); pump();
+      });
     }
   };
-  setTimeout(warm, 200); setInterval(warm, 3 * 60 * 1000).unref();
-});
+  const submit = (spec, prio = "hi") => {
+    const key = spec.coalesce ? `${spec.method}|${spec.path}?${spec.query}` : null;
+    const found = key && pool.byKey.get(key);
+    if (found) {
+      if (prio === "hi" && found.prio === "lo" && !found.sent) { const i = pool.lo.indexOf(found); if (i >= 0) { pool.lo.splice(i, 1); found.prio = "hi"; pool.hi.push(found); } }
+      return found.promise;
+    }
+    if (prio === "hi" && pool.hi.length >= MAX_HI) return Promise.reject(Object.assign(new Error("fila cheia"), { busy: true }));
+    if (prio === "lo" && pool.lo.length >= MAX_LO) return Promise.resolve(null);
+    const job = { id: ++pool.seq, spec: { kind: "route", ...spec }, prio, key, sent: false, timer: null };
+    job.promise = new Promise((res, rej) => { job.res = res; job.rej = rej; });
+    job.promise.catch(() => {});
+    (prio === "hi" ? pool.hi : pool.lo).push(job);
+    if (key) pool.byKey.set(key, job);
+    pump();
+    return job.promise;
+  };
+
+  const onWorkerGone = (why) => {
+    pool.ready = false; pool.worker = null;
+    clearTimeout(pool.stableTimer);
+    const job = pool.inflight;
+    if (job) settle(job, job.rej, new Error("worker: " + why));
+    const delay = Math.min(30000, 500 * 2 ** pool.restarts++);
+    console.error(`worker terminou (${why}); novo em ${delay} ms`);
+    pool.respawn = setTimeout(startWorker, delay);
+  };
+  const startWorker = () => {
+    let w;
+    try {
+      w = new wt.Worker(fileURLToPath(import.meta.url), { workerData: { role: "routes" }, resourceLimits: { maxOldGenerationSizeMb: 120, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 } });
+    } catch (e) { console.error("worker indisponível, a executar no processo principal:", e.message); return startInline(); }
+    pool.worker = w;
+    w.on("message", (m) => {
+      if (m.type === "ready") {
+        pool.routes = new Set(m.routes); pool.requested = m.requested; pool.loaded = m.loaded; pool.ready = true;
+        pool.stableTimer = setTimeout(() => { pool.restarts = 0; }, 60000); pool.stableTimer.unref();
+        pump();
+        return;
+      }
+      if (m.mem) { workerMem = m.mem; workerMemMax = Math.max(workerMemMax, m.mem.heap); }
+      const job = pool.inflight;
+      if (!job || job.id !== m.id) return;
+      m.sig = job.sig;
+      settle(job, job.res, m);
+      pump();
+    });
+    w.on("error", (e) => console.error("worker error:", e && e.message));
+    w.on("exit", (code) => { if (pool.worker === w) onWorkerGone("exit " + code); });
+  };
+  const startInline = async () => {
+    pool.app = await buildApp();
+    pool.routes = new Set(Object.keys(pool.app.routes)); pool.requested = [...pool.app.requested]; pool.loaded = pool.app.loaded; pool.ready = true;
+    pump();
+  };
+  if (wt) startWorker(); else await startInline();
+
+  const hashKey = (key) => crypto.createHash("sha1").update(key).digest("hex").slice(0, 20);
+  const diskFiles = new Map();
+  const persist = (e) => {
+    const name = hashKey(e.key) + ".json";
+    const head = JSON.stringify({ key: e.key, path: e.path, query: e.query, sig: e.sig, at: e.at, ms: e.ms, code: codeStamp, seed: e.seed });
+    const data = Buffer.concat([Buffer.from(head.slice(0, -1) + ',"body":'), e.raw, Buffer.from("}")]);
+    diskFiles.set(name, e.at);
+    fsp.mkdir(cacheDir, { recursive: true })
+      .then(() => fsp.writeFile(path.join(cacheDir, name + ".tmp"), data))
+      .then(() => fsp.rename(path.join(cacheDir, name + ".tmp"), path.join(cacheDir, name)))
+      .then(() => {
+        if (diskFiles.size <= MAX_DISK) return;
+        const old = [...diskFiles].sort((a, b) => a[1] - b[1]).slice(0, diskFiles.size - MAX_DISK);
+        return Promise.all(old.map(([n]) => { diskFiles.delete(n); return fsp.unlink(path.join(cacheDir, n)).catch(() => {}); }));
+      })
+      .catch(() => {});
+  };
+  const loadDisk = async () => {
+    let files;
+    try { files = await fsp.readdir(cacheDir); } catch { return; }
+    for (const f of files) {
+      const file = path.join(cacheDir, f);
+      try {
+        if (f === "_status.json") {
+          const d = JSON.parse(await fsp.readFile(file, "utf8"));
+          if (d.code === codeStamp && d.detail && !detail) detail = d.detail;
+          continue;
+        }
+        if (!f.endsWith(".json")) { if (f.endsWith(".tmp")) fsp.unlink(file).catch(() => {}); continue; }
+        const buf = await fsp.readFile(file);
+        const i = buf.indexOf('"body":');
+        const h = JSON.parse(buf.toString("utf8", 0, i).replace(/,$/, "") + "}");
+        if (h.code !== codeStamp) { fsp.unlink(file).catch(() => {}); continue; }
+        const raw = buf.subarray(i + 7, buf.length - 1);
+        if (!cache.peek(h.key)) cache.set(h.key, { raw, size: raw.length, tag: null, v: {}, key: h.key, path: h.path, query: h.query, at: h.at, sig: h.sig, ms: h.ms, hot: true, seed: !!h.seed, last: 0, lru: null });
+        diskFiles.set(f, h.at);
+      } catch { fsp.unlink(file).catch(() => {}); }
+    }
+  };
+  const persistDetail = () => {
+    fsp.mkdir(cacheDir, { recursive: true }).then(() => fsp.writeFile(path.join(cacheDir, "_status.json"), JSON.stringify({ code: codeStamp, detail }))).catch(() => {});
+  };
+
+  const accept = (key, p, q, r) => {
+    if (r.entry !== undefined) return r.entry;
+    r.entry = null;
+    if (r.code !== 200) return null;
+    if (r.user) { uncacheable.add(p); return null; }
+    const raw = Buffer.from(r.body.buffer, r.body.byteOffset, r.body.byteLength);
+    if (raw.length > MAX_ENTRY) return null;
+    const old = cache.peek(key);
+    const seed = q === "" && WARM_RE.test(p);
+    const e = { raw, size: raw.length, tag: null, v: {}, key, path: p, query: q, at: Date.now(), sig: r.sig, ms: r.ms, hot: !!(old && old.hot) || r.ms >= HOT_MS || seed, seed, last: old ? old.last : Date.now(), lru: null };
+    cache.set(key, e);
+    if (e.hot) persist(e);
+    r.entry = e;
+    return e;
+  };
+  const refresh = (t) => {
+    const key = t.path + "?" + t.query;
+    if (refreshing.has(key)) return Promise.resolve();
+    refreshing.add(key);
+    return submit({ method: "GET", path: t.path, query: t.query, coalesce: true, fresh: true }, "lo")
+      .then((r) => { if (r) accept(key, t.path, t.query, r); })
+      .catch(() => {})
+      .finally(() => refreshing.delete(key));
+  };
+  const refreshDetail = () => {
+    if (detailBusy) return Promise.resolve();
+    detailBusy = true;
+    return submit({ kind: "status" }, "lo")
+      .then((r) => { if (r && r.detail) { detail = r.detail; persistDetail(); } })
+      .catch(() => {})
+      .finally(() => { detailBusy = false; });
+  };
+  const tick = () => {
+    if (!pool.ready || busy()) return;
+    const now = Date.now();
+    for (const p of pool.routes) if (WARM_RE.test(p) && !cache.peek(p + "?") && !refreshing.has(p + "?")) return void refresh({ path: p, query: "" });
+    let pick = null;
+    for (const e of cache.map.values()) {
+      if (!e.hot || refreshing.has(e.key)) continue;
+      if (!(e.seed || now - e.last < ACTIVE_MS)) continue;
+      if (e.sig !== dbSig || now - e.at > HOT_TTL) if (!pick || e.at < pick.at) pick = e;
+    }
+    if (pick) return void refresh(pick);
+    if (!detail || now - detail.at > STATUS_EVERY) refreshDetail();
+  };
+  const forceWarm = () => {
+    let n = 0;
+    for (const p of pool.routes) if (WARM_RE.test(p)) { refresh({ path: p, query: "" }); n++; }
+    for (const e of cache.map.values()) if (e.hot && !e.seed) { refresh(e); n++; }
+    refreshDetail();
+    return n;
+  };
+
+  const variant = (body, e, quality) => {
+    if (body.v[e]) return body.v[e];
+    const p = compress(body.raw, e, quality).then((b) => { const owner = body.lru; if (owner) owner.grow(body, b.length); else body.size += b.length; body.vb = body.vb || {}; body.vb[e] = b; return b; });
+    body.v[e] = p;
+    p.catch(() => { delete body.v[e]; });
+    return p;
+  };
+
+  const timing = (rc) => {
+    const parts = [`app;dur=${(performance.now() - rc.t0).toFixed(1)}`];
+    if (rc.db != null) parts.push(`db;dur=${rc.db}`);
+    if (rc.cache) parts.push(`cache;desc="${rc.cache}"`);
+    return parts.join(", ");
+  };
+  async function sendBody(req, res, rc, body, o) {
+    const code = o.code || 200, type = o.type;
+    let e = null, buf = body.raw;
+    if (o.compress !== false && buf.length >= MIN_COMPRESS && COMPRESSIBLE.test(type)) e = acceptEncoding(req);
+    if (e) {
+      try { buf = await variant(body, e, o.quality || 5); } catch { buf = body.raw; e = null; }
+      if (buf.length >= body.raw.length) { buf = body.raw; e = null; }
+    }
+    if (res.destroyed || res.writableEnded) return;
+    const headers = { "Content-Type": type, "Cache-Control": o.cc, Vary: "Accept-Encoding", "Server-Timing": timing(rc) };
+    if (o.link) headers.Link = o.link;
+    let etag = null;
+    if (code === 200 && o.etag !== false) {
+      body.tag = body.tag || sha(body.raw);
+      etag = `"${body.tag}${e ? "-" + e : ""}"`;
+      headers.ETag = etag;
+      if (etagMatches(req, etag)) { delete headers["Content-Type"]; res.writeHead(304, headers); return res.end(); }
+    }
+    headers["Content-Length"] = buf.length;
+    if (e) headers["Content-Encoding"] = e;
+    res.writeHead(code, headers);
+    res.end(req.method === "HEAD" ? undefined : buf);
+  }
+  const sendWithHeaders = (req, res, rc, code, obj, headers) => {
+    if (res.destroyed || res.writableEnded) return;
+    const raw = Buffer.from(JSON.stringify(obj));
+    res.writeHead(code, { "Content-Type": JSON_TYPE, "Cache-Control": "no-store", "Content-Length": raw.length, "Server-Timing": timing(rc), ...headers });
+    res.end(req.method === "HEAD" ? undefined : raw);
+  };
+
+  const withTimeout = (p, ms) => new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve(TIMEOUT), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (err) => { clearTimeout(t); reject(err); });
+  });
+  const TIMEOUT = Symbol("timeout");
+
+  const readBody = (req) => new Promise((resolve) => {
+    let d = "", n = 0;
+    req.on("data", (c) => { n += c.length; if (n <= (1 << 20)) d += c; });
+    req.on("end", () => { try { resolve(JSON.parse(d || "{}")); } catch { resolve({}); } });
+    req.on("error", () => resolve({}));
+  });
+
+  let statusBody = null, statusAt = 0;
+  const serveStatus = (req, res, rc) => {
+    const now = Date.now();
+    if (!statusBody || now - statusAt > 2000) {
+      const mem = { worker_heap_mb: workerMem ? Math.round(workerMem.heap / 1048576) : 0 };
+      const raw = Buffer.from(JSON.stringify(composeStatus(detail, scan, new Set([...pool.requested, "politica"]), mem)));
+      statusBody = { raw, size: raw.length, v: {}, tag: null, lru: null };
+      statusAt = now;
+    }
+    rc.cache = "status";
+    return sendBody(req, res, rc, statusBody, { type: JSON_TYPE, cc: "public, max-age=10", quality: 4 });
+  };
+
+  const perfBody = () => {
+    const mu = process.memoryUsage();
+    const ms = (v) => Math.round(v / 1e4) / 100;
+    return {
+      eventloop: lag ? { resolution_ms: 5, min_ms: ms(lag.min), mean_ms: ms(lag.mean), p50_ms: ms(lag.percentile(50)), p99_ms: ms(lag.percentile(99)), max_ms: ms(lag.max), lag_max_ms: Math.max(0, ms(lag.max) - 5) } : null,
+      memory_mb: { rss: Math.round(mu.rss / 1048576), main_heap: Math.round(mu.heapUsed / 1048576), main_external: Math.round(mu.external / 1048576), worker_heap: workerMem ? Math.round(workerMem.heap / 1048576) : null, worker_heap_max: Math.round(workerMemMax / 1048576), worker_external: workerMem ? Math.round(workerMem.ext / 1048576) : null },
+      queue: { hi: pool.hi.length, lo: pool.lo.length, inflight: pool.inflight ? pool.inflight.spec.path || pool.inflight.spec.kind : null, ready: pool.ready, worker: !!pool.worker },
+      cache: { api_entries: cache.map.size, api_mb: Math.round(cache.bytes / 10485.76) / 100, static_entries: staticCache.map.size, static_mb: Math.round(staticCache.bytes / 10485.76) / 100 },
+    };
+  };
+
+  async function apiRoute(req, res, url, rc) {
+    const p = url.pathname, query = url.search.slice(1);
+    rc.route = p;
+    if (p === "/api/status" && (req.method === "GET" || req.method === "HEAD")) return serveStatus(req, res, rc);
+    if (DEBUG && p === "/api/_perf") {
+      const warmed = url.searchParams.has("warm") ? forceWarm() : undefined;
+      const out = { ...perfBody(), ...(warmed !== undefined ? { warm_queued: warmed } : {}) };
+      if (url.searchParams.has("reset") && lag) lag.reset();
+      return sendWithHeaders(req, res, rc, 200, out, {});
+    }
+    if (pool.ready && !pool.routes.has(p)) return sendWithHeaders(req, res, rc, 404, { error: "not found" }, {});
+    const read = req.method === "GET" || req.method === "HEAD";
+    const retry = { "Retry-After": "2" };
+
+    if (!read) {
+      const body = req.method === "POST" ? await readBody(req) : {};
+      let r;
+      try { r = await withTimeout(submit({ method: req.method, path: p, query, body }, "hi"), 30000); } catch (e) { return sendWithHeaders(req, res, rc, 503, { error: "ocupado", detail: String(e.message) }, retry); }
+      if (r === TIMEOUT) return sendWithHeaders(req, res, rc, 202, { status: "carregando", retry_after: 2 }, retry);
+      rc.db = r.ms; rc.cache = "bypass";
+      return sendBody(req, res, rc, { raw: Buffer.from(r.body), v: {}, tag: null, size: 0, lru: null }, { code: r.code, type: JSON_TYPE, cc: "no-store", etag: false });
+    }
+
+    const key = p + "?" + query;
+    let e = uncacheable.has(p) ? null : cache.get(key);
+    const now = Date.now();
+    if (e) {
+      e.last = now;
+      const age = now - e.at, fresh = e.sig === dbSig && age < (e.hot ? HOT_TTL : SOFT_TTL);
+      if (!fresh) refresh(e);
+      if (fresh || e.hot || age < SOFT_STALE) {
+        rc.cache = fresh ? "hit" : "stale";
+        return sendBody(req, res, rc, e, { type: JSON_TYPE, cc: CC_API, quality: 4 });
+      }
+    }
+    let r;
+    try { r = await withTimeout(submit({ method: "GET", path: p, query, coalesce: true }, "hi"), WAIT_MS); } catch (err) {
+      return sendWithHeaders(req, res, rc, 503, { error: "ocupado", detail: String(err.message) }, retry);
+    }
+    if (r === TIMEOUT) { rc.cache = "wait"; return sendWithHeaders(req, res, rc, 202, { status: "carregando", retry_after: 2 }, retry); }
+    rc.cache = "miss"; rc.db = r.ms;
+    const entry = accept(key, p, query, r);
+    if (entry) return sendBody(req, res, rc, entry, { type: JSON_TYPE, cc: CC_API, quality: 4 });
+    const body = { raw: Buffer.from(r.body.buffer, r.body.byteOffset, r.body.byteLength), v: {}, tag: null, size: 0, lru: null };
+    return sendBody(req, res, rc, body, { code: r.code, type: JSON_TYPE, cc: r.code === 200 && !r.user ? CC_API : "no-store", etag: r.code === 200 && !r.user });
+  }
+
+  const statMemo = new Map();
+  const statOf = async (file) => {
+    const c = statMemo.get(file), now = Date.now();
+    if (c && now - c.at < 2000) return c.st;
+    let st = null;
+    try { st = await fsp.stat(file); } catch {}
+    if (statMemo.size > 512) statMemo.clear();
+    statMemo.set(file, { at: now, st });
+    return st;
+  };
+  const filePending = new Map();
+  const readStatic = (ck, file) => {
+    let p = filePending.get(ck);
+    if (!p) {
+      p = fsp.readFile(file).then((raw) => { const b = { raw, size: raw.length, tag: null, v: {}, lru: null }; staticCache.set(ck, b); return b; }).finally(() => filePending.delete(ck));
+      filePending.set(ck, p);
+    }
+    return p;
+  };
+
+  let indexInfo = null, indexBody = null, indexReading = null;
+  const loadIndex = async (st) => {
+    if (indexInfo && indexInfo.mtime === st.mtimeMs) return indexInfo;
+    if (!indexReading) {
+      indexReading = fsp.readFile(indexFile, "utf8").then((html) => {
+        const links = [];
+        const css = html.match(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/i);
+        const href = (tag) => { const m = tag.match(/\bhref=["']([^"']+)["']/i); return m ? m[1] : null; };
+        if (css && href(css[0])) links.push(`<${href(css[0])}>; rel=preload; as=style`);
+        let n = 0;
+        for (const m of html.matchAll(/<script\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
+          if (n++ >= 3) break;
+          links.push(`<${m[1]}>; rel=${/type=["']module["']/i.test(m[0]) ? "modulepreload" : "preload; as=script"}`);
+        }
+        indexInfo = { mtime: st.mtimeMs, html, links };
+        indexBody = null;
+        return indexInfo;
+      }).finally(() => { indexReading = null; });
+    }
+    return indexReading;
+  };
+  const jsonForScript = (s) => s.replace(/<\/script/gi, "<\\/script").replace(/<!--/g, "<\\!--").replace(new RegExp("\\u2028", "g"), "\\u2028").replace(new RegExp("\\u2029", "g"), "\\u2029");
+  const indexFor = (info) => {
+    const boot = cache.peek("/api/edicao/dia?");
+    let tag = "";
+    if (boot) { boot.tag = boot.tag || sha(boot.raw); tag = boot.tag; }
+    const ck = info.mtime + "|" + tag;
+    if (indexBody && indexBody.ck === ck) return indexBody;
+    let html = info.html;
+    if (html.includes("<!--EA-BOOT-->")) {
+      const inj = boot ? `<script>window.__EA_BOOT={"/api/edicao/dia":${jsonForScript(boot.raw.toString("utf8"))}}</script>` : "";
+      html = html.split("<!--EA-BOOT-->").join(inj);
+    }
+    const raw = Buffer.from(html);
+    indexBody = { ck, raw, size: raw.length, tag: null, v: {}, lru: null };
+    return indexBody;
+  };
+
+  async function staticRoute(req, res, url, rc) {
+    rc.route = "static";
+    if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405, { Allow: "GET, HEAD" }); return res.end(); }
+    let rel;
+    try { rel = decodeURIComponent(url.pathname); } catch { res.writeHead(400); return res.end(); }
+    let file = path.join(publicDir, rel === "/" ? "index.html" : rel);
+    let st = file.startsWith(publicDir + path.sep) ? await statOf(file) : null;
+    if (!st || st.isDirectory()) { file = indexFile; st = await statOf(file); }
+    if (!st) { res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" }); return res.end("not found"); }
+    const type = MIME[path.extname(file)] || "application/octet-stream";
+
+    if (file === indexFile) {
+      const known = indexInfo;
+      if (known && known.links.length && req.httpVersion !== "1.0" && process.env.ESTADO_ABERTO_EARLY_HINTS !== "0" && typeof res.writeEarlyHints === "function") res.writeEarlyHints({ link: known.links });
+      const info = await loadIndex(st);
+      const body = indexFor(info);
+      rc.cache = "html";
+      return sendBody(req, res, rc, body, { type, cc: "no-cache", link: info.links.join(", ") || undefined });
+    }
+
+    const cc = url.searchParams.has("v") ? CC_IMMUTABLE : CC_STATIC;
+    if (st.size > MAX_STATIC_FILE || !COMPRESSIBLE.test(type)) {
+      const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
+      const headers = { "Content-Type": type, "Cache-Control": cc, ETag: etag, "Server-Timing": timing(rc) };
+      if (etagMatches(req, etag)) { delete headers["Content-Type"]; res.writeHead(304, headers); return res.end(); }
+      headers["Content-Length"] = st.size;
+      res.writeHead(200, headers);
+      if (req.method === "HEAD") return res.end();
+      const rs = fs.createReadStream(file);
+      rs.on("error", () => res.destroy());
+      res.on("close", () => rs.destroy());
+      rs.pipe(res);
+      return;
+    }
+    const ck = `${file}|${Math.floor(st.mtimeMs)}|${st.size}`;
+    const body = staticCache.get(ck) || await readStatic(ck, file);
+    rc.cache = "asset";
+    return sendBody(req, res, rc, body, { type, cc });
+  }
+
+  const server = http.createServer((req, res) => {
+    const rc = { t0: performance.now(), route: null, cache: null, db: null };
+    res.on("close", () => {
+      const ms = performance.now() - rc.t0;
+      if (ms > SLOW_MS) console.log(`slow ${req.method} ${rc.route || req.url.split("?")[0]} ${Math.round(ms)}ms status=${res.statusCode} cache=${rc.cache || "-"} db=${rc.db == null ? "-" : rc.db + "ms"}`);
+    });
+    let url;
+    try { url = new URL(req.url, "http://x"); } catch { res.writeHead(400); return res.end(); }
+    (url.pathname.startsWith("/api/") ? apiRoute(req, res, url, rc) : staticRoute(req, res, url, rc)).catch((e) => {
+      console.error("request failed:", url.pathname, e && e.message);
+      if (!res.headersSent) { res.writeHead(500, { "Content-Type": JSON_TYPE, "Cache-Control": "no-store" }); res.end(JSON.stringify({ error: "erro_interno", detail: String(e && e.message || e) })); }
+      else res.destroy();
+    });
+  });
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+  server.requestTimeout = 70000;
+  server.setTimeout(120000);
+
+  await rescan();
+  loadDisk().catch(() => {});
+  setInterval(rescan, 10000).unref();
+  setInterval(tick, 5000).unref();
+  statOf(indexFile).then((st) => st && loadIndex(st)).catch(() => {});
+  server.listen(PORT, process.env.HOST || "0.0.0.0", () => console.log("http://localhost:" + PORT));
+  const bye = () => { try { if (pool.worker) pool.worker.terminate(); } catch {} process.exit(0); };
+  process.on("SIGTERM", bye);
+  process.on("SIGINT", bye);
+}
+
+if (IS_WORKER) workerLoop(await buildApp());
+else await main();
