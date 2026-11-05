@@ -13,7 +13,7 @@ Before every commit or PR.
 2. `python3 -m py_compile` on touched Python; `node --check` on touched `.mjs` and `.js`.
 3. `python3 tools/make_sample.py`, start the server on a free port, `curl` touched routes: status, JSON shape, size.
 4. Headless screenshot of touched pages, including the empty state; look at them.
-5. `git status`: nothing under `data/`, no secrets, no personal paths (`grep -rIn '/home/\|@' <touched files>`).
+5. `git status`: nothing under `data/`, no secrets, no personal paths, no personal paths or emails.
 6. Check the commit message follows `Location: Description.`.
 
 ## Checks
