@@ -5,7 +5,60 @@ const Portal = (window.Portal = {
   pages: {}, extraNav: [],
   page(name, fn) { this.pages[name] = fn; },
   nav(label, hash) { this.extraNav.push({ label, hash }); },
+  hasPage(name) { return !!(this.pages[name] || EAR.mods[name]); },
 });
+const EAR = window.EA_ROUTES || { version: "", mods: {}, extra: {}, hooks: [], files: [], story: [], data: {} };
+const VER = (document.querySelector('meta[name="ea-version"]') || {}).content || EAR.version || "";
+const vurl = (u) => (VER ? u + (u.includes("?") ? "&" : "?") + "v=" + encodeURIComponent(VER) : u);
+const idle = (fn, timeout = 1200) => (window.requestIdleCallback ? requestIdleCallback(fn, { timeout }) : setTimeout(fn, 60));
+const loaded = new Set(), loading = {};
+const loadScripts = (files) => Promise.all(files.map((f) => (loading[f] ||= new Promise((res) => {
+  const s = document.createElement("script"); s.src = vurl(f); s.async = false;
+  s.onload = () => { loaded.add(f); res(true); }; s.onerror = () => { delete loading[f]; res(false); };
+  document.head.appendChild(s);
+}))));
+const loadCss = (href) => (loading[href] ||= new Promise((res) => {
+  if (document.querySelector(`link[data-lazy="${href}"]`)) return res(true);
+  const l = document.createElement("link"); l.rel = "stylesheet"; l.href = vurl(href); l.dataset.lazy = href;
+  l.onload = () => { loaded.add(href); res(true); }; l.onerror = () => res(false);
+  document.head.appendChild(l);
+}));
+const storyFiles = (arg) => { const slug = String(arg || "").split("/")[0]; return ["/story-morphs.js", "/story-engine.js"].concat(EAR.story.includes(slug) ? ["/historias/" + slug + ".js"] : []); };
+const needsFiles = (name, arg) => {
+  if (name === "historia") return storyFiles(arg).filter((f) => !loaded.has(f)).concat(loaded.has("/story.css") ? [] : ["/story.css"]);
+  if (name === "painel-classico") return loaded.has("/novidades.js") ? [] : ["/novidades.js"];
+  const out = [EAR.mods[name]].concat(EAR.extra[name] || []).filter((f) => f && !loaded.has(f));
+  if (name === "entidade") for (const f of EAR.hooks) if (!loaded.has(f)) out.push(f);
+  return out;
+};
+let allMods;
+const loadAllModules = () => (allMods ||= (async () => {
+  try { const m = await (await fetch("/api/modules")).json(); await loadScripts(m.client.filter((f) => !loaded.has("/modules/" + f)).map((f) => "/modules/" + f)); } catch (e) { console.warn("modules", e); }
+})());
+async function ensure(name, arg) {
+  const need = needsFiles(name, arg), jobs = [];
+  if (need.includes("/story.css")) jobs.push(loadCss("/story.css"));
+  const js = need.filter((f) => f.endsWith(".js"));
+  if (js.length) jobs.push(loadScripts(js));
+  await Promise.all(jobs);
+  if (!Portal.pages[name]) await loadAllModules();
+}
+const dataReady = (name, arg) => {
+  const seeds = EAR.data[name];
+  return !arg && !!seeds && seeds.length > 0 && seeds.every(apiCached);
+};
+const pageReady = (name, arg) => !!Portal.pages[name] && needsFiles(name, arg).length === 0 && (dataReady(name, arg) || name === "historia");
+const noPrefetch = /[?&]prefetch=0\b/.test(location.search);
+const prefetched = new Set();
+function prefetch(href) {
+  if (noPrefetch || prefetched.has(href)) return;
+  const m = /^#\/?([^/?]*)\/?([^?]*)/.exec(href); if (!m) return;
+  const name = m[1], arg = decodeURIComponent(m[2] || "");
+  prefetched.add(href);
+  ensure(name, arg).catch(() => {});
+  if (!arg) for (const p of EAR.data[name] || []) if (!apiCached(p)) api(p, true).catch(() => {});
+}
+Portal.prefetch = prefetch;
 
 /* ---------- helpers ---------- */
 const nf = new Intl.NumberFormat("pt-PT", { useGrouping: "always" });
@@ -353,21 +406,39 @@ Portal.page("governo", () => pageGov());
 Portal.page("poderes", (arg) => pagePowers(arg));
 
 /* ---------- router ---------- */
-async function route() {
+let routeSeq = 0, firstRoute = true;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const SKELETON = '<div class="sk sk-page" aria-busy="true" aria-label="A carregar"><div class="sk-b sk-kick"></div><div class="sk-b sk-h"></div><div class="sk-b sk-l"></div><div class="sk-grid"><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div></div><div class="sk-b sk-t"></div></div>';
+Portal.skeleton = () => SKELETON;
+async function route(soft) {
+  soft = soft === true;
+  const seq = ++routeSeq;
   const { name, arg, params } = parseHash();
   if (Portal.storyHandle && Portal.storyHandle(name, arg, params)) return;
   if (Portal.storyUnmount) Portal.storyUnmount();
+  if (!soft) { EA.used.clear(); EA.swr = false; }
   document.body.classList.remove("nav-open");
   document.body.classList.toggle("is-home", name === "painel-classico");
   document.body.classList.toggle("is-ed", name === "" || name === "edicao");
   const cur = name === "historia" && arg ? "historia/" + String(arg).split("/")[0] : name;
   document.querySelectorAll(".mainnav a").forEach((a) => a.classList.toggle("on", a.dataset.r === cur));
   document.querySelectorAll(".grp").forEach((g) => g.classList.toggle("on", !!g.querySelector("a.on")));
+  const instant = soft || pageReady(name, arg);
+  if (!instant) { $app.innerHTML = SKELETON; if (name !== "" && name !== "edicao") window.scrollTo(0, 0); }
+  await ensure(name, arg);
+  if (seq !== routeSeq) return;
   const fn = Portal.pages[name];
   if (!fn) { $app.innerHTML = '<p class="note warn">Página não encontrada.</p>'; return; }
-  try { await fn(arg, params); } catch (e) { console.error(e); if (e && e.status === 503) { const h = document.getElementById("ed-plate"); if (h) h.remove(); $app.innerHTML = noDataHtml(e); } else $app.innerHTML = `<p class="note warn">Não foi possível carregar esta página (${esc(e.message)}).</p>`; }
-  if (!["entidades", "autarquias", "contratos", "calendario", "historia"].includes(name)) window.scrollTo(0, 0);
+  const run = async () => {
+    try { await fn(arg, params); } catch (e) { console.error(e); if (e && e.status === 503) { const h = document.getElementById("ed-plate"); if (h) h.remove(); $app.innerHTML = noDataHtml(e); } else $app.innerHTML = `<p class="note warn">Não foi possível carregar esta página (${esc(e.message)}).</p>`; }
+  };
+  if (instant && !soft && !firstRoute && !reducedMotion.matches && document.startViewTransition && name !== "historia") { try { await document.startViewTransition(run).updateCallbackDone; } catch { } } else await run();
+  firstRoute = false;
+  if (seq !== routeSeq) return;
+  if (!soft && !["entidades", "autarquias", "contratos", "calendario", "historia"].includes(name)) window.scrollTo(0, 0);
+  if (!soft && !arg) { try { const learned = JSON.parse(localStorage.getItem("ea:learn") || "{}"); learned[name] = [...EA.used].filter((p) => !/^(follows|feed|search|modules)(\b|$)/.test(p) && !p.includes("?")).slice(0, 8); localStorage.setItem("ea:learn", JSON.stringify(learned)); EAR.data[name] ||= learned[name]; } catch { } }
 }
+EA.stale = (p) => { const ae = document.activeElement; if (ae && /^(INPUT|SELECT|TEXTAREA)$/.test(ae.tagName)) return; if (EA.used.has(p) && !EA.swr) { EA.swr = true; const y = window.scrollY; route(true).then(() => window.scrollTo(0, y)); } };
 Portal.route = route;
 window.route = route;
 
@@ -382,11 +453,14 @@ const NAV_GROUPS = [
   ["Roadmap", null, [["roadmap", "Roadmap"]]],
 ];
 Portal.NAV_GROUPS = NAV_GROUPS;
+let navBound = false;
 function buildNav() {
-  const groups = NAV_GROUPS.map(([label, slug, items]) => [label, slug, items.filter(([r]) => Portal.pages[r])]).filter(([, , items]) => items.length);
+  const groups = NAV_GROUPS.map(([label, slug, items]) => [label, slug, items.filter(([r]) => Portal.hasPage(r))]).filter(([, , items]) => items.length);
   $("#navwrap").innerHTML = groups.map(([label, slug, items]) => !slug
     ? `<a href="#/${items[0][0]}" data-r="${items[0][0]}">${esc(items[0][1])}</a>`
     : `<div class="grp" data-slug="${slug}"><a class="grp-link" href="#/historia/${slug}" data-r="historia/${slug}">${esc(label)}</a><button type="button" class="grp-btn" aria-haspopup="true" aria-expanded="false" aria-label="Abrir menu: ${esc(label)}"><span aria-hidden="true">▾</span></button><div class="menu"><a href="#/historia/${slug}" data-r="historia/${slug}" class="menu-story">A história</a>${items.map(([r, l]) => `<a href="#/${r}" data-r="${r}">${esc(l)}</a>`).join("")}</div></div>`).join("");
+  if (navBound) { const { name, arg } = parseHash(); const cur = name === "historia" && arg ? "historia/" + String(arg).split("/")[0] : name; document.querySelectorAll(".mainnav a").forEach((a) => a.classList.toggle("on", a.dataset.r === cur)); document.querySelectorAll(".grp").forEach((g) => g.classList.toggle("on", !!g.querySelector("a.on"))); return; }
+  navBound = true;
   const closeAll = (except) => document.querySelectorAll(".grp.open").forEach((x) => { if (x !== except) { x.classList.remove("open"); const b = x.querySelector(".grp-btn"); if (b) b.setAttribute("aria-expanded", "false"); } });
   $("#navwrap").addEventListener("click", (e) => {
     const b = e.target.closest(".grp-btn");
@@ -401,19 +475,31 @@ function buildNav() {
   document.addEventListener("click", (e) => { if (!e.target.closest(".grp")) closeAll(); });
 }
 
-async function loadModules() {
-  try {
-    const mods = await (await fetch("/api/modules")).json();
-    for (const m of mods.client) await new Promise((res) => { const s = document.createElement("script"); s.src = "/modules/" + m; s.onload = s.onerror = res; document.head.appendChild(s); });
-  } catch (e) { console.warn("modules", e); }
-  buildNav();
+const prefetchTarget = (e) => { const a = e.target.closest && e.target.closest('a[href^="#/"]'); if (a) prefetch(a.getAttribute("href")); };
+function initPrefetch() {
+  const conn = navigator.connection || {};
+  if (noPrefetch) return;
+  document.addEventListener("pointerover", (e) => { if (e.pointerType !== "touch") prefetchTarget(e); }, { passive: true });
+  document.addEventListener("focusin", prefetchTarget, { passive: true });
+  document.addEventListener("touchstart", prefetchTarget, { passive: true });
+  if (conn.saveData || /2g/.test(conn.effectiveType || "") || !window.IntersectionObserver) return;
+  const io = new IntersectionObserver((es) => { for (const en of es) if (en.isIntersecting) { io.unobserve(en.target); idle(() => { const h = en.target.getAttribute("href"); const m = /^#\/?([^/?]*)\/?([^?]*)/.exec(h || ""); if (m && !prefetched.has(h)) { const name = m[1], arg = m[2]; if (name !== "historia") ensure(name, arg).catch(() => {}); } }, 3000); } }, { rootMargin: "100px" });
+  const watch = () => document.querySelectorAll('#app a[href^="#/"]').forEach((a) => { if (!a.dataset.pf) { a.dataset.pf = "1"; io.observe(a); } });
+  new MutationObserver(() => idle(watch, 2500)).observe($app, { childList: true, subtree: true });
 }
 
-window.PORTAL_START = async () => {
+const syncFollows = () => document.querySelectorAll("[data-follow]").forEach((b) => { const on = isFollowing(b.dataset.follow, b.dataset.ref); b.classList.toggle("on", on); b.textContent = on ? "A seguir ✓" : "+ Seguir"; });
+
+window.PORTAL_START = () => {
+  try { const learned = JSON.parse(localStorage.getItem("ea:learn") || "{}"); for (const k of Object.keys(learned)) EAR.data[k] ||= learned[k]; } catch { }
   initSearch();
-  await refreshFollows();
-  await loadModules();
-  window.addEventListener("hashchange", route);
-  api("status").then((s) => { $("#freshness").textContent = s.contracts_updated ? `Contratos atualizados ${s.contracts_updated.slice(0, 10)} · agenda ${String(s.agenda_updated || "").slice(0, 10)}` : ""; }).catch(() => {});
+  buildNav();
+  initPrefetch();
+  window.addEventListener("hashchange", () => route());
   route();
+  idle(async () => {
+    await refreshFollows(); syncFollows();
+    api("status").then((s) => { $("#freshness").textContent = s.contracts_updated ? `Contratos atualizados ${s.contracts_updated.slice(0, 10)} · agenda ${String(s.agenda_updated || "").slice(0, 10)}` : ""; }).catch(() => {});
+    try { const m = await (await fetch("/api/modules")).json(); const extra = m.client.filter((f) => !EAR.files.includes(f)); if (extra.length) { await loadAllModules(); buildNav(); } } catch { }
+  }, 2500);
 };

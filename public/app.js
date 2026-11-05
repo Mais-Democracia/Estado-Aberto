@@ -1,10 +1,40 @@
 "use strict";
 const $app = document.getElementById("app");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const api = (p) => fetch("/api/" + p).then(async (r) => {
-  if (!r.ok) { const e = new Error(r.status); e.status = r.status; e.body = await r.json().catch(() => null); throw e; }
-  return r.json();
-});
+const EA = (window.EA = window.EA || { used: new Set(), mem: new Map(), pending: new Map(), stale: null });
+const API_FRESH = 45000, API_NOCACHE = /^(follows|feed|search|modules)(\b|$)/, API_SS_MAX = 120000;
+const apiErr = async (r, text) => { const e = new Error(r.status); e.status = r.status; try { e.body = JSON.parse(text); } catch { e.body = null; } return e; };
+const ssRead = (p) => { try { const t = sessionStorage.getItem("ea:" + p); if (t) { const i = t.indexOf("\n"); return { t: +t.slice(0, i), text: t.slice(i + 1) }; } } catch {} return null; };
+const ssWrite = (p, e) => { if (e.text.length > API_SS_MAX) return; try { sessionStorage.setItem("ea:" + p, e.t + "\n" + e.text); } catch { try { Object.keys(sessionStorage).filter((k) => k.startsWith("ea:")).forEach((k) => sessionStorage.removeItem(k)); } catch {} } };
+const apiStore = (p, text) => { const e = { t: Date.now(), text }; EA.mem.set(p, e); ssWrite(p, e); return e; };
+const apiGet = async (p, revalidate) => {
+  const r = await fetch("/api/" + p, revalidate ? { headers: { "x-ea-revalidate": "1" } } : undefined);
+  const text = await r.text();
+  if (!r.ok) throw await apiErr(r, text);
+  return text;
+};
+const apiRefresh = (p, old) => {
+  if (EA.pending.has(p)) return EA.pending.get(p);
+  const q = apiGet(p, true).then((text) => { apiStore(p, text); if (text !== old.text && EA.stale) EA.stale(p); return text; }).catch(() => null).finally(() => EA.pending.delete(p));
+  EA.pending.set(p, q);
+  return q;
+};
+if (window.__EA_BOOT) for (const [k, v] of Object.entries(window.__EA_BOOT)) EA.mem.set(k.replace(/^\/api\//, ""), { t: Date.now() - (window.__EA_AGE || 0), text: JSON.stringify(v) });
+const api = (p, warm) => {
+  if (!warm) EA.used.add(p);
+  if (API_NOCACHE.test(p)) return apiGet(p).then(JSON.parse);
+  const e = EA.mem.get(p) || ssRead(p);
+  if (e) { if (!EA.mem.has(p)) EA.mem.set(p, e); if (Date.now() - e.t > API_FRESH) apiRefresh(p, e); return Promise.resolve(JSON.parse(e.text)); }
+  const pre = window.__EA_PRE && window.__EA_PRE[p];
+  if (pre) delete window.__EA_PRE[p];
+  let q = EA.pending.get(p);
+  if (!q) {
+    q = (pre ? pre.then((r) => (r.ok ? r.text : apiErr(r, r.text).then((x) => Promise.reject(x)))) : apiGet(p)).catch((x) => (pre && !x.status ? apiGet(p) : Promise.reject(x))).then((text) => { apiStore(p, text); return text; }).finally(() => EA.pending.delete(p));
+    EA.pending.set(p, q);
+  }
+  return q.then(JSON.parse);
+};
+const apiCached = (p) => EA.mem.has(p) || !!ssRead(p);
 const noDataHtml = (e) => `<section class="panel nodata"><h2>Sem dados locais</h2><p class="empty">Sem dados locais: corra o bootstrap (docs/CONTRIBUTING.md).</p>${e && e.body && e.body.detail ? `<p class="note">${esc(e.body.detail)}</p>` : ""}</section>`;
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
@@ -144,7 +174,7 @@ async function pageLaw(key) {
     <a class="back" href="#/leis">← Todas as iniciativas</a>
     <h1>${esc(i.kind)} n.º ${i.number}/${esc(i.legislature)}${i.session ? "/" + i.session + ".ª" : ""} ${i.origin ? `<span class="chip">${esc(i.origin)}</span>` : ""}</h1>
     <p class="lead">${esc(clean(i.title)) || "Sem título disponível na agenda."}</p>
-    ${Portal.pages.votacoes ? `<p><a class="btn primary" href="#/votacoes/${encodeURIComponent(i.key)}">Votações por partido e processo completo →</a> ${Portal.followButton("initiative", i.key, i.kind + " " + i.number + "/" + i.legislature)}</p>` : ""}
+    ${Portal.hasPage("votacoes") ? `<p><a class="btn primary" href="#/votacoes/${encodeURIComponent(i.key)}">Votações por partido e processo completo →</a> ${Portal.followButton("initiative", i.key, i.kind + " " + i.number + "/" + i.legislature)}</p>` : ""}
     <h2>Fase do processo</h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">${STAGES.map(([name, phases], idx) => {
       const st = idx === 0 ? "done" : seen(phases) ? "done" : planned(phases) ? "next" : "unk";

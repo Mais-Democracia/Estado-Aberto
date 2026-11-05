@@ -246,3 +246,25 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 3
 .mainnav .grp .grp-btn { padding-left: .45rem; padding-right: .75rem; }
 .mainnav .menu a.menu-story { font-weight: 700; }
 @media (max-width: 860px) { .mainnav .grp { display: flex; flex-wrap: wrap; } .mainnav .grp-link { flex: 1 1 0; border-bottom: 1px solid var(--navy2); padding-left: .95rem; } .mainnav .grp .grp-btn { width: auto; flex: 0 0 3.2rem; text-align: center; } .mainnav .grp .menu { flex-basis: 100%; } }
+
+.sk-b { background: linear-gradient(90deg, var(--ed-hair, #e4ddc8) 25%, var(--ed-paper2, #f2ecdd) 50%, var(--ed-hair, #e4ddc8) 75%); background-size: 200% 100%; animation: sk-sh 1.4s linear infinite; border-radius: 2px; }
+@keyframes sk-sh { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .sk-b { animation: none; } }
+.sk { display: block; } .sk-page, .sk-gen { padding: 28px 0; min-height: 60vh; }
+.sk-kick { height: 12px; width: 140px; margin-bottom: 14px; } .sk-h { height: 38px; width: min(560px, 80%); margin-bottom: 16px; } .sk-l { height: 16px; width: min(720px, 100%); margin: 10px 0; }
+.sk-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 24px 0; } .sk-c { height: 120px; margin-bottom: 14px; } .sk-t { height: 220px; }
+@media (max-width: 760px) { .sk-grid { grid-template-columns: 1fr; } }
+.sk-boot .sk-ed, .sk-boot .sk-gen { display: none; } html.h-home .sk-boot .sk-ed { display: block; } html:not(.h-home) .sk-boot .sk-gen { display: block; }
+.sk-ed { min-height: 80vh; } .sk-bar { height: 34px; margin: 10px 0; } .sk-date { height: 22px; margin: 8px 0; } .sk-tick { height: 32px; margin: 0 0 18px; }
+.sk-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.15fr) minmax(0, 1fr); gap: 36px; } .sk-hero { height: 200px; margin-bottom: 14px; }
+@media (max-width: 900px) { .sk-cols { grid-template-columns: 1fr; } .sk-cols > div:first-child, .sk-cols > div:last-child { display: none; } }
+#ed-plate.sk-plate { min-height: 218px; } @media (max-width: 1100px) { #ed-plate.sk-plate { min-height: 127px; } }
+@media (min-width: 761px) { .mainnav .wrap { min-height: 43px; } }
+body:has(#app > .sk) .foot { visibility: hidden; }
+#app:has(> .sk) { min-height: 100vh; }
+@media (prefers-reduced-motion: no-preference) {
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .14s; }
+  .masthead { view-transition-name: masthead; }
+  ::view-transition-group(masthead) { animation: none; }
+}
+.ed .band, .ed .band2, .ed .colophon { content-visibility: auto; contain-intrinsic-size: auto 520px; }

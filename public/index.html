@@ -8,11 +8,28 @@
 <meta property="og:site_name" content="Estado Aberto">
 <meta property="og:title" content="Estado Aberto — o poder público, escrutinado">
 <meta name="description" content="Parlamento, Governo, Presidência, autarquias, instituições públicas e contratos públicos num só lugar.">
+<meta name="ea-version" content="">
+<link rel="preload" href="/fonts/fraunces-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/Lora-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<!--EA-BOOT-->
+<script>
+(function () {
+  var h = location.hash, home = !h || h === "#" || h === "#/";
+  if (home) document.documentElement.className += " h-home";
+  if (home && !window.__EA_BOOT && window.fetch) window.__EA_PRE = { "edicao/dia": fetch("/api/edicao/dia").then(function (r) { return r.text().then(function (t) { return { ok: r.ok, status: r.status, text: t }; }); }) };
+  if (window.__EA_PRE) window.__EA_PRE["edicao/dia"].catch(function () { delete window.__EA_PRE["edicao/dia"]; });
+})();
+</script>
 <link rel="stylesheet" href="/style.css">
 <link rel="stylesheet" href="/edicao.css">
-<link rel="stylesheet" href="/story.css">
+<script defer src="/routes.js"></script>
+<script defer src="/app.js"></script>
+<script defer src="/portal.js"></script>
+<script defer src="/edicao.js"></script>
+<script defer src="/boot.js"></script>
 </head>
 <body>
+<script>if (document.documentElement.classList.contains("h-home")) document.body.classList.add("is-ed");</script>
 <div class="utility">
   <div class="wrap">
     <span>Dados abertos oficiais · projeto independente</span>
@@ -20,6 +37,7 @@
   </div>
 </div>
 <header class="masthead">
+  <div id="ed-plate" class="wrap sk-plate" aria-hidden="true"></div>
   <div class="wrap mast">
     <a class="wordmark" href="#/" aria-label="Estado Aberto — início"><span class="wm-txt">Estado <span>Aberto</span><small>o poder público, escrutinado</small></span></a>
     <form class="search" id="gsearch" autocomplete="off" role="search">
@@ -32,7 +50,7 @@
   </div>
   <nav class="mainnav" id="nav" aria-label="Secções"><div class="wrap" id="navwrap"></div></nav>
 </header>
-<main id="app" class="wrap" aria-live="polite"></main>
+<main id="app" class="wrap" aria-live="polite"><div class="sk sk-boot" aria-hidden="true"><div class="sk-ed"><div class="sk-b sk-bar"></div><div class="sk-b sk-date"></div><div class="sk-b sk-tick"></div><div class="sk-cols"><div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div></div><div><div class="sk-b sk-hero"></div><div class="sk-b sk-l"></div><div class="sk-b sk-l"></div></div><div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div></div></div></div><div class="sk-gen"><div class="sk-b sk-kick"></div><div class="sk-b sk-h"></div><div class="sk-b sk-l"></div><div class="sk-grid"><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div><div class="sk-b sk-c"></div></div></div></div></main>
 <footer class="foot"><div class="wrap">
   <div class="foot-grid">
     <div class="foot-brand"><span>Estado Aberto<small>Dados abertos oficiais</small></span></div>
@@ -43,19 +61,5 @@
   </div>
   <div class="foot-bar">Estado Aberto · projeto independente, sem ligação a qualquer entidade pública.</div>
 </div></footer>
-<script src="/app.js"></script>
-<script src="/novidades.js"></script>
-<script src="/portal.js"></script>
-<script src="/edicao.js"></script>
-<script src="/story-morphs.js"></script>
-<script src="/story-engine.js"></script>
-<script src="/historias/parlamento.js"></script>
-<script src="/historias/governo.js"></script>
-<script src="/historias/leis-justica.js"></script>
-<script src="/historias/dinheiro.js"></script>
-<script src="/historias/poder-local.js"></script>
-<script src="/historias/instituicoes.js"></script>
-<script src="/historias/indicadores.js"></script>
-<script>window.PORTAL_START && window.PORTAL_START();</script>
 </body>
 </html>

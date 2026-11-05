@@ -102,7 +102,7 @@
       <p class="muted small">Fontes: ${ext(u.biografia, "biografia")} · ${ext(u.atividade, "atividade")} · ${ext(u.presencas, "presenças")}</p>
       <div id="dep-relatorias"></div>`;
     // rapporteur work from the votes module (optional: only if that module is loaded)
-    if (Portal.pages.votacoes) {
+    if (Portal.hasPage("votacoes")) {
       try {
         const v = await Portal.api("votacoes/deputado?bid=" + encodeURIComponent(d.bid || id));
         const el = document.getElementById("dep-relatorias");

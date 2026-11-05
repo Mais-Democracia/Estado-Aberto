@@ -46,7 +46,7 @@
     <div><form class="ed-search" id="ed-s" autocomplete="off"><input type="search" id="ed-q" placeholder="Pesquisar entidade, contrato, lei, tema…" aria-label="Pesquisar"><div class="ed-results" id="ed-r" hidden></div></form>
       <a class="btn-ed" href="#/painel">A minha lista</a><button class="btn-ed ed-menu" onclick="document.body.classList.toggle('nav-open')">Menu</button><button class="btn-ed" id="b-tema" title="Alternar entre edição da manhã e edição da noite">Edição da noite</button><button class="btn-ed" id="b-print">Imprimir</button></div></div>`;
 
-  const plateHost = () => { let h = document.getElementById("ed-plate"); if (!h) { h = document.createElement("div"); h.id = "ed-plate"; h.className = "wrap"; const m = document.querySelector("header.masthead"); m.insertBefore(h, m.firstChild); } return h; };
+  const plateHost = () => { let h = document.getElementById("ed-plate"); if (h) { h.classList.remove("sk-plate"); h.removeAttribute("aria-hidden"); } if (!h) { h = document.createElement("div"); h.id = "ed-plate"; h.className = "wrap"; const m = document.querySelector("header.masthead"); m.insertBefore(h, m.firstChild); } return h; };
 
   async function renderEdition(date) {
     const d = await api("edicao/dia" + (date ? "?data=" + date : ""));
