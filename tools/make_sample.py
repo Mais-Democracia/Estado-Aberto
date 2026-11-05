@@ -68,6 +68,7 @@ ENUM = {
     "bloc": ["esquerda", "direita", "centro"], "side": ["favor", "contra"], "sentido": SENSES, "vote": ["Favor", "Contra", "Abstenção"], "family": ["Família A", "Família B"],
     "section": ["Plenário", "Comissões"], "fw": ["PRR", "PT2030", "PT2020"], "area": ["cultura", "desporto"], "orgao_x": ["DGARTES"],
 }
+ENUM_DB = {"regioes": {"region": ["acores", "madeira"]}, "risco": {"role": ["comprador", "fornecedor"]}}
 TEXT_BANK = ["aquisição de serviços de limpeza", "obras de requalificação urbana", "fornecimento de equipamento informático", "manutenção de edifícios públicos",
              "prestação de serviços de consultadoria", "aquisição de medicamentos", "transporte escolar", "iluminação pública eficiente"]
 
@@ -119,6 +120,8 @@ class Gen:
     def value(self, db, table, col, ty, i):
         R = self.R
         c = col.lower()
+        if c in ENUM_DB.get(db, {}):
+            return R.choice(ENUM_DB[db][c])
         if c in ENUM:
             return R.choice(ENUM[c])
         if c == "nif" or c.endswith("_nif"):
@@ -366,7 +369,7 @@ def build_risco(con, g):
             con.execute("INSERT INTO contract_flags VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (c[0], f[0], f[2], json.dumps({"x": 1}), c[1], c[2], c[3], c[4], c[5], 1, "municipio", "empresa"))
         con.execute("INSERT INTO contract_score VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (c[0], R.uniform(1, 10), ",".join(f[0] for f in fl), c[1], c[2], c[3], c[6], c[4], c[5], "municipio", 1, "empresa"))
     for nif in NIF_MUNI + NIF_BODY[:10]:
-        con.execute("INSERT INTO entity_risk VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (nif, "buyer", f"Entidade {nif}", "municipio", R.uniform(1, 10), json.dumps(["f_direto"]), 40, 1e6, 5, "municipio", 14, "{}"))
+        con.execute("INSERT INTO entity_risk VALUES (?,?,?,?,?,?,?,?,?,?,?,?)", (nif, "comprador", f"Entidade {nif}", "municipio", R.uniform(1, 10), json.dumps(["f_direto"]), 40, 1e6, 5, "municipio", 14, "{}"))
         con.execute("INSERT INTO entity_context VALUES (?,?,?,?,?)", (nif, "municipio", "municipio", 14, "{}"))
     for b in NIF_MUNI[:6]:
         con.execute("INSERT INTO pair_flags VALUES (?,?,?,?,?,?,?,?,?)", (b, NIF_SUP[0], "f_direto", 2, 5, 1e5, "{}", "municipio", "empresa"))
@@ -382,14 +385,17 @@ def build_divida(con, g):
     con.executemany("INSERT INTO series_meta VALUES (?,?,?,?)", meta)
     y, m = g.today.year, g.today.month
     for k, (code, label, unit, grp) in enumerate(meta):
-        base = [260000, 190000, 28000, 8000, 7.5, 90, 99, 6.5][k]
+        base = [260000, 190000, 28000, 8000, 7.5, 88, 94, 6.5][k]
         yy, mm = y - 6, m
         for i in range(72):
             mm += 1
             if mm > 12:
                 mm, yy = 1, yy + 1
-            last = (dt.date(yy + (mm == 12), mm % 12 + 1, 1) - dt.timedelta(days=1)).isoformat()
-            con.execute("INSERT OR IGNORE INTO series VALUES (?,?,?,?)", (code, label, last, round(base * (1 + 0.004 * i + R.uniform(-0.01, 0.01)), 2)))
+            last = (dt.date(yy + (mm == 12), mm % 12 + 1, 1) - dt.timedelta(days=1))
+            if last > g.today:
+                continue
+            last = last.isoformat()
+            con.execute("INSERT OR IGNORE INTO series VALUES (?,?,?,?)", (code, label, last, round(base * (1 + (0.004 * i if k < 4 else 0) + R.uniform(-0.01, 0.01)), 2)))
     set_meta(con, built=now_iso(g), source="https://exemplo.invalid/divida")
 
 
@@ -425,7 +431,7 @@ GENERIC_COUNTS = {
 }
 
 
-SKIP = {"habitacao": ("ine_series",)}
+SKIP = {"habitacao": ("ine_series",), "regioes": ("regions",)}
 POST = {}
 
 
@@ -443,6 +449,14 @@ def post_habitacao(con, g):
 
 
 POST["habitacao"] = post_habitacao
+
+
+def post_regioes(con, g):
+    con.execute("INSERT INTO regions (id,name,short,gov_label,gov_since,gov_url,assembly_name,assembly_url,legislature) VALUES (?,?,?,?,?,?,?,?,?)", ("acores", "Região Autónoma dos Açores", "Açores", "Governo Regional Exemplo", g.date(900, 0), "https://exemplo.invalid/gov", "Assembleia Legislativa Exemplo", "https://exemplo.invalid/al", "XIII"))
+    con.execute("INSERT INTO regions (id,name,short,gov_label,gov_since,gov_url,assembly_name,assembly_url,legislature) VALUES (?,?,?,?,?,?,?,?,?)", ("madeira", "Região Autónoma da Madeira", "Madeira", "Governo Regional Exemplo", g.date(900, 0), "https://exemplo.invalid/gov", "Assembleia Legislativa Exemplo", "https://exemplo.invalid/al", "XIV"))
+
+
+POST["regioes"] = post_regioes
 
 
 def build_generic(db):

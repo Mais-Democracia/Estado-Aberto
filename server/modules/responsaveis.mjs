@@ -4,9 +4,9 @@
 import { statSync } from "node:fs";
 import path from "node:path";
 
-export default function register({ routes, openData, root, db: pol }) {
+export default function register({ routes, openData, dataDir, db: pol }) {
   let mine = null, mtime = 0;
-  const file = path.join(root, "data", "responsaveis.db");
+  const file = path.join(dataDir, "responsaveis.db");
   const dbh = () => {
     try { const m = statSync(file).mtimeMs; if (!mine || m !== mtime) { try { mine?.close(); } catch {} mine = openData("responsaveis"); mtime = m; } } catch { mine = null; }
     return mine;

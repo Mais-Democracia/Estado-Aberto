@@ -4,7 +4,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export default function register({ routes, openData, one: coreOne, root }) {
+export default function register({ routes, openData, one: coreOne, dataDir }) {
   let mine = null, dre = null;
   const dbh = () => (mine ||= openData("votacoes"));
   const dreh = () => (dre ||= openData("dre"));
@@ -13,7 +13,7 @@ export default function register({ routes, openData, one: coreOne, root }) {
   const missing = { available: false, error: "votacoes.db ainda não existe — corra `python3 ingest/run_all.py votacoes`." };
   const ready = () => { try { return !!dbh() && !!one("SELECT 1 x FROM iniciativas LIMIT 1"); } catch { return false; } };
   const likeEsc = (s) => s.replace(/[\\%_]/g, (c) => "\\" + c);
-  const dbFile = path.join(root || process.cwd(), "data", "votacoes.db");
+  const dbFile = path.join(dataDir, "votacoes.db");
   const stamp = () => { try { return fs.statSync(dbFile).mtimeMs + ":" + (fs.existsSync(dbFile + "-wal") ? fs.statSync(dbFile + "-wal").mtimeMs : 0); } catch { return "0"; } };
   const cache = new Map();
   const cached = (k, fn) => { const s = stamp(), c = cache.get(k); if (c && c.s === s) return c.v; const v = fn(); cache.set(k, { s, v }); if (cache.size > 200) cache.delete(cache.keys().next().value); return v; };

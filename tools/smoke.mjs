@@ -40,7 +40,7 @@ const harvest = (v, pool, depth = 0) => {
 const poolParams = (names, pool) => {
   const p = new URLSearchParams();
   for (const n of names) {
-    const v = n === "entity" || n === "entity_id" ? pool.id : n === "q" ? undefined : pool[n] ?? (n === "id" ? pool.id : undefined);
+    const v = n === "q" ? "Exemplo" : n === "entity" || n === "entity_id" ? pool.id : pool[n] ?? (n === "id" ? pool.id : undefined);
     if (v !== undefined) p.set(n, v);
   }
   return p.toString();
@@ -71,6 +71,7 @@ const get = async (p) => {
 
 const empty = (j) => j == null || (Array.isArray(j) && !j.length) || (typeof j === "object" && !Object.keys(j).length);
 const failures = [];
+let honestCount = 0;
 let code = 0;
 try {
   let up = false, rss0 = 0;
@@ -85,24 +86,28 @@ try {
   for (const c of mods.client) { const r = await get("/modules/" + c); if (r.status !== 200) failures.push(`cliente /modules/${c} -> ${r.status}`); }
 
   const routes = routeList();
-  const rows = [], pool = {};
+  const rows = [], gpool = {}, mpool = {};
   const order = [...routes.keys()].sort((a, b) => (/overview|search|entities|list|status|contracts|initiatives|deputados|relatorios$/.test(b) ? 1 : 0) - (/overview|search|entities|list|status|contracts|initiatives|deputados|relatorios$/.test(a) ? 1 : 0));
   let peak = rss0, lastRss = rss0;
   for (const route of order) {
     const info = routes.get(route);
     let r = await get(route);
     let used = route;
-    if (r.valid && r.status === 200) harvest(r.json, pool);
-    const needsIds = r.status === 404 || (r.valid && r.status === 200 && r.json && (r.json.row === null || (r.json.available === true && empty(r.json.rows) && Object.keys(r.json).length <= 3)));
+    const mod = route.split("/")[2];
+    if (r.valid && r.status === 200) { harvest(r.json, gpool); harvest(r.json, (mpool[mod] ||= {})); }
+    const pool = { ...gpool, ...(mpool[mod] || {}) };
+    const needsIds = r.status === 404 || r.bytes < 400 || (r.valid && r.status === 200 && r.json && (r.json.row === null || (r.json.available === true && empty(r.json.rows) && Object.keys(r.json).length <= 3)));
     if (needsIds) {
       const qs = poolParams(info.names, pool);
-      if (qs) { const r2 = await get(`${route}?${qs}`); if (r2.status === 200 || r2.status >= 500) { r = r2; used = `${route}?${qs}`; } }
+      if (qs) { const r2 = await get(`${route}?${qs}`); if (r2.status >= 500 || (r2.status === 200 && r2.bytes >= r.bytes)) { r = r2; used = `${route}?${qs}`; } }
     }
     const rss = rssOf(server.pid);
     const jump = rss - lastRss;
     lastRss = rss; peak = Math.max(peak, rss);
     rows.push({ route: used.length > 70 ? used.slice(0, 67) + "..." : used, status: r.status, ms: r.ms, kb: Math.round(r.bytes / 1024), rss, jump, valid: r.valid, json: r.json, plain: route });
-    if (r.status === 0 || r.status >= 500) failures.push(`${used} -> ${r.status} ${r.error || (r.json && (r.json.detail || r.json.error)) || ""}`);
+    const honest = r.status === 503 && r.json && r.json.error === "dados_indisponiveis" && EXPECT !== "sample";
+    if (honest) honestCount++;
+    else if (r.status === 0 || r.status >= 500) failures.push(`${used} -> ${r.status} ${r.error || (r.json && (r.json.detail || r.json.error)) || ""}`);
     else if (!r.valid) failures.push(`${used} -> JSON inválido`);
     else if (EXPECT === "sample" && r.status !== 200 && !(r.status === 404 && needsIds)) failures.push(`${used} -> ${r.status} (esperado 2xx com dados de exemplo)`);
     if (EXPECT === "empty" && r.status === 200 && !/follows|roadmap|powers|modules|status|historias$|arquivo/.test(route) && r.json && r.json.available === true) failures.push(`${used} -> 200 available:true em dados vazios`);
@@ -125,7 +130,7 @@ try {
   console.log("rota".padEnd(72), "http", "ms".padStart(6), "KB".padStart(6), "RSS".padStart(5), "Δ".padStart(5));
   for (const x of rows) console.log(x.route.padEnd(72), String(x.status).padEnd(4), String(x.ms).padStart(6), String(x.kb).padStart(6), String(x.rss).padStart(5), (x.jump > 0 ? "+" + x.jump : "").padStart(5), x.ms > SLOW_MS ? " LENTA" : "", x.kb > 1024 ? " GRANDE" : "");
   const by = {}; for (const x of rows) by[x.status] = (by[x.status] || 0) + 1;
-  console.log(`\nrotas testadas: ${rows.length}  por estado: ${JSON.stringify(by)}`);
+  console.log(`\nrotas testadas: ${rows.length}  por estado: ${JSON.stringify(by)}  503 dados_indisponiveis aceites: ${honestCount}`);
   console.log(`RSS: arranque ${rss0} MB, pico ${peak} MB, final ${finalRss} MB`);
   const spikes = rows.filter((x) => x.jump >= 15).map((x) => `${x.plain} +${x.jump}MB`);
   if (spikes.length) console.log("picos de memória:", spikes.join(", "));

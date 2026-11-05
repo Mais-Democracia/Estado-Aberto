@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export default function register({ routes, openData, num, root }) {
+export default function register({ routes, openData, num, root, dataDir }) {
   let mine = null, iv = null;
   const dbh = () => (mine ||= openData("posicoes"));
   const ivh = () => (iv ||= openData("intervencoes"));
@@ -10,7 +10,7 @@ export default function register({ routes, openData, num, root }) {
   const missing = { available: false, error: "posicoes.db ainda não existe — corra `python3 ingest/run_all.py posicoes` (depende de intervencoes.db e votacoes.db)." };
   
   const PARTIES = ["BE", "PCP", "L", "PAN", "PS", "JPP", "IL", "PSD", "CDS-PP", "CH"];
-  const file = path.join(root || process.cwd(), "data", "posicoes.db");
+  const file = path.join(dataDir, "posicoes.db");
   const topicsFile = path.join(root || process.cwd(), "seed", "posicoes_topicos.json");
   const stamp = () => { try { return fs.statSync(file).mtimeMs; } catch { return 0; } };
   let cache = null;

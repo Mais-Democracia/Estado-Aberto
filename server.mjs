@@ -28,7 +28,11 @@ const readDb = (name) => {
   handles.set(name, h);
   return h;
 };
-const lazyDb = (name) => ({ prepare: (sql) => readDb(name).prepare(sql), exec: (sql) => readDb(name).exec(sql) });
+const lazyDb = (name) => ({
+  prepare: (sql) => readDb(name).prepare(sql),
+  exec: (sql) => readDb(name).exec(sql),
+  close() { const h = handles.get(name); if (h) { try { h.close(); } catch {} handles.delete(name); } },
+});
 const db = lazyDb("politica");
 
 let userHandle = null;
@@ -364,7 +368,7 @@ const openData = (name) => {
   if (!fs.existsSync(path.join(dataDir, `${name}.db`))) return null;
   return lazyDb(name);
 };
-const ctx = { db, userDb, all, one, has, num, like, fts, meta, routes, root, openData, DataMissing, unavailable };
+const ctx = { db, userDb, all, one, has, num, like, fts, meta, routes, root, dataDir, openData, DataMissing, unavailable };
 const modDir = path.join(root, "server", "modules");
 const loaded = [];
 for (const f of fs.existsSync(modDir) ? fs.readdirSync(modDir).filter((x) => x.endsWith(".mjs")).sort() : []) {
@@ -417,9 +421,9 @@ const sendJson = (res, code, obj) => {
 const dadosIndisponiveis = (detail, db) => ({ error: "dados_indisponiveis", detail, ...(db ? { db } : {}) });
 const unavailableOf = (out) => {
   if (!out || typeof out !== "object" || out.updating) return null;
-  const txt = out.available === false ? out.note : typeof out.error === "string" ? out.error : null;
-  if (!txt || !/data\/[a-z_]+\.db/.test(txt) || !/ainda não foi gerada|não existe|não foi encontrada|ilegível/.test(txt)) return null;
-  const name = txt.match(/data\/([a-z_]+)\.db/)[1];
+  const txt = out.available === false ? out.note || out.error : typeof out.error === "string" ? out.error : null;
+  if (!txt || !/(?:data\/)?[a-z_]+\.db/.test(txt) || !/ainda não (foi gerada|existe)|não existe|não foi encontrada|ilegível/.test(txt)) return null;
+  const name = txt.match(/(?:data\/)?([a-z_]+)\.db/)[1];
   return { name, detail: `${name} não encontrada; ${BOOTSTRAP}` };
 };
 const failure = (e) => {

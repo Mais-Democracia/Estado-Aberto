@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export default function register({ routes, openData, num, root }) {
+export default function register({ routes, openData, num, dataDir }) {
   let mine = null;
   const dbh = () => (mine ||= openData("intervencoes"));
   const all = (sql, ...p) => dbh().prepare(sql).all(...p);
@@ -9,7 +9,7 @@ export default function register({ routes, openData, num, root }) {
   const missing = { available: false, error: "intervencoes.db ainda não existe — corra `python3 ingest/run_all.py intervencoes`." };
   const ready = () => { try { return !!dbh() && !!one("SELECT 1 x FROM intervencoes LIMIT 1"); } catch { return false; } };
   const PARTY_ORDER = ["BE", "PCP", "PEV", "L", "PAN", "PS", "JPP", "IL", "PSD", "CDS-PP", "CH", "Ninsc", "N insc"];
-  const dbFile = path.join(root || process.cwd(), "data", "intervencoes.db");
+  const dbFile = path.join(dataDir, "intervencoes.db");
   const stamp = () => { try { return fs.statSync(dbFile).mtimeMs; } catch { return 0; } };
   let cov = null;
   const excerpt = (t, n = 420) => {
