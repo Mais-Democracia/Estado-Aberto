@@ -1070,6 +1070,26 @@
    "flaky": false,
    "licence": "",
    "notes": "Precision report against docs/risco_labels.csv; --template creates the labelling sheet."
+  },
+  {
+   "name": "diario",
+   "script": "jobs/diario.py",
+   "depends": [],
+   "produces": [
+    "diario.db"
+   ],
+   "network": false,
+   "est_minutes": 3,
+   "est_peak_mb": 150,
+   "est_disk_mb": 50,
+   "schedule": "6h",
+   "enabled": true,
+   "fresh_days": 0,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "none: derived from the local databases, no external data",
+   "notes": "Daily ledger (diario.db): one row per event from the local source databases, editions closing at 06:00 Europe/Lisbon, no network. Source databases are read from ESTADO_ABERTO_SOURCE_DATA (default: the data directory)."
   }
  ]
 }

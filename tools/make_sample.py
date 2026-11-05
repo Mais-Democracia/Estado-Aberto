@@ -473,6 +473,84 @@ def run_post(con, db, g):
     pass
 
 
+def _sample_insert(con, table, row):
+    cols = con.execute(f'PRAGMA table_info("{table}")').fetchall()
+    if not cols:
+        return False
+    vals = {}
+    for _cid, name, ty, notnull, dflt, pk in cols:
+        if name in row:
+            vals[name] = row[name]
+        elif notnull and dflt is None and not pk:
+            vals[name] = 0 if (ty or "").upper().startswith(("INT", "REAL")) else ""
+    if not vals:
+        return False
+    con.execute(f'INSERT OR REPLACE INTO "{table}" ({",".join(vals)}) VALUES ({",".join("?" * len(vals))})', list(vals.values()))
+    return True
+
+
+def diario_recent_rows(today):
+    d1 = (today - dt.timedelta(days=1)).isoformat()
+    d2 = (today - dt.timedelta(days=2)).isoformat()
+    d3 = (today - dt.timedelta(days=3)).isoformat()
+    return {
+        "votacoes": [
+            ("iniciativas", {"bid": 990001, "key": "Projeto de Lei|9001|XVII", "tipo": "Projeto de Lei", "numero": 9001, "leg": "XVII", "titulo": "Altera o regime sintético de teste", "autoria": "PS", "data_entrada": d3}),
+            ("votos", {"id": 990001, "bid": 990001, "data": d1, "fase": "Votação final global", "orgao": "Plenário", "resultado": "Aprovado", "unanime": 0, "favor": "PS, PSD", "contra": "CH", "abstencao": "IL"}),
+            ("votos", {"id": 990002, "bid": 990001, "data": d2, "fase": "Votação na generalidade", "orgao": "Plenário", "resultado": "Rejeitado", "unanime": 0, "favor": "CH", "contra": "PS, PSD", "abstencao": ""}),
+        ],
+        "presidencia": [
+            ("vetos", {"id": 990001, "data": d1, "motivo": "politico", "titulo": "Decreto sintético de teste", "decreto_ref": "999/XVII", "desfecho": "reformulado"}),
+            ("atos", {"id": "sint:990001", "data": d1, "tipo": "promulgacao", "titulo": "Presidente da República promulga diploma sintético"}),
+        ],
+        "dre": [
+            ("acts", {"id": "sint-dl-1", "kind": "Decreto-Lei", "number": "999/2026", "year": 2026, "date": d1, "title": "Decreto-Lei n.º 999/2026", "summary": "Aprova o regime sintético de teste", "issuer": "Presidência do Conselho de Ministros"}),
+        ],
+        "justica": [
+            ("tcontas_docs", {"id": 990001, "categoria": "relatorio", "tipo": "Auditoria", "year": today.year, "titulo_ref": "Relatório sintético n.º 1/2026", "data": d3, "publicado": d1, "descricao": "Auditoria sintética de teste", "entity_name": "Entidade Sintética"}),
+        ],
+        "reguladores": [
+            ("bodies", {"slug": "sint", "short": "SINT", "name": "Regulador Sintético", "nif": "999000001"}),
+            ("decisions", {"id": "sint:990001", "body": "sint", "kind": "sancao", "date": d1, "title": "SINT sanciona empresa sintética", "amount": 250000.0}),
+        ],
+        "responsaveis": [
+            ("nomeacoes", {"id": 990001, "source": "dre", "action": "nomeação", "person": "Pessoa Sintética", "role": "Vogal do Conselho de Administração", "entity": "Empresa Pública Sintética, E. P. E.", "date": d1, "act": "Despacho sintético n.º 1/2026"}),
+        ],
+        "politica": [
+            ("contracts", {"id": 99000001, "year": today.year, "signed": d2, "published": d1, "price": 120000.0, "procedure": "Concurso público", "buyer_name": "Câmara Municipal Sintética", "seller_name": "Empresa Sintética, Lda.", "buyer_nif": "999000010", "seller_nif": "999000011", "object": "Obra sintética de teste"}),
+            ("contracts", {"id": 99000002, "year": today.year, "signed": d2, "published": d1, "price": 25000.0, "procedure": "Ajuste Direto Regime Geral", "buyer_name": "Instituto Sintético", "seller_name": "Fornecedor Sintético, Lda.", "buyer_nif": "999000012", "seller_nif": "999000013", "object": "Serviço sintético de teste"}),
+            ("contracts", {"id": 99000003, "year": today.year, "signed": d2, "published": d1, "price": 900.0, "procedure": "Ajuste Direto Regime Geral", "buyer_name": "Instituto Sintético", "seller_name": "Fornecedor Sintético, Lda.", "buyer_nif": "999000012", "seller_nif": "999000013", "object": "Serviço sintético pequeno"}),
+        ],
+        "provedor": [
+            ("reports", {"year": today.year, "title": "Relatório sintético do Provedor", "published": d1, "page_url": "https://exemplo.invalid/provedor"}),
+        ],
+        "ine_series": [
+            ("indicador", {"key": "sint", "theme": "teste", "label": "Indicador sintético", "unit": "%", "last_year": today.year - 1, "updated": d1}),
+        ],
+    }
+
+
+def build_diario(out, today):
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ingest", "jobs"))
+    import diario as J
+    for db, rows in diario_recent_rows(today).items():
+        path = os.path.join(out, db + ".db")
+        if not os.path.exists(path):
+            continue
+        con = sqlite3.connect(path)
+        for table, row in rows:
+            try:
+                _sample_insert(con, table, row)
+            except sqlite3.Error:
+                pass
+        con.commit()
+        con.close()
+    now = dt.datetime.combine(today, dt.time(12, 0))
+    res = J.run(out, out, J.local_to_utc(now))
+    n = sum(res.get("inseridos", {}).values())
+    print(f"diario.db: {n} eventos")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Gera bases SQLite sintéticas para desenvolvimento e testes (nunca dados reais).")
     ap.add_argument("--out", default=os.environ.get("ESTADO_ABERTO_DATA") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data"))
@@ -495,6 +573,8 @@ def main():
         n = sum(con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0] for (t,) in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall() if not t.endswith(("_fts", "_data", "_idx", "_docsize", "_config", "_content")))
         con.close()
         print(f"{db}.db: {n} linhas")
+    if not only or "diario" in only:
+        build_diario(out, today)
     print(f"escrito em {out}")
 
 

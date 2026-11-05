@@ -67,3 +67,56 @@ python3 ingest/jobs/diario.py [--date D] [--rebuild-edition D] [--shortlist D]
 - `--shortlist D`: imprime em JSON os ids dos eventos a entregar ao estágio de IA (`n=25`, `per_section=6`).
 
 Variáveis: `ESTADO_ABERTO_DATA` (onde vive `diario.db`), `ESTADO_ABERTO_SOURCE_DATA` (onde estão as bases de origem; por omissão igual a `ESTADO_ABERTO_DATA`).
+
+## Fontes e eventos
+
+Cada fonte é anexada em modo só de leitura (`ATTACH ... mode=ro`) e desanexada no fim; base, tabela ou coluna em falta é ignorada sem erro (`fontes_ignoradas` no resultado).
+
+| Secção | Fonte | Evento (`tipo`) | Data do evento |
+|---|---|---|---|
+| parlamento | `votacoes.votos` (Plenário, fase `Votação%`) + `iniciativas` | `votacao_final` (votação final global de lei), `votacao` | `votos.data` |
+| parlamento | `votacoes.iniciativas` | `iniciativa_entrada` | `data_entrada` |
+| parlamento | `intervencoes` + `iv_ini` | `debate` (um por dia e iniciativa, 2 ou mais intervenções) | `intervencoes.data` |
+| parlamento | `posicoes.decl` | `declaracao_voto` | `data_voto` |
+| parlamento | `dre.acts` | `lei_publicada`, `resolucao_ar` | `date` |
+| governo | `presidencia.vetos`, `atos`, `comunicados` | `veto`, `promulgacao`, `ato_presidente`, `comunicado` | `data` |
+| governo | `dre.acts` | `decreto_lei`, `resolucao_cm`, `decreto_regulamentar` | `date` |
+| fiscalizacao | `justica.tcontas_docs` | `auditoria_tc`, `acordao_tc`, `relatorio_tc` | `publicado` |
+| fiscalizacao | `igf.reports` | `relatorio_igf` | sem data na fonte: dia da primeira observação |
+| fiscalizacao | `provedor.reports` | `relatorio_provedor` | `published` |
+| fiscalizacao | `reguladores.decisions` | `sancao_regulador`, `decisao_regulador` | `date` |
+| nomeacoes | `responsaveis.nomeacoes`, `appointments` | `nomeacao_conselho`, `nomeacao`, `exoneracao`, `nomeacao_gabinete` | `date`, `start` |
+| dinheiro | `politica.contracts` | `contrato_grande`, `contrato_ajuste_direto`, `contratos_resumo` | `published` |
+| dinheiro | `politica.contract_mods` | `alteracao_contrato`, `alteracoes_resumo` | `published` |
+| dinheiro | `anuncios.announcements` | `anuncio_grande` (preço base >= 1 000 000 euros), `anuncios_resumo` | `published` |
+| dinheiro | `apoios.apoios` | `apoio` (>= 50 000 euros), `apoios_resumo` | `data_decisao`, só quando é uma data ISO |
+| dinheiro | `divida.series` | `divida_serie` | sem data de evento: dia da primeira observação |
+| poder-local | `igf.reports` com `kind = 'municipio'` | `relatorio_igf_municipal` | dia da primeira observação |
+| indicadores | `ine_series.indicador`, `imigracao.datasets`, `ama_pedidos` | `indicador_ine`, `indicador_imigracao`, `indicador_ama` | `updated`, `published` |
+
+Notas:
+
+- Contratos e alterações: uma linha por contrato com valor >= 50 000 euros ou ajuste direto >= 20 000 euros; o resto vira uma linha de resumo por dia.
+- `igf.reports` e `divida.series` não têm data de evento. Só entram linhas novas (rowid acima do cursor) e a data do evento é o dia da primeira observação; uma referência já registada nunca é reinserida. Na primeira execução não entra nada.
+- `apoios.data_decisao` é texto livre na maioria das linhas; só datas ISO contam.
+- `autarquias` não tem tabela de eventos datados e não é lida; os relatórios municipais da IGF alimentam `poder-local`.
+- `atos` de nomeação e exoneração do Presidente não são lidos (as mesmas decisões vêm de `responsaveis.nomeacoes`); condecorações e homologações ficam de fora.
+- Linhas novas na fonte (rowid acima do cursor) com data até 90 dias atrás entram como atrasadas; mais antigas são ignoradas.
+- Na primeira execução de uma fonte entra só a janela de 14 dias. Eventos com `data_evento + 1` anterior ao limiar só entram se forem linhas novas desde um cursor já existente.
+- Rotas (`rota`) usam rotas hash do site (`#/votacoes`, `#/contrato/<id>`, `#/igf`, `#/dre`, `#/poderes/presidente`, ...).
+- Os textos usam só campos reais das fontes; o formato de valores e datas segue `server/modules/edicao.mjs`.
+
+## Pontuação
+
+Em `ingest/diario_score.py` (funções puras, testadas). Base por tipo: veto 90; votação final global de lei 80 (+15 se a diferença de lugares entre favor e contra for de 10 ou menos, +10 se rejeitada); promulgação 60; auditoria do Tribunal de Contas 55; sanção de regulador 50 + log10(valor em euros); nomeação para conselho de regulador ou empresa do Estado 40; contrato grande 20 + log10(preço); debate agregado 25; restantes 10.
+
+Bónus: entidade com sinal de risco em `risco.entity_risk` (score >= 6) +10; primeiro do seu género nos últimos 30 dias (veto, sanção, auditoria, relatórios IGF e Provedor, promulgação) +10. Penalização: 5 pontos por dia de atraso para além de 2, em que o atraso é `edicao_data - (data_evento + 1)`. O resultado nunca é negativo.
+
+`shortlist(edicao_data, n=25, per_section=6)` devolve os ids por score decrescente (desempate por id), no máximo `per_section` por secção e `n` no total. `--shortlist DATE` imprime-os em JSON.
+
+## Operação
+
+- Manifesto: passo `diario` em `ingest/jobs.json`, `schedule` `6h`, sem rede, produz `diario.db`.
+- `ESTADO_ABERTO_DIARIO_FLOOR` altera a data da edição n.º 1 (só para ensaios sobre dados antigos).
+- Testes: `python3 -m unittest discover ingest/tests`.
+- `python3 tools/make_sample.py` acrescenta eventos recentes às bases de exemplo e constrói um `diario.db` sintético.
