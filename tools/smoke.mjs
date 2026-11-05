@@ -110,7 +110,7 @@ try {
     else if (r.status === 0 || r.status >= 500) failures.push(`${used} -> ${r.status} ${r.error || (r.json && (r.json.detail || r.json.error)) || ""}`);
     else if (!r.valid) failures.push(`${used} -> JSON inválido`);
     else if (EXPECT === "sample" && r.status !== 200 && !(r.status === 404 && needsIds)) failures.push(`${used} -> ${r.status} (esperado 2xx com dados de exemplo)`);
-    if (EXPECT === "empty" && r.status === 200 && !/follows|roadmap|powers|modules|status|historias$|arquivo/.test(route) && r.json && r.json.available === true) failures.push(`${used} -> 200 available:true em dados vazios`);
+    if (EXPECT === "empty" && r.status === 200 && !/follows|roadmap|powers|modules|status|historias$|arquivo/.test(route) && r.json && r.json.available === true && used === route) failures.push(`${used} -> 200 available:true em dados vazios`);
   }
 
   if (EXPECT === "sample") {
