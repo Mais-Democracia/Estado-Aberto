@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- Server never blocks the event loop: API routes run in a worker thread with a disk cache, and a first request on a slow route answers 202 carregando instead of hanging.
+- Cheap /api/status, gzip/brotli compression, ETag and caching headers.
+- Client loads routes lazily, prefetches on hover, renders the home from boot data and registers a service worker with an offline page.
+- Client retries API GETs answered with 202 carregando with backoff and never caches them.
+- Release helper keeps VERSION, package.json, the manifest, the service worker version and the page version tag in step, and `npm run check` fails if they disagree.
+
 ### Added
 - Continuous integration, release workflow and release helper.
 - Pull-model updater, systemd units and first-time installer for the production server.
