@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { performance, monitorEventLoopDelay } from "node:perf_hooks";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import os from "node:os";
 
 const wt = process.env.ESTADO_ABERTO_NO_WORKER === "1" ? null : await import("node:worker_threads").catch(() => null);
 const IS_WORKER = !!wt && !wt.isMainThread && !!wt.workerData && wt.workerData.role === "routes";
@@ -32,7 +33,7 @@ const readDb = (name) => {
   if (!fs.existsSync(file)) throw new DataMissing(name);
   try {
     h = new DatabaseSync(file, { readOnly: true });
-    h.exec("PRAGMA cache_size = -1024; PRAGMA mmap_size = 0; PRAGMA query_only = 1;");
+    h.exec("PRAGMA cache_size = -1024; PRAGMA mmap_size = 0; PRAGMA temp_store = file; PRAGMA query_only = 1;");
   } catch (e) { throw new DataMissing(name, `ilegível (${e.message})`); }
   handles.set(name, h);
   return h;
@@ -505,6 +506,12 @@ const enc = new TextEncoder();
 
 function workerLoop(app) {
   const { parentPort } = wt;
+  try {
+    const tid = Number(fs.readlinkSync("/proc/thread-self").split("/").pop());
+    if (tid) os.setPriority(tid, Number(process.env.ESTADO_ABERTO_WORKER_NICE ?? 10));
+  } catch {}
+  process.on("uncaughtException", (e) => { console.error("worker uncaught:", e && e.stack || e); process.exit(1); });
+  process.on("unhandledRejection", (e) => { console.error("worker unhandled rejection:", e && e.stack || e); process.exit(1); });
   const debug = process.env.ESTADO_ABERTO_DEBUG === "1";
   const memOf = () => { const m = process.memoryUsage(); return { heap: m.heapUsed, ext: m.external, ab: m.arrayBuffers }; };
   parentPort.postMessage({ type: "ready", routes: Object.keys(app.routes), requested: [...app.requested], loaded: app.loaded });
@@ -563,7 +570,7 @@ async function main() {
   const indexFile = path.join(publicDir, "index.html");
   const moduleDir = path.join(root, "server", "modules");
   const WAIT_MS = 6000, HOT_MS = 300, HOT_TTL = 10 * 60e3, SOFT_TTL = 30e3, SOFT_STALE = 5 * 60e3, ACTIVE_MS = 6 * 3600e3;
-  const STATUS_EVERY = 30 * 60e3, MAX_HI = 128, MAX_LO = 32, WATCHDOG = 180e3, SLOW_MS = 500, MIN_COMPRESS = 860;
+  const STATUS_EVERY = 30 * 60e3, MAX_HI = 128, MAX_LO = 32, WATCHDOG = Number(process.env.ESTADO_ABERTO_WORKER_TIMEOUT_MS) || 600e3, BACKOFF = [30e3, 120e3, 600e3, 1800e3], SLOW_MS = 500, MIN_COMPRESS = 860;
   const MAX_ENTRY = 8 * 1048576, MAX_DISK = 48, MAX_STATIC_FILE = 1048576;
 
   const codeStamp = (() => {
@@ -598,6 +605,14 @@ async function main() {
   };
 
   const pool = { worker: null, app: null, ready: false, routes: new Set(), requested: [], loaded: [], inflight: null, hi: [], lo: [], byKey: new Map(), seq: 0, restarts: 0, stableTimer: null, respawn: null };
+  const failures = new Map();
+  const backoffLeft = (key) => { const f = key && failures.get(key); return f ? Math.max(0, f.until - Date.now()) : 0; };
+  const noteFail = (job, why) => {
+    if (!job || !job.key) return;
+    const n = (failures.get(job.key)?.n || 0) + 1, delay = BACKOFF[Math.min(n, BACKOFF.length) - 1];
+    failures.set(job.key, { n, until: Date.now() + delay });
+    console.error(`job falhou: ${job.spec.path || job.spec.kind} (${why}) após ${Date.now() - job.startedAt} ms; nova tentativa em ${Math.round(delay / 1000)} s (falha ${n})`);
+  };
   const busy = () => !!pool.inflight || pool.hi.length > 0 || pool.lo.length > 0;
 
   const settle = (job, fn, v) => {
@@ -610,10 +625,10 @@ async function main() {
     if (!pool.ready || pool.inflight) return;
     const job = pool.hi.shift() || pool.lo.shift();
     if (!job) return;
-    pool.inflight = job; job.sent = true; job.sig = dbSig;
+    pool.inflight = job; job.sent = true; job.sig = dbSig; job.startedAt = Date.now();
     const msg = { id: job.id, ...job.spec };
     if (pool.worker) {
-      job.timer = setTimeout(() => { console.error("worker watchdog:", job.spec.path || job.spec.kind); try { pool.worker.terminate(); } catch {} }, WATCHDOG);
+      job.timer = setTimeout(() => { job.killed = "watchdog"; console.error(`worker watchdog: ${job.spec.path || job.spec.kind} excedeu ${WATCHDOG} ms (decorridos ${Date.now() - job.startedAt} ms)`); try { pool.worker.terminate(); } catch {} }, WATCHDOG);
       pool.worker.postMessage(msg);
     } else {
       setImmediate(() => {
@@ -628,6 +643,7 @@ async function main() {
   const submit = (spec, prio = "hi") => {
     const key = spec.coalesce ? `${spec.method}|${spec.path}?${spec.query}` : null;
     const found = key && pool.byKey.get(key);
+    if (!found && key && backoffLeft(key)) return Promise.resolve(null);
     if (found) {
       if (prio === "hi" && found.prio === "lo" && !found.sent) { const i = pool.lo.indexOf(found); if (i >= 0) { pool.lo.splice(i, 1); found.prio = "hi"; pool.hi.push(found); } }
       return found.promise;
@@ -647,7 +663,7 @@ async function main() {
     pool.ready = false; pool.worker = null;
     clearTimeout(pool.stableTimer);
     const job = pool.inflight;
-    if (job) settle(job, job.rej, new Error("worker: " + why));
+    if (job) { noteFail(job, job.killed || why); settle(job, job.rej, new Error("worker: " + why)); }
     const delay = Math.min(30000, 500 * 2 ** pool.restarts++);
     console.error(`worker terminou (${why}); novo em ${delay} ms`);
     pool.respawn = setTimeout(startWorker, delay);
@@ -669,10 +685,11 @@ async function main() {
       const job = pool.inflight;
       if (!job || job.id !== m.id) return;
       m.sig = job.sig;
+      if (job.key) failures.delete(job.key);
       settle(job, job.res, m);
       pump();
     });
-    w.on("error", (e) => console.error("worker error:", e && e.message));
+    w.on("error", (e) => console.error("worker error:", e && e.stack || e));
     w.on("exit", (code) => { if (pool.worker === w) onWorkerGone("exit " + code); });
   };
   const startInline = async () => {
@@ -898,7 +915,7 @@ async function main() {
     try { r = await withTimeout(submit({ method: "GET", path: p, query, coalesce: true }, "hi"), WAIT_MS); } catch (err) {
       return sendWithHeaders(req, res, rc, 503, { error: "ocupado", detail: String(err.message) }, retry);
     }
-    if (r === TIMEOUT) { rc.cache = "wait"; return sendWithHeaders(req, res, rc, 202, { status: "carregando", retry_after: 2 }, retry); }
+    if (r === TIMEOUT || r === null) { rc.cache = "wait"; return sendWithHeaders(req, res, rc, 202, { status: "carregando", retry_after: r === null ? 15 : 2 }, r === null ? { "Retry-After": "15" } : retry); }
     rc.cache = "miss"; rc.db = r.ms;
     const entry = accept(key, p, query, r);
     if (entry) return sendBody(req, res, rc, entry, { type: JSON_TYPE, cc: CC_API, quality: 4 });

@@ -4,7 +4,7 @@
 
 - The main thread only serves static files and cached API results. Every `/api/*` route (including the plug-in modules) is executed by one `worker_threads` worker with its own lazily opened read-only SQLite connections (`resourceLimits.maxOldGenerationSizeMb: 120`). `ESTADO_ABERTO_NO_WORKER=1`, or a missing `worker_threads`, runs the same code in-thread.
 - Protocol: main posts `{id, kind, method, path, query, body, fresh}`, the worker answers `{id, code, user, ms, body}` with the JSON as a transferred `Uint8Array`. One job is in flight at a time (the worker is synchronous), so at most one request per route family reaches it; the rest wait in a bounded priority queue (128 interactive, 32 background, overflow answers `503` with `Retry-After`). Identical concurrent requests are coalesced onto one job; an interactive request promotes a queued background job.
-- A request that cannot be answered from cache waits up to 6 s for the worker, then gets `202 {"status":"carregando","retry_after":2}` with `Retry-After: 2` and the job keeps running and fills the cache. A stuck worker is terminated after 180 s and respawned with backoff.
+- A request that cannot be answered from cache waits up to 6 s for the worker, then gets `202 {"status":"carregando","retry_after":2}` with `Retry-After: 2` and the job keeps running and fills the cache. A running job is terminated by the watchdog only after `ESTADO_ABERTO_WORKER_TIMEOUT_MS` (default 600000 ms); every kill logs the route and elapsed ms, and a crashing worker logs its stack. A failed or killed job for a route is not resubmitted for 30 s, 2 min, 10 min, then 30 min (cap), and requests during that time get `202` with `Retry-After: 15`. The worker thread runs at nice 10 (`ESTADO_ABERTO_WORKER_NICE`) with `cache_size` 1 MB, `mmap_size` 0 and `temp_store` file.
 - Results are cached in memory (LRU, 24 MB) and, when the computation took 300 ms or more (or the route is a warm seed), in `$ESTADO_ABERTO_DATA/cache/<sha1(route?query)>.json` (override with `ESTADO_ABERTO_CACHE`). Each file records the source database `size:mtime` signature and a code stamp (VERSION and mtime of `server.mjs` and `server/modules/*`). A restart serves the previous result at once; if the signature changed, or it is older than 10 min, it is served stale and refreshed in the worker in the background (`fresh` bypasses the in-worker memos of 1 h or less). Light results older than 30 s are refreshed the same way; older than 5 min they are recomputed.
 - Background refresh: one job every 5 s at most, only when the worker is idle, seeds first (`/api/overview`, `/api/changes`, `/api/contracts`, `/api/edicao/dia`, every `*/overview`), then stale hot entries used in the last 6 h, then the status counts.
 - `/api/status` never touches a database on the main thread: presence, size and mtime come from an `fs.stat` scan every 10 s; row counts come from the worker at most every 30 min (`COUNT(*)` below 64 MB, `MAX(rowid)` above, flagged `approx`) and are persisted in `cache/_status.json`. Until the first counts arrive modules report `pending: true` and `available` reflects file presence. Answers in a few ms.
@@ -36,3 +36,16 @@ Measured on the development PC (12 cores), v0.1.1 against this change, cold star
 On real data, restarting with the persisted cache answers `/api/seguranca/overview` and `/api/edicao/dia` in 1 to 5 ms; cold, `/api/seguranca/overview` computes in 0.99 s in the worker while `/` and `/api/status` stay at 2 to 5 ms.
 
 Memory, real data, idle after a warm cycle: process RSS 134 MB, of which the main-thread JS heap is 7 MB (+4 MB external) and the worker heap 16 MB (peak 22 MB, limit 120 MB). The remainder is native (Node runtime, SQLite page caches, threads share one RSS). The production unit runs with `--max-old-space-size=256`.
+
+## Edition bytes read
+
+`/api/edicao/dia` for the latest date on the production-size data (politica.db 3.5 GB), counted as `rchar` from `/proc/self/io` (includes cached reads, so it is a proxy for cold-disk cost), 1 MB page cache per connection.
+
+| Query | Before | After |
+|---|---|---|
+| Local-government contracts of the week (`contracts` joined to `entities`) | 3547 MB | 21 MB |
+| Most active municipality of the week | 2815 MB | 21 MB |
+| All other queries | 41 MB | 42 MB |
+| Total | 6404 MB, 3.7 s warm | 84 MB, 0.1 s warm |
+
+The planner drove the join from `entities(kind)` and then walked every buyer's contracts; `CROSS JOIN` fixes the order so the week is selected through `contracts_published_cov` first. When that index is missing (databases built before it existed) contract queries are bounded to `signed` within 90 days of the window (103 MB total). If the computation exceeds `ESTADO_ABERTO_EDITION_BUDGET_MS` (default 45000) the optional blocks (local government, biggest direct award, sparklines, a year ago) are skipped and the edition carries `"partial": true`; it is cached for 60 s instead of 10 min.

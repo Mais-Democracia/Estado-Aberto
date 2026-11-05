@@ -3,8 +3,18 @@ export default function (ctx) {
   const vot = openData("votacoes"), jus = openData("justica"), pres = openData("presidencia"), dre = openData("dre"), apo = openData("apoios"), resp = openData("responsaveis"), reg = openData("reguladores"), prov = openData("provedor"), igf = openData("igf"), pos = openData("posicoes"), ivn = openData("intervencoes"), dvd = openData("divida");
   const Q = (db, sql, ...p) => { try { return db ? db.prepare(sql).all(...p) : []; } catch { return []; } };
   const Q1 = (db, sql, ...p) => Q(db, sql, ...p)[0] || null;
-  const P = (sql, ...p) => { try { return all(sql, ...p); } catch { return []; } };
-  const P1 = (sql, ...p) => { try { return one(sql, ...p) || null; } catch { return null; } };
+  let pubIdx = null;
+  const hasPub = () => (pubIdx ??= !!one("SELECT 1 x FROM sqlite_master WHERE type = 'index' AND name = 'contracts_published_cov'"));
+  const bounded = (sql, p) => {
+    if (!/FROM contracts/.test(sql) || !/published >= \?/.test(sql)) return sql;
+    let ok = true;
+    try { ok = hasPub(); } catch {}
+    const a = p.find((x) => /^\d{4}-\d{2}-\d{2}$/.test(x));
+    if (ok || !a) return sql;
+    return sql.replace("WHERE ", `WHERE ${/FROM contracts c /.test(sql) ? "c." : ""}signed >= '${add(a, -90)}' AND `);
+  };
+  const P = (sql, ...p) => { try { return all(bounded(sql, p), ...p); } catch { return []; } };
+  const P1 = (sql, ...p) => { try { return one(bounded(sql, p), ...p) || null; } catch { return null; } };
 
   const MES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
   const DIA = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
@@ -186,7 +196,7 @@ export default function (ctx) {
     const hit = cache.get(d);
     if (hit && Date.now() - hit.at < 600000) return hit.v;
     const v = buildEdition(d);
-    cache.set(d, { at: Date.now(), v });
+    cache.set(d, { at: v.partial ? Date.now() - 540000 : Date.now(), v });
     if (cache.size > 40) cache.delete(cache.keys().next().value);
     return v;
   };
@@ -240,7 +250,12 @@ export default function (ctx) {
   });
   const decCount = (a, b) => Q1(reg, "SELECT COUNT(*) n FROM decisions WHERE date >= ? AND date <= ?", a, b)?.n || 0;
 
+  const BUDGET = Number(process.env.ESTADO_ABERTO_EDITION_BUDGET_MS) || 45000;
+
   function buildEdition(D) {
+    const t0 = Date.now();
+    let partial = false;
+    const late = () => { if (Date.now() - t0 > BUDGET) { partial = true; return true; } return false; };
     const mx = MX();
     const rc = refOf(D, mx.pub), rv = refOf(D, mx.vote), rt = refOf(D, mx.tc), rp = refOf(D, mx.pres), rd = refOf(D, mx.dre), rr = refOf(D, mx.reg), rn = refOf(D, mx.nom), ri = refOf(D, mx.iv);
     const wc = { a: add(rc, -6), b: rc }, wcp = { a: add(rc, -13), b: add(rc, -7) };
@@ -360,13 +375,13 @@ export default function (ctx) {
       push({ id: `cresap-${cres.code}`, section: "Nomeações", kicker: "CReSAP", hed: prop ? `CReSAP propõe ${nf(cand3.length)} ${plural(cand3.length, "candidato", "candidatos")} para ${cleanName(cres.role)}, ${cleanName(cres.entity)}` : `CReSAP: ${cleanName(cres.role)}, ${cleanName(cres.entity)}`, dek: null, lead: [`Em ${pdate(cres.date)}, a Comissão de Recrutamento e Seleção para a Administração Pública publicou o resultado do concurso para ${cleanName(cres.role)} em ${cleanName(cres.entity)}: ${cleanName(cres.outcome || "resultado publicado")}.${cand3.length ? ` Candidatos: ${list(cand3)}.` : ""}`], ref: "responsaveis", date: cres.date });
     }
 
-    const loc = P(`SELECT c.*, e.id eid FROM contracts c JOIN entities e ON e.nif = c.buyer_nif WHERE c.published >= ? AND c.published <= ? AND c.price > 0 AND e.kind IN ('municipio','freguesia','empresa_municipal','cim_am') ORDER BY c.price DESC LIMIT 6`, wc.a, wc.b);
+    const loc = late() ? [] : P(`SELECT c.*, e.id eid FROM contracts c CROSS JOIN entities e ON e.nif = c.buyer_nif WHERE c.published >= ? AND c.published <= ? AND c.price > 0 AND e.kind IN ('municipio','freguesia','empresa_municipal','cim_am') ORDER BY c.price DESC LIMIT 6`, wc.a, wc.b);
     loc.slice(0, 2).forEach((c, i) => push(contractStory(c, w, 1 + i, "Poder local", { kicker: "Câmaras e freguesias", hed: `${cleanName(c.buyer_name)} contrata ${cleanName(c.seller_name)} por ${eur(c.price)}` })));
-    const locTop = P(`SELECT c.buyer_nif, c.buyer_name, COUNT(*) n, SUM(c.price) v FROM contracts c JOIN entities e ON e.nif = c.buyer_nif WHERE c.published >= ? AND c.published <= ? AND e.kind = 'municipio' GROUP BY c.buyer_nif ORDER BY n DESC LIMIT 1`, wc.a, wc.b)[0];
+    const locTop = late() ? undefined : P(`SELECT c.buyer_nif, c.buyer_name, COUNT(*) n, SUM(c.price) v FROM contracts c CROSS JOIN entities e ON e.nif = c.buyer_nif WHERE c.published >= ? AND c.published <= ? AND e.kind = 'municipio' GROUP BY c.buyer_nif ORDER BY n DESC LIMIT 1`, wc.a, wc.b)[0];
     if (locTop) push({ id: "loc-top", section: "Poder local", kicker: "Município mais ativo", hed: `${cleanName(locTop.buyer_name)} publicou mais contratos do que qualquer outro município na semana`, dek: null, lead: [`Entre ${range(wc.a, wc.b)}, o ${cleanName(locTop.buyer_name)} publicou ${nf(locTop.n)} contratos no Portal BASE, num total de ${eur(locTop.v)}.`], ref: `entidade/${eidOf(locTop.buyer_nif)}`, date: wc.b });
 
     for (const c of topUniq.slice(lead?.id?.startsWith("contrato") ? 1 : 0, 6)) { if (S["Dinheiro público"].length >= 2) break; push(contractStory(c, w, topUniq.indexOf(c) + 1, "Dinheiro público")); }
-    const topDirect = P1(`SELECT * FROM contracts WHERE published >= ? AND published <= ? AND procedure LIKE 'Ajuste Direto%' AND price > 0 ORDER BY price DESC LIMIT 1`, wc.a, wc.b);
+    const topDirect = late() ? null : P1(`SELECT * FROM contracts WHERE published >= ? AND published <= ? AND procedure LIKE 'Ajuste Direto%' AND price > 0 ORDER BY price DESC LIMIT 1`, wc.a, wc.b);
     if (topDirect) {
       const st = contractStory(topDirect, w, 1, "Dinheiro público", { kicker: "Ajuste direto" });
       st.hed = `Sem concurso: ${cleanName(topDirect.buyer_name)} contrata por ajuste direto ${eur(topDirect.price)} a ${cleanName(topDirect.seller_name)}`;
@@ -381,14 +396,14 @@ export default function (ctx) {
     if (grant) push(grantStory());
 
     const spA = add(rc, -29);
-    const spR = P("SELECT published d, COUNT(*) n, SUM(CASE WHEN price > 0 THEN price END) v FROM contracts WHERE published >= ? AND published <= ? GROUP BY published", spA, rc);
+    const spR = late() ? [] : P("SELECT published d, COUNT(*) n, SUM(CASE WHEN price > 0 THEN price END) v FROM contracts WHERE published >= ? AND published <= ? GROUP BY published", spA, rc);
     const spC = series(spR, spA, rc), spV = series(spR, spA, rc, "v");
     const spD = series(Q(dre, "SELECT date d, COUNT(*) n FROM acts WHERE date >= ? AND date <= ? GROUP BY date", add(rd, -29), rd), add(rd, -29), rd);
     const spVotes = series(Q(vot, "SELECT data d, COUNT(*) n FROM votos WHERE orgao = 'Plenário' AND data >= ? AND data <= ? GROUP BY data", add(rv, -89), rv), add(rv, -89), rv);
     const spReg = series(Q(reg, "SELECT date d, COUNT(*) n FROM decisions WHERE date >= ? AND date <= ? GROUP BY date", add(rr, -89), rr), add(rr, -89), rr);
     const nVotes = votes.length, nApp = votes.filter(approved).length;
     const dcPrev = sum(dreCount(add(rd, -13), add(rd, -7)));
-    const topBuyers = P(`SELECT buyer_nif nif, buyer_name name, COUNT(*) n, SUM(price) v FROM contracts WHERE published >= ? AND published <= ? AND price > 0 GROUP BY buyer_nif ORDER BY v DESC LIMIT 5`, wc.a, wc.b).map((x) => ({ ...x, eid: eidOf(x.nif) }));
+    const topBuyers = late() ? [] : P(`SELECT buyer_nif nif, buyer_name name, COUNT(*) n, SUM(price) v FROM contracts WHERE published >= ? AND published <= ? AND price > 0 GROUP BY buyer_nif ORDER BY v DESC LIMIT 5`, wc.a, wc.b).map((x) => ({ ...x, eid: eidOf(x.nif) }));
     const nProm = Q1(pres, "SELECT COUNT(*) n FROM atos WHERE tipo = 'promulgacao' AND data >= ? AND data <= ?", add(rp, -29), rp)?.n || 0;
     const nVeto = Q1(pres, "SELECT COUNT(*) n FROM vetos WHERE data >= ? AND data <= ?", add(rp, -89), rp)?.n || 0;
     const nNom = Q1(pres, "SELECT COUNT(*) n FROM atos WHERE tipo = 'nomeacao' AND data >= ? AND data <= ?", add(rp, -29), rp)?.n || 0;
@@ -414,8 +429,9 @@ export default function (ctx) {
     };
 
     const Y = { a: yearAgo(wc.a), b: yearAgo(wc.b) };
-    const yc = cstats(Y.a, Y.b);
-    const ytop = P1("SELECT * FROM contracts WHERE published >= ? AND published <= ? AND price > 0 ORDER BY price DESC LIMIT 1", Y.a, Y.b);
+    const skipAgo = late();
+    const yc = skipAgo ? { n: 0, v: 0, dv: 0 } : cstats(Y.a, Y.b);
+    const ytop = skipAgo ? null : P1("SELECT * FROM contracts WHERE published >= ? AND published <= ? AND price > 0 ORDER BY price DESC LIMIT 1", Y.a, Y.b);
     const yv = voteRows(yearAgo(add(rv, -29)), yearAgo(rv), 120).filter((r) => !/Delibera/i.test(r.fase));
     const yvT = [...yv].filter((r) => !r.unanime && r.fs + r.cs > 0).sort((x, y) => voteScore(y) - voteScore(x))[0];
     const yd = sum(dreCount(yearAgo(add(rd, -6)), yearAgo(rd)));
@@ -448,6 +464,7 @@ export default function (ctx) {
       desatualizado: rc < add(D, -3) ? { contratos: rc } : null,
       lead, leadNote, leadWhy: leadC ? { tipo: leadC.tipo, score: pct0(leadC.score), why: leadC.why, outros: runners } : null,
       seccoes: S, numeros, haUmAno: ago, ticker: tick.slice(0, 20),
+      ...(partial ? { partial: true } : {}),
     };
   }
 
