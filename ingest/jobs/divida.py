@@ -2,6 +2,7 @@ import datetime
 import re
 import sqlite3
 import sys
+import urllib.error
 import urllib.parse
 import zipfile
 from pathlib import Path
@@ -17,6 +18,7 @@ FILES = {
     "ind": "Indicadores_divida_slonga_Debt_indicators_historical_series.xlsx",
 }
 SOURCE = "https://www.igcp.pt/pt/menu/divida-publica/estatisticas"
+HOME = "https://www.igcp.pt/pt"
 STOCK_ROWS = {6: ("total", "Dívida total"), 8: ("ot", "Obrigações do Tesouro"), 9: ("aforro", "Certificados de Aforro"), 10: ("ct", "Certificados do Tesouro"), 15: ("margem", "Contas margem")}
 IND_ROWS = {7: ("pct_euro", "Dívida em euros (%)"), 8: ("pct_fixa", "Taxa fixa (%)"), 9: ("prazo_medio", "Prazo médio residual (anos)"), 10: ("duracao", "Duração modificada")}
 SCHEMA = """
@@ -63,11 +65,15 @@ def fetch(name):
     p = RAW / name
     if p.exists():
         return p
-    page = get(SOURCE, cache=True, max_age_h=24)
-    m = re.search(r'href="([^"]*' + re.escape(name) + r')"', page)
-    if not m:
-        raise RuntimeError("ficheiro não encontrado: " + name)
-    return download(urllib.parse.urljoin(SOURCE, m.group(1)), p)
+    for page_url in (SOURCE, HOME):
+        try:
+            page = get(page_url, cache=True, max_age_h=24)
+        except urllib.error.HTTPError:
+            continue
+        m = re.search(r'href="([^"]*' + re.escape(name) + r')"', page)
+        if m:
+            return download(urllib.parse.urljoin(page_url, m.group(1)), p)
+    raise RuntimeError("ficheiro não encontrado: " + name)
 
 
 def load(rows, date_row, spec, unit, grp, db):

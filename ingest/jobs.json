@@ -1,0 +1,1057 @@
+{
+ "version": 1,
+ "helpers": [
+  "jobs/_xls.py",
+  "jobs/_provedor_stats.py",
+  "jobs/apoios_pdf.py",
+  "jobs/responsaveis_nomeacoes.py"
+ ],
+ "steps": [
+  {
+   "name": "agenda",
+   "script": "agenda.py",
+   "depends": [],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 1,
+   "est_peak_mb": 80,
+   "est_disk_mb": 10,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Parliament agenda",
+   "notes": "Parliament calendar JSON and law steps."
+  },
+  {
+   "name": "government",
+   "script": "government.py",
+   "depends": [],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 1,
+   "est_peak_mb": 80,
+   "est_disk_mb": 5,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Government / ministers",
+   "notes": "President, ministers, parties from Wikipedia and Wikidata."
+  },
+  {
+   "name": "news",
+   "script": "news.py",
+   "depends": [],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 2,
+   "est_peak_mb": 80,
+   "est_disk_mb": 15,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Presidency news",
+   "notes": "Presidency news items."
+  },
+  {
+   "name": "contracts",
+   "script": "contracts.py",
+   "depends": [],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 20,
+   "est_peak_mb": 300,
+   "est_disk_mb": 500,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "contracts"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Public contracts",
+   "notes": "Streams one JSON per year from dados.gov.pt (about 470 MB of raw cache). Pass years as args for a partial run."
+  },
+  {
+   "name": "entities",
+   "script": "entities.py",
+   "depends": [
+    "contracts"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 4,
+   "est_peak_mb": 500,
+   "est_disk_mb": 80,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "base"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Entity register",
+   "notes": "Loads entidades.json (about 50 MB, roughly 400 MB in memory)."
+  },
+  {
+   "name": "localgov",
+   "script": "localgov.py",
+   "depends": [
+    "entities"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 3,
+   "est_peak_mb": 150,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Local governments",
+   "notes": "Wikidata SPARQL for municipalities and parishes."
+  },
+  {
+   "name": "wd_institutions",
+   "script": "wd_institutions.py",
+   "depends": [
+    "localgov"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 3,
+   "est_peak_mb": 150,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Local governments",
+   "notes": "Public bodies from Wikidata."
+  },
+  {
+   "name": "reclassify",
+   "script": "reclassify.py",
+   "depends": [
+    "wd_institutions"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": false,
+   "est_minutes": 2,
+   "est_peak_mb": 200,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "",
+   "notes": "Rule-based classification of remaining unsorted bodies."
+  },
+  {
+   "name": "aliases",
+   "script": "aliases.py",
+   "depends": [
+    "reclassify"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": false,
+   "est_minutes": 1,
+   "est_peak_mb": 150,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "",
+   "notes": "Former names of renamed bodies."
+  },
+  {
+   "name": "modifications",
+   "script": "modifications.py",
+   "depends": [
+    "contracts"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 6,
+   "est_peak_mb": 250,
+   "est_disk_mb": 60,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "mods"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Public contracts",
+   "notes": "Contract modifications from dados.gov.pt."
+  },
+  {
+   "name": "stats",
+   "script": "stats.py",
+   "depends": [
+    "entities",
+    "localgov",
+    "wd_institutions",
+    "reclassify",
+    "aliases",
+    "modifications"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": false,
+   "est_minutes": 10,
+   "est_peak_mb": 400,
+   "est_disk_mb": 400,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "",
+   "notes": "Per-entity statistics and the FTS index; needs scratch space about the size of the index."
+  },
+  {
+   "name": "anuncios",
+   "script": "jobs/anuncios.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "anuncios.db"
+   ],
+   "network": true,
+   "est_minutes": 15,
+   "est_peak_mb": 300,
+   "est_disk_mb": 450,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "anuncios"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Concursos e anuncios",
+   "notes": "Annual JSON streamed with raw_decode."
+  },
+  {
+   "name": "ministerios",
+   "script": "jobs/ministerios.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "ministerios.db"
+   ],
+   "network": true,
+   "est_minutes": 8,
+   "est_peak_mb": 250,
+   "est_disk_mb": 40,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [
+    "ministerios"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Ministerios",
+   "notes": "portugal.gov.pt sitemap and __NEXT_DATA__ pages."
+  },
+  {
+   "name": "deputados",
+   "script": "jobs/deputados.py",
+   "depends": [],
+   "produces": [
+    "deputados.db"
+   ],
+   "network": true,
+   "est_minutes": 25,
+   "est_peak_mb": 300,
+   "est_disk_mb": 70,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [
+    "deputados"
+   ],
+   "keep_raw": true,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Deputies",
+   "notes": "parlamento.pt pages; incremental, refreshes entries older than DEPUTADOS_REFRESH_H."
+  },
+  {
+   "name": "dre",
+   "script": "jobs/dre.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "dre.db"
+   ],
+   "network": true,
+   "est_minutes": 70,
+   "est_peak_mb": 250,
+   "est_disk_mb": 150,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "dre"
+   ],
+   "keep_raw": true,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Diario da Republica",
+   "notes": "About 4000 detail requests per run at 1 req/s (DRE_DETAIL_MAX)."
+  },
+  {
+   "name": "autarquias",
+   "script": "jobs/autarquias.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "autarquias.db"
+   ],
+   "network": true,
+   "est_minutes": 20,
+   "est_peak_mb": 350,
+   "est_disk_mb": 150,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "autarquias"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Autarquias",
+   "notes": "MAI/SGMAI results site, many small requests."
+  },
+  {
+   "name": "responsaveis",
+   "script": "jobs/responsaveis.py",
+   "depends": [
+    "dre",
+    "ministerios",
+    "stats"
+   ],
+   "produces": [
+    "responsaveis.db"
+   ],
+   "network": true,
+   "est_minutes": 55,
+   "est_peak_mb": 300,
+   "est_disk_mb": 40,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [
+    "responsaveis"
+   ],
+   "keep_raw": true,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Quem decide",
+   "notes": "One 3000-request batch per run (RESP_MAX_REQ) until every holder is read; also runs the nomeacoes phases of responsaveis_nomeacoes.py."
+  },
+  {
+   "name": "fundos",
+   "script": "jobs/fundos.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "fundos.db"
+   ],
+   "network": true,
+   "est_minutes": 12,
+   "est_peak_mb": 500,
+   "est_disk_mb": 300,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "fundos"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Fundos europeus e PRR",
+   "notes": "Official xlsx files from dados.gov.pt."
+  },
+  {
+   "name": "apoios",
+   "script": "jobs/apoios.py",
+   "depends": [
+    "stats",
+    "fundos"
+   ],
+   "produces": [
+    "apoios.db"
+   ],
+   "network": true,
+   "est_minutes": 8,
+   "est_peak_mb": 300,
+   "est_disk_mb": 150,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "apoios"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Apoios publicos",
+   "notes": "PDF tables parsed with pdftotext via apoios_pdf.py; APOIOS_SKIP_ICA skips the slow part."
+  },
+  {
+   "name": "votacoes",
+   "script": "jobs/votacoes.py",
+   "depends": [
+    "dre",
+    "eleicoes"
+   ],
+   "produces": [
+    "votacoes.db"
+   ],
+   "network": true,
+   "est_minutes": 40,
+   "est_peak_mb": 400,
+   "est_disk_mb": 450,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "votacoes"
+   ],
+   "keep_raw": true,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Votacoes",
+   "notes": "parlamento.pt public pages."
+  },
+  {
+   "name": "eleicoes",
+   "script": "jobs/eleicoes.py",
+   "depends": [
+    "autarquias",
+    "stats"
+   ],
+   "produces": [
+    "eleicoes.db"
+   ],
+   "network": true,
+   "est_minutes": 25,
+   "est_peak_mb": 250,
+   "est_disk_mb": 100,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "eleicoes"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Eleicoes",
+   "notes": "MAI/SGMAI results; ELEICOES_ONLY narrows the run."
+  },
+  {
+   "name": "intervencoes",
+   "script": "jobs/intervencoes.py",
+   "depends": [
+    "deputados",
+    "votacoes"
+   ],
+   "produces": [
+    "intervencoes.db"
+   ],
+   "network": true,
+   "est_minutes": 40,
+   "est_peak_mb": 400,
+   "est_disk_mb": 200,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "intervencoes"
+   ],
+   "keep_raw": true,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Votacoes",
+   "notes": "Plenary transcript PDFs from parlamento.pt, cache-first and resumable; falls back to the cached index when the site is down. INTERV_MAX_REQ caps requests per run."
+  },
+  {
+   "name": "posicoes",
+   "script": "jobs/posicoes.py",
+   "depends": [
+    "intervencoes",
+    "votacoes"
+   ],
+   "produces": [
+    "posicoes.db"
+   ],
+   "network": false,
+   "est_minutes": 1,
+   "est_peak_mb": 200,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "",
+   "notes": "Derived from intervencoes and votacoes; topics in seed/posicoes_topicos.json."
+  },
+  {
+   "name": "orcamento",
+   "script": "jobs/orcamento.py",
+   "depends": [
+    "ministerios"
+   ],
+   "produces": [
+    "orcamento.db"
+   ],
+   "network": true,
+   "est_minutes": 30,
+   "est_peak_mb": 700,
+   "est_disk_mb": 1200,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "orcamento"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Orcamento do Estado",
+   "notes": "Reads legacy .xls through the pure-Python BIFF reader in _xls.py, one workbook in memory at a time."
+  },
+  {
+   "name": "presidencia",
+   "script": "jobs/presidencia.py",
+   "depends": [
+    "dre",
+    "justica",
+    "votacoes"
+   ],
+   "produces": [
+    "presidencia.db"
+   ],
+   "network": true,
+   "est_minutes": 15,
+   "est_peak_mb": 200,
+   "est_disk_mb": 20,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "presidencia"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Atos do Presidente",
+   "notes": "PRESID_NO_FETCH=1 rebuilds from cache."
+  },
+  {
+   "name": "justica",
+   "script": "jobs/justica.py",
+   "depends": [
+    "dre",
+    "ministerios",
+    "stats"
+   ],
+   "produces": [
+    "justica.db"
+   ],
+   "network": true,
+   "est_minutes": 60,
+   "est_peak_mb": 500,
+   "est_disk_mb": 1000,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "justica"
+   ],
+   "keep_raw": true,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Justica",
+   "notes": "INE indicators, courts registry, Tribunal Constitucional and Tribunal de Contas documents. Visto 'resultado' is preserved across re-ingests. JUSTICA_ONLY selects phases."
+  },
+  {
+   "name": "provedor",
+   "script": "jobs/provedor.py",
+   "depends": [],
+   "produces": [
+    "provedor.db"
+   ],
+   "network": true,
+   "est_minutes": 8,
+   "est_peak_mb": 150,
+   "est_disk_mb": 50,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "provedor"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Provedor de Justica",
+   "notes": "Honours robots.txt."
+  },
+  {
+   "name": "reguladores",
+   "script": "jobs/reguladores.py",
+   "depends": [
+    "dre",
+    "responsaveis",
+    "stats"
+   ],
+   "produces": [
+    "reguladores.db"
+   ],
+   "network": true,
+   "est_minutes": 40,
+   "est_peak_mb": 250,
+   "est_disk_mb": 25,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "reguladores"
+   ],
+   "keep_raw": false,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Reguladores",
+   "notes": "Runs dedupe_board (duplicate mandates) and dedupe_cases on every run."
+  },
+  {
+   "name": "empresas_locais",
+   "script": "jobs/empresas_locais.py",
+   "depends": [
+    "autarquias",
+    "responsaveis",
+    "stats"
+   ],
+   "produces": [
+    "empresas_locais.db"
+   ],
+   "network": true,
+   "est_minutes": 15,
+   "est_peak_mb": 250,
+   "est_disk_mb": 30,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "empresas_locais"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Empresas municipais",
+   "notes": "DGAL Sector Empresarial Local."
+  },
+  {
+   "name": "estado_empresas",
+   "script": "jobs/estado_empresas.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "estado_empresas.db"
+   ],
+   "network": true,
+   "est_minutes": 10,
+   "est_peak_mb": 300,
+   "est_disk_mb": 30,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "estado_empresas"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: O Estado em numeros",
+   "notes": "Argument 'docs' only rebuilds the document index."
+  },
+  {
+   "name": "saude",
+   "script": "jobs/saude.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "saude.db"
+   ],
+   "network": true,
+   "est_minutes": 20,
+   "est_peak_mb": 250,
+   "est_disk_mb": 60,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "saude"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Saude",
+   "notes": "Honours robots.txt."
+  },
+  {
+   "name": "seguranca",
+   "script": "jobs/seguranca.py",
+   "depends": [
+    "autarquias",
+    "ministerios",
+    "stats"
+   ],
+   "produces": [
+    "seguranca.db"
+   ],
+   "network": true,
+   "est_minutes": 20,
+   "est_peak_mb": 250,
+   "est_disk_mb": 100,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "seguranca"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Seguranca",
+   "notes": "INE indicators and ministry pages."
+  },
+  {
+   "name": "regioes",
+   "script": "jobs/regioes.py",
+   "depends": [
+    "dre",
+    "eleicoes",
+    "stats"
+   ],
+   "produces": [
+    "regioes.db"
+   ],
+   "network": true,
+   "est_minutes": 15,
+   "est_peak_mb": 250,
+   "est_disk_mb": 60,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "regioes"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Regioes autonomas",
+   "notes": "Acores and Madeira official sites."
+  },
+  {
+   "name": "educacao",
+   "script": "jobs/educacao.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "educacao.db"
+   ],
+   "network": true,
+   "est_minutes": 40,
+   "est_peak_mb": 600,
+   "est_disk_mb": 1200,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "educacao"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Education",
+   "notes": "Large zip/xlsx inputs (about 1.1 GB cache); EDU_STEPS selects phases. Use --prune-raw on small servers."
+  },
+  {
+   "name": "dgeec",
+   "script": "jobs/dgeec.py",
+   "depends": [
+    "autarquias"
+   ],
+   "produces": [
+    "dgeec.db"
+   ],
+   "network": true,
+   "est_minutes": 5,
+   "est_peak_mb": 150,
+   "est_disk_mb": 10,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "dgeec"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: DGEEC",
+   "notes": "Education statistics keyed by municipality."
+  },
+  {
+   "name": "habitacao",
+   "script": "jobs/habitacao.py",
+   "depends": [
+    "autarquias",
+    "dre",
+    "empresas_locais",
+    "fundos",
+    "votacoes",
+    "stats"
+   ],
+   "produces": [
+    "habitacao.db"
+   ],
+   "network": true,
+   "est_minutes": 45,
+   "est_peak_mb": 500,
+   "est_disk_mb": 1200,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "habitacao"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Habitacao",
+   "notes": "INE, RNAL, PRR, contracts and housing laws; HAB_STEPS selects phases. Roughly 1.1 GB cache."
+  },
+  {
+   "name": "ine_series",
+   "script": "jobs/ine_series.py",
+   "depends": [
+    "autarquias"
+   ],
+   "produces": [
+    "ine_series.db"
+   ],
+   "network": true,
+   "est_minutes": 25,
+   "est_peak_mb": 300,
+   "est_disk_mb": 300,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "ine_series"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Immigration / INE",
+   "notes": "INE indicator JSON, honours robots.txt."
+  },
+  {
+   "name": "imigracao",
+   "script": "jobs/imigracao.py",
+   "depends": [],
+   "produces": [
+    "imigracao.db"
+   ],
+   "network": true,
+   "est_minutes": 5,
+   "est_peak_mb": 150,
+   "est_disk_mb": 15,
+   "schedule": "bootstrap",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [
+    "imigracao"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Imigracao",
+   "notes": "INE indicators and AIMA registry."
+  },
+  {
+   "name": "igf",
+   "script": "jobs/igf.py",
+   "depends": [
+    "stats"
+   ],
+   "produces": [
+    "igf.db"
+   ],
+   "network": true,
+   "est_minutes": 15,
+   "est_peak_mb": 150,
+   "est_disk_mb": 60,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "igf"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Auditorias do IGF",
+   "notes": "Honours robots.txt."
+  },
+  {
+   "name": "divida",
+   "script": "jobs/divida.py",
+   "depends": [],
+   "produces": [
+    "divida.db"
+   ],
+   "network": true,
+   "est_minutes": 1,
+   "est_peak_mb": 100,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "divida"
+   ],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Divida publica",
+   "notes": "Downloads the IGCP xlsx files itself."
+  },
+  {
+   "name": "population",
+   "script": "population.py",
+   "depends": [
+    "autarquias",
+    "stats"
+   ],
+   "produces": [
+    "autarquias.db"
+   ],
+   "network": true,
+   "est_minutes": 1,
+   "est_peak_mb": 150,
+   "est_disk_mb": 5,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Autarquias",
+   "notes": "Censos 2021 population; needs autarquias."
+  },
+  {
+   "name": "ar_opendata",
+   "script": "ar_opendata.py",
+   "depends": [
+    "agenda"
+   ],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 5,
+   "est_peak_mb": 150,
+   "est_disk_mb": 20,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Parliament open data",
+   "notes": "Official initiative steps and votes; the feed is often unreachable and the step then reports offline."
+  },
+  {
+   "name": "risco",
+   "script": "jobs/risco.py",
+   "depends": [
+    "anuncios",
+    "autarquias",
+    "stats"
+   ],
+   "produces": [
+    "risco.db"
+   ],
+   "network": false,
+   "est_minutes": 10,
+   "est_peak_mb": 600,
+   "est_disk_mb": 400,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "",
+   "notes": "Derived from contracts and announcements; no downloads."
+  },
+  {
+   "name": "risco_eval",
+   "script": "jobs/risco_eval.py",
+   "depends": [
+    "risco"
+   ],
+   "produces": [
+    "exports/risco_precision.json"
+   ],
+   "network": false,
+   "est_minutes": 1,
+   "est_peak_mb": 200,
+   "est_disk_mb": 5,
+   "schedule": "manual",
+   "enabled": true,
+   "fresh_days": 30,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "",
+   "notes": "Precision report against docs/risco_labels.csv; --template creates the labelling sheet."
+  }
+ ]
+}
