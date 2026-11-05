@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Site-wide dark mode toggle, following the system preference on the first visit and remembering the choice.
+
+### Removed
+- The edition box in the Edição Diária masthead and the print button.
+
 ## [0.1.4] - 2026-11-05
 
 ### Removed

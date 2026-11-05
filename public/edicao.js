@@ -15,12 +15,6 @@
   };
   if (q0().get("anim") === "0") document.documentElement.classList.add("noanim");
   function q0() { return new URLSearchParams(location.search); }
-  const THEME_KEY = "ed-tema";
-  const applyTheme = (t) => { document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem(THEME_KEY, t); } catch {} const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = t === "dark" ? "#131210" : "#faf7f0"; };
-  const q = new URLSearchParams(location.search);
-  applyTheme(q.get("tema") === "noite" ? "dark" : q.get("tema") === "dia" ? "light" : (() => { try { return localStorage.getItem(THEME_KEY); } catch {} })() || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
-  const toggleTheme = () => applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
-
   const spark = (pts, w = 220, h = 30) => {
     if (!pts || pts.length < 2) return "";
     const mx = Math.max(...pts.map((p) => p.v), 1), x = (i) => (i / (pts.length - 1)) * w, y = (v) => h - 3 - (v / mx) * (h - 7);
@@ -38,13 +32,13 @@
   const state = { cal: null };
   const navDate = (d, delta) => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + delta); return x.toISOString().slice(0, 10); };
 
-  const topbar = (d, extra = "") => `<div class="ed-bar no-print"><div>
+  const topbar = (d, extra = "") => `<div class="ed-bar"><div>
       <button class="btn-ed" data-go="${navDate(d.data, -1)}" title="Tecla ←">‹ Anterior</button>
       <span style="position:relative"><button class="btn-ed" id="arch-btn" aria-haspopup="true">Arquivo ▾</button><div class="pop" id="pop" hidden></div></span>
       <button class="btn-ed" data-go="${navDate(d.data, 1)}" ${d.data >= d.max ? "disabled" : ""} title="Tecla →">Seguinte ›</button>
       <button class="btn-ed" data-go="">Última edição</button>${extra}</div>
     <div><form class="ed-search" id="ed-s" autocomplete="off"><input type="search" id="ed-q" placeholder="Pesquisar entidade, contrato, lei, tema…" aria-label="Pesquisar"><div class="ed-results" id="ed-r" hidden></div></form>
-      <a class="btn-ed" href="#/painel">A minha lista</a><button class="btn-ed ed-menu" onclick="document.body.classList.toggle('nav-open')">Menu</button><button class="btn-ed" id="b-tema" title="Alternar entre edição da manhã e edição da noite">Edição da noite</button><button class="btn-ed" id="b-print">Imprimir</button><a class="btn-ed gh-link" href="https://github.com/Mais-Democracia/Estado-Aberto" target="_blank" rel="noopener" aria-label="Código aberto no GitHub (abre num novo separador)"><svg class="gh-mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></div></div>`;
+      <a class="btn-ed" href="#/painel">A minha lista</a><button class="btn-ed ed-menu" onclick="document.body.classList.toggle('nav-open')">Menu</button>${EATheme.html("btn-ed")}<a class="btn-ed gh-link" href="https://github.com/Mais-Democracia/Estado-Aberto" target="_blank" rel="noopener" aria-label="Código aberto no GitHub (abre num novo separador)"><svg class="gh-mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></div></div>`;
 
   const plateHost = () => { let h = document.getElementById("ed-plate"); if (h) { h.classList.remove("sk-plate"); h.removeAttribute("aria-hidden"); } if (!h) { h = document.createElement("div"); h.id = "ed-plate"; h.className = "wrap"; const m = document.querySelector("header.masthead"); m.insertBefore(h, m.firstChild); } return h; };
 
@@ -58,16 +52,14 @@
     const why = d.leadWhy;
     const host = plateHost();
     host.innerHTML = `<div class="ed-head">
-        <div class="ear"><b>Edição n.º ${nf0.format(d.numero)}</b>${esc(d.diaSemana)}<br>${esc(d.extenso)}</div>
         <div class="plate"><span class="k reveal" style="--i:0">Dados abertos de Portugal</span><h1 class="reveal" style="--i:1"><a href="#/"><span>Estado <i>Aberto</i></span></a></h1><span class="s reveal" style="--i:3">Diário da democracia portuguesa</span></div>
-        <div class="ear-sp" aria-hidden="true"></div>
       </div><div class="flagbar"></div>`;
     $app.innerHTML = `<div class="ed">
       ${topbar(d)}
       <div class="dateline"><span><b>Edição de ${esc(d.extenso)}</b> · ${esc(d.diaSemana)}</span>
         <span>Edição n.º ${nf0.format(d.numero)}</span></div>
       ${d.desatualizado ? `<div class="stale">Os contratos publicados mais recentes nas bases são de ${pd(d.desatualizado.contratos)}; os números de contratação desta edição referem-se a essa semana.</div>` : ""}
-      <div class="ticker no-print" aria-label="Últimas ocorrências"><div class="lab">Agora</div><div style="overflow:hidden;flex:1"><div class="track">${tick}</div></div></div>
+      <div class="ticker" aria-label="Últimas ocorrências"><div class="lab">Agora</div><div style="overflow:hidden;flex:1"><div class="track">${tick}</div></div></div>
       <div class="front">
         <div class="col">
           ${section("sec-par", "tag-par", "Parlamento", S["Parlamento"])}
@@ -82,7 +74,7 @@
             <a class="more" href="${href(L.ref)}">Ler a reportagem completa</a></article>` : '<p class="muted">Sem manchete para esta data.</p>'}
           <div class="bignum fade" style="--i:8">${n.destaques.map((x) => `<div><b>${esc(x.v)}</b><span>${esc(x.t)}</span></div>`).join("")}</div>
           ${section("sec-fis", "tag-jus fis", "Fiscalização", S["Fiscalização"])}
-          ${why ? `<details class="why no-print"><summary>Como escolhemos a manchete</summary><div>Dá-se a cada candidata uma pontuação entre 0 e 1 pela relevância democrática: votações em plenário (mais alta em votações finais de leis, rejeitadas ou decididas por poucos lugares), vetos e promulgações do Presidente, relatórios de auditoria e fiscalização (Tribunal de Contas, Provedor de Justiça, reguladores), nomeações de relevo e votos que contrariam o que o partido declarou. Contratos e apoios públicos só entram com pontuação mais baixa, crescente com o valor (escala logarítmica). Desconta-se 1,5 a 3% por dia de antiguidade e vence a pontuação mais alta; a data de referência de cada edição é a mais recente com dados em qualquer das bases.<table><tr><td><b>${esc(why.tipo)}</b>: ${esc(why.why)}</td><td><b>${why.score}</b></td></tr>${why.outros.map((o) => `<tr><td>${esc(o.tipo)}: ${esc(o.why)}</td><td>${o.score}</td></tr>`).join("")}</table></div></details>` : ""}
+          ${why ? `<details class="why"><summary>Como escolhemos a manchete</summary><div>Dá-se a cada candidata uma pontuação entre 0 e 1 pela relevância democrática: votações em plenário (mais alta em votações finais de leis, rejeitadas ou decididas por poucos lugares), vetos e promulgações do Presidente, relatórios de auditoria e fiscalização (Tribunal de Contas, Provedor de Justiça, reguladores), nomeações de relevo e votos que contrariam o que o partido declarou. Contratos e apoios públicos só entram com pontuação mais baixa, crescente com o valor (escala logarítmica). Desconta-se 1,5 a 3% por dia de antiguidade e vence a pontuação mais alta; a data de referência de cada edição é a mais recente com dados em qualquer das bases.<table><tr><td><b>${esc(why.tipo)}</b>: ${esc(why.why)}</td><td><b>${why.score}</b></td></tr>${why.outros.map((o) => `<tr><td>${esc(o.tipo)}: ${esc(o.why)}</td><td>${o.score}</td></tr>`).join("")}</table></div></details>` : ""}
         </div>
         <div class="col nums" id="sec-num">
           <h2 class="sec-h" style="--tag:var(--ed-ink)">Números do dia</h2>
@@ -108,8 +100,6 @@
 
   function wire(d) {
     $app.querySelectorAll("[data-go]").forEach((b) => (b.onclick = () => { location.hash = b.dataset.go ? "#/edicao/" + b.dataset.go : "#/"; }));
-    const tb = document.getElementById("b-tema"); if (tb) tb.onclick = toggleTheme;
-    const pb = document.getElementById("b-print"); if (pb) pb.onclick = () => window.print();
     const ab = document.getElementById("arch-btn"), pop = document.getElementById("pop");
     if (ab) ab.onclick = (e) => { e.stopPropagation(); pop.hidden = !pop.hidden; if (!pop.hidden) mountCal(pop, d, true); };
     const form = document.getElementById("ed-s"), inp = document.getElementById("ed-q"), res = document.getElementById("ed-r");
@@ -190,15 +180,13 @@
     });
     for (let k = a.paragraphs.length; k < a.charts.length; k++) body.push(chart(a.charts[k]));
     $app.innerHTML = `<div class="ed"><div class="progress" id="prog"></div>
-      <div class="art-wrap"><div class="art-nav"><a href="${back}">‹ Voltar à edição${a.date ? " de " + pd(a.date) : ""}</a><div class="no-print"><button class="btn-ed" id="fs-" aria-label="Diminuir letra">A−</button><button class="btn-ed" id="fs+" aria-label="Aumentar letra">A+</button><button class="btn-ed" id="b-tema">Edição da noite</button><button class="btn-ed" id="b-print">Imprimir</button></div></div>
+      <div class="art-wrap"><div class="art-nav"><a href="${back}">‹ Voltar à edição${a.date ? " de " + pd(a.date) : ""}</a><div ><button class="btn-ed" id="fs-" aria-label="Diminuir letra">A−</button><button class="btn-ed" id="fs+" aria-label="Aumentar letra">A+</button></div></div>
       <header class="art-head"><span class="kick reveal" style="--i:0">${esc(a.kicker)}</span><h1 class="reveal" style="--i:1">${esc(a.hed)}</h1>${a.dek ? `<p class="dek reveal" style="--i:3">${esc(a.dek)}</p>` : ""}
         <div class="byline fade" style="--i:5"><span>${esc(a.by)}</span>${a.date ? `<span>${pd(a.date)}</span>` : ""}<span>${mins} min de leitura</span></div></header>
       <div class="art-grid"><aside class="ficha"><h4>Ficha</h4><dl>${a.stats.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>${a.links.map((l) => `<a class="lk" href="${href(l.ref)}">${esc(l.label)} →</a>`).join("")}${a.relacionados.map((l) => `<a class="lk" href="${href(l.ref)}">${esc(l.label)} →</a>`).join("")}</aside>
       <div class="art-body">${body.join("")}
         ${a.flags && a.flags.length ? `<div class="flags"><b>Indicadores estatísticos da entidade</b>${a.flags.map((f) => `<div>${esc(f.text)}</div>`).join("")}<div style="margin-top:6px;font-size:.78rem;color:var(--ed-mute)">São sinais relativos a entidades semelhantes e não constituem acusação.</div></div>` : ""}
         <div class="fnotes"><h4>Fontes</h4><ol>${a.fontes.map((f) => `<li id="fn-${f.n}">${f.url ? `<a href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.label)}</a>` : esc(f.label)} <a href="#rf-${f.n}" aria-label="Voltar ao texto">↩</a></li>`).join("")}</ol><p style="color:var(--ed-mute)">Texto gerado automaticamente a partir dos registos citados; os números e as datas reproduzem os dados sem alteração.</p></div></div></div></div></div>`;
-    document.getElementById("b-tema").onclick = toggleTheme;
-    document.getElementById("b-print").onclick = () => window.print();
     let fs = 1; const root = $app.querySelector(".art-body");
     document.getElementById("fs+").onclick = () => { fs = Math.min(1.4, fs + 0.1); root.style.setProperty("--fs", fs); };
     document.getElementById("fs-").onclick = () => { fs = Math.max(0.8, fs - 0.1); root.style.setProperty("--fs", fs); };

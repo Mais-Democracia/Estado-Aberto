@@ -8,7 +8,6 @@ const fmts = Story.fmt;
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const mk = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const pad2 = (n) => String(n).padStart(2, "0");
-const THEME_KEY = "ed-tema";
 const ease = (t) => 1 - Math.pow(1 - clamp(t, 0, 1), 3);
 const DEFAULT_LINKS = [
   { label: "Parlamento", href: "#/parlamento" }, { label: "Governo", href: "#/governo" }, { label: "Dinheiro público", href: "#/contratos" },
@@ -300,12 +299,6 @@ function goScene(i, smooth) {
   closeMenu();
 }
 
-function toggleTheme() {
-  const dark = document.documentElement.getAttribute("data-theme") === "dark", t = dark ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem(THEME_KEY, t); } catch {}
-  const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = t === "dark" ? "#131210" : "#faf7f0";
-}
-
 function openMenu(focus) { if (!S.menu) return; S.menu.classList.add("open"); document.body.classList.add("st-noscroll"); if (focus) setTimeout(() => S.menu.querySelector("input").focus(), 30); }
 function closeMenu() { if (S.menu) { S.menu.classList.remove("open"); document.body.classList.remove("st-noscroll"); if (S.sc) S.sc.focus({ preventScroll: true }); } }
 
@@ -407,7 +400,7 @@ function build(def, d, params) {
     const sc = it.sc, paras = fillCopy(sc.copy, d);
     return '<section class="st-sec" id="st-' + esc(it.id) + '" data-i="' + i + '"><article class="st-cap"><p class="st-kick"><b>' + pad2(i + 1) + "</b>" + esc(sc.kicker || sc.label || "") + "</p><h2>" + headlineHtml(sc, d) + "</h2>" + paras.map((p) => "<p>" + p + "</p>").join("") + sourceHtml(sc, d) + "</article>" + (S.static ? '<figure class="st-fig"><canvas aria-label="' + esc(sc.label || "") + '"></canvas></figure>' : "") + "</section>";
   }).join("");
-  root.innerHTML = '<header class="st-nav"><a class="st-back" href="#/">← Estado Aberto</a><span class="st-title">' + esc(def.title || "") + '</span><nav class="st-tabs" aria-label="Cenas">' + tabs + '</nav><span class="st-pos"></span><span class="st-actions"><button type="button" class="st-btn" data-act="menu" aria-label="Directório (M)">Directório</button><button type="button" class="st-btn icon" data-act="theme" aria-label="Alternar modo noite">◐</button></span></header>' +
+  root.innerHTML = '<header class="st-nav"><a class="st-back" href="#/">← Estado Aberto</a><span class="st-title">' + esc(def.title || "") + '</span><nav class="st-tabs" aria-label="Cenas">' + tabs + '</nav><span class="st-pos"></span><span class="st-actions"><button type="button" class="st-btn" data-act="menu" aria-label="Directório (M)">Directório</button>' + EATheme.html("st-btn") + '</span></header>' +
     '<div class="st-bar"><i></i></div><nav class="st-rail" aria-label="Progresso"><u class="st-rail-fill"></u>' + rail + "</nav>" +
     '<div class="st-scroll" tabindex="-1">' + (S.static ? "" : '<canvas class="st-cv" role="img" aria-label="' + esc(def.title || "") + '"></canvas>') + '<main class="st-main">' + secs + "</main></div>" +
     '<div class="st-help"><span><kbd>←</kbd><kbd>→</kbd> cenas</span><span><kbd>1</kbd>–<kbd>9</kbd> saltar</span><span><kbd>M</kbd> directório</span><span><kbd>/</kbd> procurar</span></div>' +
@@ -423,7 +416,7 @@ function build(def, d, params) {
   root.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-i]"); if (b) { goScene(+b.dataset.i, true); return; }
     const a = e.target.closest("[data-act]"); if (!a) return;
-    if (a.dataset.act === "menu") openMenu(); else if (a.dataset.act === "close") closeMenu(); else if (a.dataset.act === "theme") toggleTheme();
+    if (a.dataset.act === "menu") openMenu(); else if (a.dataset.act === "close") closeMenu();
     if (e.target.closest(".st-menu a")) closeMenu();
   });
   S.menu.addEventListener("click", (e) => { if (e.target === S.menu) closeMenu(); if (e.target.closest("a")) closeMenu(); });

@@ -134,3 +134,6 @@ html:root[data-theme="dark"] .st-go { color: #ff7a6d; }
   .st-root.static .st-nav { z-index: 20; }
 }
 @media (prefers-reduced-motion: reduce) { .st-cue i, .st-coin { animation: none; } .st-bar i { transition: none; } }
+.st-btn.theme-sw { display: inline-flex; align-items: center; gap: .5em; border-color: var(--st-ink); color: var(--st-ink); font: 700 .72rem var(--st-sans); letter-spacing: .05em; text-transform: none; }
+.st-btn.theme-sw:hover { color: var(--st-paper); }
+@media (max-width: 760px) { .st-btn.theme-sw .lbl { display: none; } }
