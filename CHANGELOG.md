@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-11-05
+
 ### Added
 - `migrate` ingest step (`ingest/migrations.py`) that upgrades existing databases in place, offline and idempotently, and runs first on every update.
 - `tools/check_schema_compat.mjs`, which builds empty databases from a production schema dump and sweeps every route for missing tables or columns.
