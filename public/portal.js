@@ -365,7 +365,7 @@ async function route() {
   document.querySelectorAll(".grp").forEach((g) => g.classList.toggle("on", !!g.querySelector("a.on")));
   const fn = Portal.pages[name];
   if (!fn) { $app.innerHTML = '<p class="note warn">Página não encontrada.</p>'; return; }
-  try { await fn(arg, params); } catch (e) { console.error(e); $app.innerHTML = `<p class="note warn">Não foi possível carregar esta página (${esc(e.message)}).</p>`; }
+  try { await fn(arg, params); } catch (e) { console.error(e); if (e && e.status === 503) { const h = document.getElementById("ed-plate"); if (h) h.remove(); $app.innerHTML = noDataHtml(e); } else $app.innerHTML = `<p class="note warn">Não foi possível carregar esta página (${esc(e.message)}).</p>`; }
   if (!["entidades", "autarquias", "contratos", "calendario", "historia"].includes(name)) window.scrollTo(0, 0);
 }
 Portal.route = route;

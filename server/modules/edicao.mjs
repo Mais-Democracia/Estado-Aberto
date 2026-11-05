@@ -1,5 +1,5 @@
 export default function (ctx) {
-  const { routes, all, one, openData } = ctx;
+  const { routes, all, one, openData, unavailable } = ctx;
   const vot = openData("votacoes"), jus = openData("justica"), pres = openData("presidencia"), dre = openData("dre"), apo = openData("apoios"), resp = openData("responsaveis"), reg = openData("reguladores"), prov = openData("provedor"), igf = openData("igf"), pos = openData("posicoes"), ivn = openData("intervencoes"), dvd = openData("divida");
   const Q = (db, sql, ...p) => { try { return db ? db.prepare(sql).all(...p) : []; } catch { return []; } };
   const Q1 = (db, sql, ...p) => Q(db, sql, ...p)[0] || null;
@@ -83,6 +83,7 @@ export default function (ctx) {
   const MIN_DATE = "2013-01-01";
   const normDate = (s) => {
     const mx = defaultDate();
+    if (!mx) return undefined;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "") || isNaN(DT(s))) return mx;
     const t = todayStr();
     return s < MIN_DATE ? MIN_DATE : s > t ? t : s;
@@ -450,10 +451,13 @@ export default function (ctx) {
     };
   }
 
-  routes["/api/edicao/dia"] = (q) => edition(normDate(q.get("data")));
+  routes["/api/edicao/dia"] = (q) => {
+    const d = normDate(q.get("data"));
+    return d ? edition(d) : unavailable("politica", "não foi encontrada ou está vazia");
+  };
 
   routes["/api/edicao/arquivo"] = (q) => {
-    const m = /^\d{4}-\d{2}$/.test(q.get("mes") || "") ? q.get("mes") : defaultDate().slice(0, 7);
+    const m = /^\d{4}-\d{2}$/.test(q.get("mes") || "") ? q.get("mes") : (defaultDate() || todayStr()).slice(0, 7);
     const a = m + "-01", b = m + "-31";
     const c = new Map(P("SELECT published d, COUNT(*) n FROM contracts WHERE published >= ? AND published <= ? GROUP BY published", a, b).map((r) => [r.d, r.n]));
     const v = new Map(Q(vot, "SELECT data d, COUNT(*) n FROM votos WHERE orgao = 'Plenário' AND data >= ? AND data <= ? GROUP BY data", a, b).map((r) => [r.d, r.n]));

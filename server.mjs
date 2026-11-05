@@ -1,4 +1,4 @@
-// Dependency-free API + static server.  Run: node server.mjs  (PORT=3000)
+// Dependency-free API + static server.  Run: node server.mjs  (PORT=3000, ESTADO_ABERTO_DATA=./data)
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -6,10 +6,46 @@ import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const db = new DatabaseSync(path.join(root, "data", "politica.db"), { readOnly: true });
-const userDb = new DatabaseSync(path.join(root, "data", "user.db"));
-userDb.exec(`CREATE TABLE IF NOT EXISTS follows (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, ref TEXT, label TEXT, created TEXT, UNIQUE(kind, ref));`);
-const powers = JSON.parse(fs.readFileSync(path.join(root, "seed", "powers.json"), "utf8"));
+const dataDir = path.resolve(process.env.ESTADO_ABERTO_DATA || path.join(root, "data"));
+const BOOTSTRAP = "execute o bootstrap (docs/CONTRIBUTING.md)";
+
+class DataMissing extends Error {
+  constructor(name, why = "não encontrada") { super(`${name} ${why}; ${BOOTSTRAP}`); this.dbName = name; }
+}
+const unavailable = (name, why) => ({ available: false, note: `A base data/${name}.db ${why || "não foi encontrada"}; ${BOOTSTRAP}.` });
+
+const requested = new Set(["politica"]);
+const handles = new Map();
+const readDb = (name) => {
+  const file = path.join(dataDir, `${name}.db`);
+  let h = handles.get(name);
+  if (h) { if (fs.existsSync(file)) return h; try { h.close(); } catch {} handles.delete(name); }
+  if (!fs.existsSync(file)) throw new DataMissing(name);
+  try {
+    h = new DatabaseSync(file, { readOnly: true });
+    h.exec("PRAGMA cache_size = -1024; PRAGMA mmap_size = 0; PRAGMA query_only = 1;");
+  } catch (e) { throw new DataMissing(name, `ilegível (${e.message})`); }
+  handles.set(name, h);
+  return h;
+};
+const lazyDb = (name) => ({ prepare: (sql) => readDb(name).prepare(sql), exec: (sql) => readDb(name).exec(sql) });
+const db = lazyDb("politica");
+
+let userHandle = null;
+const userDb = {
+  prepare(sql) {
+    if (!userHandle) {
+      try {
+        fs.mkdirSync(dataDir, { recursive: true });
+        userHandle = new DatabaseSync(path.join(dataDir, "user.db"));
+        userHandle.exec("CREATE TABLE IF NOT EXISTS follows (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, ref TEXT, label TEXT, created TEXT, UNIQUE(kind, ref));");
+      } catch (e) { userHandle = null; throw new DataMissing("user", `não pôde ser aberta (${e.message})`); }
+    }
+    return userHandle.prepare(sql);
+  },
+};
+let powersCache = null;
+const powers = () => (powersCache ||= (() => { try { return JSON.parse(fs.readFileSync(path.join(root, "seed", "powers.json"), "utf8")); } catch { return {}; } })());
 
 const all = (sql, ...p) => db.prepare(sql).all(...p);
 const one = (sql, ...p) => db.prepare(sql).get(...p);
@@ -17,7 +53,7 @@ const has = (t) => !!one("SELECT 1 x FROM sqlite_master WHERE name = ?", t);
 const num = (v, d, lo = 1, hi = 1e9) => Math.min(hi, Math.max(lo, Number.parseInt(v ?? d, 10) || d));
 const like = (s) => `%${String(s).replace(/[%_]/g, "")}%`;
 const fts = (s) => String(s).replace(/["*()^:-]/g, " ").split(/\s+/).filter(Boolean).map((w) => `"${w}"*`).join(" ");
-const meta = () => Object.fromEntries(all("SELECT key, value FROM meta").map((r) => [r.key, r.value]));
+const meta = () => (has("meta") ? Object.fromEntries(all("SELECT key, value FROM meta").map((r) => [r.key, r.value])) : {});
 const DIRECT = "procedure LIKE 'Ajuste Direto%'";
 
 /* ---------- risk indicators (transparent, peer-relative; indicators, not accusations) ---------- */
@@ -30,6 +66,7 @@ function peerMedians(kind) {
                     FROM buyer_stats b JOIN entities e ON e.nif = b.nif LEFT JOIN buyer_mod_stats m ON m.nif = b.nif
                     WHERE e.kind = ? AND b.n >= 20 AND b.value > 0`, kind);
   const out = { n: rows.length, direct: median(rows.map((r) => r.dv).filter((x) => x != null)), single: median(rows.map((r) => r.sb).filter((x) => x != null)), overrun: median(rows.map((r) => r.ov).filter((x) => x != null)), bigmod: median(rows.map((r) => r.bm).filter((x) => x != null)) };
+  if (peerCache.size >= 32) peerCache.delete(peerCache.keys().next().value);
   peerCache.set(kind, out);
   return out;
 }
@@ -64,22 +101,60 @@ const memo = (fn, ttl = 3600000) => {   // stale-while-revalidate: an expired en
     return val;
   };
 };
+const countOf = (name, sql) => { try { return db.prepare(sql).get().n; } catch (e) { if (e instanceof DataMissing) return 0; return 0; } };
+const BIG = 200 * 1024 * 1024;
+function dbReport(name) {
+  const file = path.join(dataDir, `${name}.db`);
+  if (!fs.existsSync(file)) return { exists: false, available: false, detail: `${name}.db não encontrada; ${BOOTSTRAP}` };
+  const st = fs.statSync(file), out = { exists: true, size_bytes: st.size, modified: st.mtime.toISOString(), tables: {}, rows: 0, approx: st.size > BIG };
+  try {
+    const h = readDb(name);
+    const names = h.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '%\\_fts%' ESCAPE '\\' ORDER BY name").all().map((r) => r.name);
+    for (const t of names) {
+      let n = 0;
+      try { n = out.approx ? (h.prepare(`SELECT MAX(rowid) n FROM "${t}"`).get().n || 0) : h.prepare(`SELECT COUNT(*) n FROM "${t}"`).get().n; } catch {}
+      out.tables[t] = n; out.rows += n;
+    }
+    try { const m = h.prepare("SELECT key, value FROM meta WHERE key IN ('built','updated','contracts_updated','version')").all(); if (m.length) out.meta = Object.fromEntries(m.map((r) => [r.key, r.value])); } catch {}
+    out.available = out.rows > 0;
+    if (!out.available) out.detail = `base vazia; ${BOOTSTRAP}`;
+  } catch (e) { out.available = false; out.detail = e.message; }
+  return out;
+}
+let statusAt = 0, statusVal = null;
+function statusReport() {
+  if (statusVal && Date.now() - statusAt < 30000) return statusVal;
+  const names = new Set([...requested]);
+  try { for (const f of fs.readdirSync(dataDir)) if (/^[a-z_]+\.db$/.test(f) && f !== "user.db") names.add(f.slice(0, -3)); } catch {}
+  const modules = {};
+  for (const n of [...names].sort()) modules[n] = dbReport(n);
+  const core = modules.politica || {};
+  let m = {};
+  try { m = meta(); } catch {}
+  const mtimes = Object.values(modules).filter((x) => x.modified).map((x) => x.modified).sort();
+  const t = core.tables || {};
+  statusVal = {
+    ...m,
+    available: !!core.available,
+    data_dir: dataDir.startsWith(root + path.sep) ? path.relative(root, dataDir) : dataDir,
+    data_version: { built: m.built || m.contracts_updated || null, newest_file: mtimes.length ? mtimes[mtimes.length - 1] : null, oldest_file: mtimes[0] || null },
+    counts: {
+      entities: t.entities || 0, public_bodies: core.available ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE is_public = 1") : 0,
+      municipios: core.available ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE kind = 'municipio'") : 0,
+      freguesias: core.available ? countOf("politica", "SELECT COUNT(*) n FROM entities WHERE kind = 'freguesia'") : 0,
+      contracts: t.contracts || 0, events: t.events || 0, initiatives: t.initiatives || 0, votes: t.votes || 0,
+      deputies: core.available ? countOf("politica", "SELECT COUNT(*) n FROM people WHERE body = 'Assembleia da República'") : 0,
+    },
+    modules,
+    unavailable: Object.keys(modules).filter((k) => !modules[k].available),
+    memory: { rss_mb: Math.round(process.memoryUsage.rss() / 1048576), heap_mb: Math.round(process.memoryUsage().heapUsed / 1048576) },
+  };
+  statusAt = Date.now();
+  return statusVal;
+}
 const procedureList = memo(() => all("SELECT procedure, COUNT(*) n FROM contracts GROUP BY procedure ORDER BY n DESC LIMIT 12"), 86400000);
 const routes = {
-  "/api/status": memo(() => ({
-    ...meta(),
-    counts: {
-      entities: one("SELECT COUNT(*) n FROM entities").n,
-      public_bodies: one("SELECT COUNT(*) n FROM entities WHERE is_public = 1").n,
-      municipios: one("SELECT COUNT(*) n FROM entities WHERE kind = 'municipio'").n,
-      freguesias: one("SELECT COUNT(*) n FROM entities WHERE kind = 'freguesia'").n,
-      contracts: has("contracts") ? one("SELECT COUNT(*) n FROM contracts").n : 0,
-      events: one("SELECT COUNT(*) n FROM events").n,
-      initiatives: one("SELECT COUNT(*) n FROM initiatives").n,
-      votes: one("SELECT COUNT(*) n FROM votes").n,
-      deputies: one("SELECT COUNT(*) n FROM people WHERE body = 'Assembleia da República'").n,
-    },
-  })),
+  "/api/status": () => statusReport(),
   "/api/overview": memo(() => ({
     byYear: all(`SELECT year, COUNT(*) n, ROUND(SUM(price)) value, ROUND(100.0 * SUM(CASE WHEN ${DIRECT} THEN price END) / SUM(price), 1) direct_pct
                  FROM contracts WHERE year BETWEEN 2012 AND 2100 GROUP BY year ORDER BY year`),
@@ -238,7 +313,7 @@ const routes = {
     }
     return { intro: intro.join(" "), updated: fs.statSync(file).mtime.toISOString(), sections };
   },
-  "/api/powers": () => powers,
+  "/api/powers": () => powers(),
   "/api/events": (q) => {
     const from = q.get("from") || "0000", to = q.get("to") || "9999";
     const where = ["start >= ?", "start < ?"], args = [from, to];
@@ -284,17 +359,40 @@ const routes = {
 };
 
 /* ---------- plug-in modules: server/modules/*.mjs  (see docs/MODULES.md) ---------- */
-const openData = (name) => { const f = path.join(root, "data", `${name}.db`); return fs.existsSync(f) ? new DatabaseSync(f, { readOnly: true }) : null; };
-const ctx = { db, userDb, all, one, has, num, like, fts, meta, routes, root, openData };
+const openData = (name) => {
+  requested.add(name);
+  if (!fs.existsSync(path.join(dataDir, `${name}.db`))) return null;
+  return lazyDb(name);
+};
+const ctx = { db, userDb, all, one, has, num, like, fts, meta, routes, root, openData, DataMissing, unavailable };
 const modDir = path.join(root, "server", "modules");
 const loaded = [];
 for (const f of fs.existsSync(modDir) ? fs.readdirSync(modDir).filter((x) => x.endsWith(".mjs")).sort() : []) {
   try { await (await import(path.join(modDir, f))).default(ctx); loaded.push(f); } catch (e) { console.error("module failed:", f, e.message); }
 }
 // aggregate "overview" endpoints of plug-in modules are expensive and change rarely: cache per query string for 10 minutes
+const OV_MAX = 48, OV_BYTES = 6 * 1024 * 1024;
+let ovBytes = 0;
+const ovCache = new Map();
 for (const key of Object.keys(routes).filter((k) => /^\/api\/[a-z_]+\/overview$/.test(k))) {
-  const fn = routes[key], cache = new Map();
-  routes[key] = (q, req, body) => { const k = q.toString(), hit = cache.get(k); if (hit) { if (Date.now() - hit.at > 3600000 && !hit.busy) { hit.busy = true; setTimeout(() => { try { cache.set(k, { at: Date.now(), v: fn(q, req, body) }); } catch { hit.busy = false; } }, 0); } return hit.v; } const v = fn(q, req, body); cache.set(k, { at: Date.now(), v }); return v; };
+  const fn = routes[key];
+  const store = (k, v) => {
+    const size = JSON.stringify(v ?? null).length;
+    if (size > OV_BYTES / 4) return;
+    const old = ovCache.get(k); if (old) { ovBytes -= old.size; ovCache.delete(k); }
+    while (ovCache.size >= OV_MAX || ovBytes + size > OV_BYTES) { const [fk, fv] = ovCache.entries().next().value; ovBytes -= fv.size; ovCache.delete(fk); }
+    ovCache.set(k, { at: Date.now(), v, size }); ovBytes += size;
+  };
+  routes[key] = (q, req, body) => {
+    const k = key + "?" + q.toString(), hit = ovCache.get(k);
+    if (hit) {
+      if (Date.now() - hit.at > 3600000 && !hit.busy) { hit.busy = true; setTimeout(() => { try { store(k, fn(q, req, body)); } catch { hit.busy = false; } }, 0); }
+      return hit.v;
+    }
+    const v = fn(q, req, body);
+    if (!(v && v.available === false)) store(k, v);
+    return v;
+  };
 }
 // transient SQLITE_BUSY / "database is locked" (an ingest is writing): retry a few times instead of surfacing an error
 const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -308,31 +406,67 @@ routes["/api/modules"] = () => ({
 });
 
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json", ".woff2": "font/woff2" };
-const readBody = (req) => new Promise((res) => { let d = ""; req.on("data", (c) => (d += c)); req.on("end", () => { try { res(JSON.parse(d || "{}")); } catch { res({}); } }); });
+
+const MAX_BODY = 1 << 20;
+const readBody2 = (req) => new Promise((res) => { let d = "", n = 0; req.on("data", (c) => { n += c.length; if (n <= MAX_BODY) d += c; }); req.on("end", () => { try { res(JSON.parse(d || "{}")); } catch { res({}); } }); });
+const sendJson = (res, code, obj) => {
+  const body = JSON.stringify(obj);
+  res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
+  res.end(body);
+};
+const dadosIndisponiveis = (detail, db) => ({ error: "dados_indisponiveis", detail, ...(db ? { db } : {}) });
+const unavailableOf = (out) => {
+  if (!out || typeof out !== "object" || out.updating) return null;
+  const txt = out.available === false ? out.note : typeof out.error === "string" ? out.error : null;
+  if (!txt || !/data\/[a-z_]+\.db/.test(txt) || !/ainda não foi gerada|não existe|não foi encontrada|ilegível/.test(txt)) return null;
+  const name = txt.match(/data\/([a-z_]+)\.db/)[1];
+  return { name, detail: `${name} não encontrada; ${BOOTSTRAP}` };
+};
+const failure = (e) => {
+  if (e instanceof DataMissing) return { code: 503, body: dadosIndisponiveis(e.message, e.dbName) };
+  const msg = String(e && e.message || e);
+  if (/no such (table|column)|malformed|not a database|disk image|unable to open/i.test(msg)) return { code: 503, body: dadosIndisponiveis(`base incompleta ou inválida (${msg}); ${BOOTSTRAP}`) };
+  if (e instanceof TypeError && /null|undefined/.test(msg)) return { code: 503, body: dadosIndisponiveis(`dados em falta (${msg}); ${BOOTSTRAP}`) };
+  return { code: 500, body: { error: "erro_interno", detail: msg } };
+};
+const publicDir = path.join(root, "public");
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
   try {
     if (url.pathname.startsWith("/api/")) {
-      const fn = routes[url.pathname];
-      const body = req.method === "POST" ? await readBody(req) : {};
-      const out = fn ? fn(url.searchParams, req, body) : null;
-      res.writeHead(out ? 200 : 404, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
-      return res.end(JSON.stringify(out ?? { error: "not found" }));
+      const fn = Object.hasOwn(routes, url.pathname) ? routes[url.pathname] : null;
+      if (!fn) return sendJson(res, 404, { error: "not found" });
+      const body = req.method === "POST" ? await readBody2(req) : {};
+      let out;
+      try { out = fn(url.searchParams, req, body); } catch (e) {
+        const f = failure(e);
+        if (f.code === 500) console.error("route failed:", url.pathname, e && e.stack || e);
+        return sendJson(res, f.code, f.body);
+      }
+      const un = unavailableOf(out);
+      if (un) return sendJson(res, 503, dadosIndisponiveis(un.detail, un.name));
+      return out ? sendJson(res, 200, out) : sendJson(res, 404, { error: "not found" });
     }
-    let file = path.join(root, "public", url.pathname === "/" ? "index.html" : url.pathname);
-    if (!file.startsWith(path.join(root, "public")) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(root, "public", "index.html");
+    let file = path.join(publicDir, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
+    if (!file.startsWith(publicDir) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(publicDir, "index.html");
     const st = fs.statSync(file), etag = `W/"${st.size}-${Math.floor(st.mtimeMs)}"`;
     const hdr = { "Content-Type": types[path.extname(file)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag };
     if (req.headers["if-none-match"] === etag) { res.writeHead(304, hdr); return res.end(); }
     res.writeHead(200, hdr);
     fs.createReadStream(file).pipe(res);
   } catch (e) {
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: String(e) }));
+    console.error("request failed:", url.pathname, e && e.message);
+    if (!res.headersSent) sendJson(res, 500, { error: "erro_interno", detail: String(e && e.message || e) });
+    else res.end();
   }
-}).listen(process.env.PORT || 3000, "0.0.0.0", () => {
+}).listen(process.env.PORT || 3000, process.env.HOST || "0.0.0.0", () => {
   console.log("http://localhost:" + (process.env.PORT || 3000));
-  const warm = () => { for (const k of Object.keys(routes).filter((x) => /^\/api\/(overview|changes|status|contracts|(saude|seguranca|justica|educacao)\/overview)$/.test(x))) { try { const t0 = Date.now(); routes[k](new URLSearchParams()); console.log('warm', k, Date.now() - t0, 'ms'); } catch (e) { console.error("warm-up failed:", k, e.message); } } };
-  setTimeout(warm, 200); setInterval(warm, 3 * 60 * 1000).unref();   // < half of the shortest cache TTL (5 min for /api/changes) so entries never go stale   // keep the 10-min memo hot so the home page never pays the 3 s query
+  const warm = () => {
+    for (const k of Object.keys(routes).filter((x) => /^\/api\/(overview|changes|status|contracts|(saude|seguranca|justica|educacao)\/overview)$/.test(x))) {
+      try { const t0 = Date.now(); routes[k](new URLSearchParams()); console.log("warm", k, Date.now() - t0, "ms"); }
+      catch (e) { if (!(e instanceof DataMissing) && !/no such/.test(String(e.message))) console.error("warm-up failed:", k, e.message); }
+    }
+  };
+  setTimeout(warm, 200); setInterval(warm, 3 * 60 * 1000).unref();
 });

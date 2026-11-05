@@ -1,7 +1,7 @@
-export default function register({ routes, openData, all: coreAll, one: coreOne }) {
+export default function register({ routes, openData, all: coreAll, one: coreOne, DataMissing, unavailable }) {
   const TTL = 600000;
   const dbs = {};
-  const db = (n) => (dbs[n] ||= openData(n));
+  const db = (n) => (dbs[n] ||= openData(n)) || (() => { throw new DataMissing(n); })();
   const Q = (n, sql, ...a) => db(n).prepare(sql).all(...a);
   const Q1 = (n, sql, ...a) => db(n).prepare(sql).get(...a);
   const call = (p, params = {}) => routes[p](new URLSearchParams(params));
@@ -453,6 +453,7 @@ export default function register({ routes, openData, all: coreAll, one: coreOne 
     indicadores: "Como está o país que estas decisões mudam?",
   };
   const cached = (key, fn) => {
+    if (cache.size >= 64 && !cache.has(key)) cache.delete(cache.keys().next().value);
     const hit = cache.get(key);
     if (hit) {
       if (Date.now() - hit.at > TTL && !hit.busy) { hit.busy = true; setTimeout(() => { try { cache.set(key, { at: Date.now(), v: fn() }); } catch { hit.busy = false; } }, 0); }
@@ -464,12 +465,16 @@ export default function register({ routes, openData, all: coreAll, one: coreOne 
   };
 
   for (const slug of Object.keys(builders)) {
-    routes["/api/historias/" + slug] = (q) => {
+    const handler = (q) => {
       const c = q.get("concelho");
       if (c && slug === "poder-local") return cached("pl:" + norm(c), () => poderLocalConcelho(c));
       if (c && slug === "indicadores") return cached("ind:" + norm(c), () => concelhoIndicadores(c));
       if (q.get("index") && slug === "poder-local") return cached("pl:index", () => ({ asof: "2025-10-12", fields: ["name", "id", "party"], rows: indexMunis() }));
       return cached(slug, () => build(slug));
+    };
+    routes["/api/historias/" + slug] = (q) => {
+      const v = handler(q);
+      return v && v.datasets && !Object.keys(v.datasets).length ? unavailable("politica", "não foi encontrada ou está vazia") : v;
     };
   }
   routes["/api/historias"] = () => ({ slugs: Object.keys(builders), questions: QUESTIONS });

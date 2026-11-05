@@ -1,7 +1,11 @@
 "use strict";
 const $app = document.getElementById("app");
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const api = (p) => fetch("/api/" + p).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); });
+const api = (p) => fetch("/api/" + p).then(async (r) => {
+  if (!r.ok) { const e = new Error(r.status); e.status = r.status; e.body = await r.json().catch(() => null); throw e; }
+  return r.json();
+});
+const noDataHtml = (e) => `<section class="panel nodata"><h2>Sem dados locais</h2><p class="empty">Sem dados locais: corra o bootstrap (docs/CONTRIBUTING.md).</p>${e && e.body && e.body.detail ? `<p class="note">${esc(e.body.detail)}</p>` : ""}</section>`;
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const pad = (n) => String(n).padStart(2, "0");
