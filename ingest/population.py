@@ -5,6 +5,7 @@ import json
 import sqlite3
 from datetime import datetime
 
+import migrations
 from common import DATA_DIR, db, get, get_json, ROOT, set_meta
 
 INE = "https://www.ine.pt/ine/json_indicador/pindica.jsp?op=2&varcd=0011609&Dim1=S7A2021&Dim3=T&Dim4=T&lang=PT"
@@ -14,8 +15,7 @@ SRC = "INE Censos 2021"
 
 
 def ensure_column(con):
-    if "population_source" not in [r[1] for r in con.execute("PRAGMA table_info(entities)")]:
-        con.execute("ALTER TABLE entities ADD COLUMN population_source TEXT")
+    migrations.ensure_politica(con)
 
 
 def municipios(con):

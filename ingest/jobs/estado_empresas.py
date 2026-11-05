@@ -15,10 +15,12 @@ import csv
 import difflib
 import io
 import json
+import os
 import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import time
 import unicodedata
 import urllib.request
@@ -26,7 +28,9 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 
-from common import DATA_DIR, ROOT
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import migrations  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
 NAME = "estado_empresas"
 DB = DATA_DIR / f"{NAME}.db"
@@ -839,7 +843,7 @@ def main():
 
 def docs_only():
     con = sqlite3.connect(DB)
-    con.execute("CREATE TABLE IF NOT EXISTS see_docs (kind TEXT, year INTEGER, quarter INTEGER, title TEXT, url TEXT, per_company INTEGER DEFAULT 0)")
+    migrations.ensure_estado_empresas(con)
     con.execute("DELETE FROM see_docs")
     meta = {"sources": {}}
     n = load_see_docs(con, meta)

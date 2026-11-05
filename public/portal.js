@@ -245,7 +245,7 @@ Portal.page("entidades", async (_, p) => {
     <div class="pagehead"><div><h1>Instituições públicas</h1><p class="lead">${Portal.int(d.total)} entidades${p.kind ? " em “" + esc(Portal.kindLabel(p.kind)) + "”" : ""}. Cada uma ligada aos seus contratos, fornecedores e indicadores.</p></div></div>
     <div class="side"><aside class="rail"><h4>Tipo</h4><a href="${link({ kind: "", page: 1 })}" class="${!p.kind ? "on" : ""}">Todas</a>
       ${d.kinds.map((k) => `<a href="${link({ kind: k.kind, page: 1 })}" class="${p.kind === k.kind ? "on" : ""}">${esc(Portal.kindLabel(k.kind))}<span>${Portal.int(k.n)}</span></a>`).join("")}</aside>
-    <section><div class="toolbar"><input type="search" id="eq" placeholder="Filtrar por nome ou NIF" value="${esc(p.q || "")}" style="flex:1;min-width:200px"></div>
+    <section>${d.dados_parciais ? `<p class="note small">${esc(d.nota || "dados em atualização")}: a população das entidades ainda não está disponível.</p>` : ""}<div class="toolbar"><input type="search" id="eq" placeholder="Filtrar por nome ou NIF" value="${esc(p.q || "")}" style="flex:1;min-width:200px"></div>
     <div class="panel" style="padding:0">${table([
       { h: "Entidade", sort: "name", f: (r) => `${entLink(r.id, r.name)}<div class="small muted">${esc(Portal.kindLabel(r.kind))}${r.municipality ? " · " + esc(r.municipality) : ""}</div>` },
       { h: "Contratos", sort: "n", num: 1, f: (r) => Portal.int(r.n) }, { h: "Valor", sort: "value", num: 1, f: (r) => Portal.eur(r.value) },

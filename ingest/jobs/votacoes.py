@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import DATA_DIR, ROOT, UA  # noqa: E402
+import migrations  # noqa: E402
 
 NAME = "votacoes"
 DB = DATA_DIR / f"{NAME}.db"
@@ -627,15 +628,7 @@ def main():
     con = sqlite3.connect(f"file:{DB}", uri=True, timeout=60)
     con.execute("PRAGMA journal_mode=WAL")
     con.executescript(SCHEMA)
-    if "diploma_bid" not in [r[1] for r in con.execute("PRAGMA table_info(fases)")]:
-        con.execute("ALTER TABLE fases ADD COLUMN diploma_bid INTEGER")
-    if "inconsistente" not in [r[1] for r in con.execute("PRAGMA table_info(votos)")]:
-        con.execute("ALTER TABLE votos ADD COLUMN inconsistente INTEGER")
-    cols = [r[1] for r in con.execute("PRAGMA table_info(iniciativas)")]
-    if "leg_fim" not in cols:
-        con.execute("ALTER TABLE iniciativas ADD COLUMN leg_fim TEXT")
-    if "transitou" not in cols:
-        con.execute("ALTER TABLE iniciativas ADD COLUMN transitou INTEGER DEFAULT 0")
+    migrations.ensure_votacoes(con)
     client = Client()
     stopped = None
     # 1. listings

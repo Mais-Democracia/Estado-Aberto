@@ -34,7 +34,7 @@ Releases carry code and instructions only. Real data is never committed, attache
 - `resources`: the updater refuses when free disk or available RAM is below these numbers (and below its own floors of 5 GB and 200 MB).
 - `post_update`: steps run before the switch; `doctor` runs `python3 tools/doctor.py --offline`. A failure aborts the update.
 - `migrations`: shell commands run inside the new release, with `ESTADO_ABERTO_DATA` set, before the switch. Keep them idempotent. A failure aborts the update. Optional `ops/migrations.json` (a JSON list) feeds this field.
-- `ingest.run_on_update`: job names from `ingest/run_all.py --list`. They are queued and run after the switch by the low-priority runner; failures are recorded in `/var/lib/estado-aberto/state/last_update.json` and never roll back code.
+- `ingest.run_on_update`: job names from `ingest/run_all.py --list`. They are queued and run after the switch by the low-priority runner; failures are recorded in `/var/lib/estado-aberto/state/last_update.json` and never roll back code. Put `migrate` first whenever a release adds a column or table to an existing database (`"run_on_update": ["migrate"]`, or `tools/release.sh --run-on-update migrate`): it runs `ingest/migrations.py`, which upgrades the installed databases in place, offline and idempotently, and the daily run repeats it.
 - `ingest.schedule_changes`: informational list of changes to the daily/weekly schedule.
 
 ## Rules

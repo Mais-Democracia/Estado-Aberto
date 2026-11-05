@@ -146,6 +146,7 @@
         ${sel("year", p.year, [["", "Todos os anos"], ...(d.years || []).map((y) => [y, y])])}
         ${sel("action", p.action, [["", "Nomeação e exoneração"], ["nomeação", "Nomeações"], ["designação", "Designações (gestores)"], ["exoneração", "Exonerações"]])}
         <button class="btn" type="submit">Filtrar</button></form>
+      ${d.dados_parciais ? `<p class="note small">${esc(d.nota || "dados em atualização")}</p>` : ""}
       <p class="small muted">${int(d.total)} ato(s) individual(is).</p>
       <div class="panel" style="padding:0">${d.total ? table([
         { h: "Data", f: (r) => esc(d10(r.date)) },
@@ -219,6 +220,7 @@
         { h: "Declaração", f: (r) => esc(r.year) }], d.interested)}<p class="rs-neutral">Ligação declarada pelo próprio titular no registo de interesses oficial; não implica irregularidade.</p>` : ""}
       ${d.cresap.length ? `<h3 style="margin:1rem 0 .2rem">Concursos CReSAP</h3>${table([{ h: "Concurso", f: (r) => `<span class="small">${esc(r.code)}</span>` }, { h: "Cargo", f: (r) => esc(r.role) }, { h: "Estado", f: (r) => esc(r.status) }, { h: "Documentos", f: (r) => [ext(r.proposal_url, "proposta"), ext(r.item_url, "ficha")].filter(Boolean).join(" · ") }], d.cresap)}` : ""}
       <h3 style="margin:1rem 0 .2rem">Histórico de nomeações e propostas</h3>
+      ${d.dados_parciais ? `<p class="small muted">${esc(d.nota || "dados em atualização")}</p>` : ""}
       ${(d.nomeacoes || []).length ? `<h4 style="margin:.4rem 0">Nomeações e exonerações no Diário da República</h4>${table([{ h: "Data", f: (r) => esc(d10(r.date)) }, { h: "Tipo", f: (r) => esc(r.action) }, { h: "Pessoa", f: (r) => esc(r.person) }, { h: "Cargo", f: (r) => esc(r.role || "—") }, { h: "Fonte", f: (r) => ext(r.source_url, r.act || "DRE") }], d.nomeacoes)}` : '<p class="muted small">Sem nomeações ou exonerações desta entidade na série I do Diário da República (cobertura parcial: só ligações por nome exato).</p>'}
       ${(d.cresap_results || []).length ? `<h4 style="margin:.8rem 0 .2rem">Propostas da CReSAP</h4><p class="note warn small"><b>Lista de candidatos (3 finalistas), não designação final.</b> A escolha é do Governo; estas linhas não dizem quem ocupou o cargo.</p>${table([{ h: "Data", f: (r) => esc(d10(r.date) || "—") }, { h: "Cargo", f: (r) => esc(r.role) }, { h: "Finalista", f: (r) => esc(r.candidate || "—") }, { h: "Natureza", f: (r) => `<span class="small">${esc(cresapLabel(r.outcome))}</span>` }, { h: "Fonte", f: (r) => ext(r.pdf_url, "CReSAP") }], d.cresap_results)}` : ""}
       </section>`);

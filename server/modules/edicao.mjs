@@ -470,7 +470,9 @@ export default function (ctx) {
 
   routes["/api/edicao/dia"] = (q) => {
     const d = normDate(q.get("data"));
-    return d ? edition(d) : unavailable("politica", "não foi encontrada ou está vazia");
+    if (d) return edition(d);
+    if (!one("SELECT 1 x FROM sqlite_master WHERE name = 'contracts'")) return unavailable("politica", "não foi encontrada ou está vazia");
+    return { ...edition(todayStr()), dados_parciais: true, nota: "dados em atualização" };
   };
 
   routes["/api/edicao/arquivo"] = (q) => {

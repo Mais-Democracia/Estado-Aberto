@@ -64,6 +64,15 @@ const powers = () => (powersCache ||= (() => { try { return JSON.parse(fs.readFi
 
 const all = (sql, ...p) => db.prepare(sql).all(...p);
 const one = (sql, ...p) => db.prepare(sql).get(...p);
+const colCache = new Map();
+const hasCol = (table, col) => {
+  let stamp = 0;
+  try { stamp = fs.statSync(path.join(dataDir, "politica.db")).mtimeMs; } catch {}
+  const k = table;
+  let e = colCache.get(k);
+  if (!e || e.stamp !== stamp) { e = { stamp, cols: new Set(all(`PRAGMA table_info(${table})`).map((r) => r.name)) }; colCache.set(k, e); }
+  return e.cols.has(col);
+};
 const has = (t) => !!one("SELECT 1 x FROM sqlite_master WHERE name = ?", t);
 const num = (v, d, lo = 1, hi = 1e9) => Math.min(hi, Math.max(lo, Number.parseInt(v ?? d, 10) || d));
 const like = (s) => `%${String(s).replace(/[%_]/g, "")}%`;
@@ -190,13 +199,16 @@ const routes = {
       direct: "(b.direct_value * 1.0 / NULLIF(b.value,0)) DESC", percapita: "(b.value * 1.0 / NULLIF(e.population,0)) DESC" };
     const order = sorts[q.get("sort")] || sorts.value;
     const limit = num(q.get("limit"), 50, 1, 200), offset = (num(q.get("page"), 1) - 1) * limit;
+    const partial = !hasCol("entities", "population_source");
+    const popSource = partial ? "NULL AS population_source" : "e.population_source";
     const base = `FROM entities e LEFT JOIN buyer_stats b ON b.nif = e.nif WHERE ${where.join(" AND ")}`;
     return {
       total: one(`SELECT COUNT(*) n ${base}`, ...args).n,
-      rows: all(`SELECT e.id, e.name, e.kind, e.level, e.nif, e.municipality, e.district, e.population, e.population_source, e.website, e.ministry,
+      rows: all(`SELECT e.id, e.name, e.kind, e.level, e.nif, e.municipality, e.district, e.population, ${popSource}, e.website, e.ministry,
                         COALESCE(b.n,0) n, ROUND(COALESCE(b.value,0)) value, ROUND(100.0 * b.direct_value / NULLIF(b.value,0), 1) direct_pct
                  ${base} ORDER BY ${order} LIMIT ? OFFSET ?`, ...args, limit, offset),
       kinds: all("SELECT kind, COUNT(*) n FROM entities WHERE is_public = 1 GROUP BY kind ORDER BY n DESC"),
+      ...(partial ? { dados_parciais: true, nota: "dados em atualização" } : {}),
     };
   },
   "/api/entity": (q) => {
@@ -446,7 +458,7 @@ const failure = (e) => {
   if (e instanceof DataMissing) return { code: 503, body: dadosIndisponiveis(e.message, e.dbName) };
   const msg = String(e && e.message || e);
   if (/no such (table|column)|malformed|not a database|disk image|unable to open/i.test(msg)) return { code: 503, body: dadosIndisponiveis(`base incompleta ou inválida (${msg}); ${BOOTSTRAP}`) };
-  if (e instanceof TypeError && /null|undefined/.test(msg)) return { code: 503, body: dadosIndisponiveis(`dados em falta (${msg}); ${BOOTSTRAP}`) };
+  if (e instanceof TypeError && /null|undefined|cannot be bound/.test(msg)) return { code: 503, body: dadosIndisponiveis(`dados em falta (${msg}); ${BOOTSTRAP}`) };
   return { code: 500, body: { error: "erro_interno", detail: msg } };
 };
 

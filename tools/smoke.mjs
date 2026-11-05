@@ -9,6 +9,7 @@ const PORT = Number(arg("port", process.env.PORT || 3150));
 const DATA = path.resolve(arg("data", process.env.ESTADO_ABERTO_DATA || path.join(root, "data")));
 const EXPECT = arg("expect", "any");
 const SLOW_MS = Number(arg("slow", 1500));
+const REPORT = arg("report", "");
 
 const rssOf = (pid) => {
   try { const m = fs.readFileSync(`/proc/${pid}/status`, "utf8").match(/VmRSS:\s+(\d+)/); return m ? Math.round(Number(m[1]) / 1024) : 0; } catch { return 0; }
@@ -104,7 +105,7 @@ try {
     const rss = rssOf(server.pid);
     const jump = rss - lastRss;
     lastRss = rss; peak = Math.max(peak, rss);
-    rows.push({ route: used.length > 70 ? used.slice(0, 67) + "..." : used, status: r.status, ms: r.ms, kb: Math.round(r.bytes / 1024), rss, jump, valid: r.valid, json: r.json, plain: route });
+    rows.push({ route: used.length > 70 ? used.slice(0, 67) + "..." : used, status: r.status, ms: r.ms, kb: Math.round(r.bytes / 1024), rss, jump, valid: r.valid, json: r.json, plain: route, used, detail: r.json && (r.json.detail || r.json.error) || "" });
     const honest = r.status === 503 && r.json && r.json.error === "dados_indisponiveis" && EXPECT !== "sample";
     if (honest) honestCount++;
     else if (r.status === 0 || r.status >= 500) failures.push(`${used} -> ${r.status} ${r.error || (r.json && (r.json.detail || r.json.error)) || ""}`);
@@ -125,6 +126,7 @@ try {
     }
   }
 
+  if (REPORT) fs.writeFileSync(REPORT, JSON.stringify(rows.map((x) => ({ route: x.used || x.plain, status: x.status, detail: x.detail || "" }))));
   const finalRss = rssOf(server.pid);
   const st = (await get("/api/status")).json || {};
   console.log("rota".padEnd(72), "http", "ms".padStart(6), "KB".padStart(6), "RSS".padStart(5), "Δ".padStart(5));

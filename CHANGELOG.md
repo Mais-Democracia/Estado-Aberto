@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- `migrate` ingest step (`ingest/migrations.py`) that upgrades existing databases in place, offline and idempotently, and runs first on every update.
+- `tools/check_schema_compat.mjs`, which builds empty databases from a production schema dump and sweeps every route for missing tables or columns.
+
+### Fixed
+- Routes breaking on databases built before `entities.population_source` and the responsaveis `nomeacoes` and `cresap_results` tables existed: the Instituições directory and the responsaveis pages now answer with partial data and a "dados em atualização" note.
+- Empty tables no longer produce a 500 on the budget overview and the housing ranking.
+- The Estado em números ingest job could not import the shared helpers when run by the manifest.
+
 ## [0.1.5] - 2026-11-05
 
 ### Added

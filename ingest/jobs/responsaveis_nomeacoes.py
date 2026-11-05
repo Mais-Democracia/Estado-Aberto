@@ -9,18 +9,6 @@ import unicodedata
 import urllib.request
 from pathlib import Path
 
-DDL = """
-CREATE TABLE IF NOT EXISTS nomeacoes (
-  id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT, action TEXT, person TEXT, role TEXT, entity TEXT, entity_nif TEXT,
-  date TEXT, act TEXT, act_id TEXT, source_url TEXT, match_method TEXT, UNIQUE (act_id, action, person, role)
-);
-CREATE INDEX IF NOT EXISTS n_nif ON nomeacoes(entity_nif);
-CREATE INDEX IF NOT EXISTS n_date ON nomeacoes(date);
-CREATE TABLE IF NOT EXISTS cresap_results (
-  code TEXT, role TEXT, entity TEXT, entity_nif TEXT, outcome TEXT, candidate TEXT, date TEXT, pdf_url TEXT,
-  UNIQUE (code, candidate, outcome)
-);
-"""
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0 (politica-pt civic project)"
 MESES = {m: i + 1 for i, m in enumerate("janeiro fevereiro março abril maio junho julho agosto setembro outubro novembro dezembro".split())}
 NAME = r"[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\w'’.-]+(?: (?:d[aeo]s?|e|do|das|dos|de|van|von)?\s?[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][\w'’.-]+){1,9}"

@@ -474,7 +474,8 @@ export default function register({ routes, openData, all: coreAll, one: coreOne,
     };
     routes["/api/historias/" + slug] = (q) => {
       const v = handler(q);
-      return v && v.datasets && !Object.keys(v.datasets).length ? unavailable("politica", "não foi encontrada ou está vazia") : v;
+      if (!(v && v.datasets && !Object.keys(v.datasets).length)) return v;
+      return coreOne("SELECT 1 x FROM sqlite_master WHERE name = 'contracts'") ? { ...v, dados_parciais: true, nota: "dados em atualização" } : unavailable("politica", "não foi encontrada ou está vazia");
     };
   }
   routes["/api/historias"] = () => ({ slugs: Object.keys(builders), questions: QUESTIONS });

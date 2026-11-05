@@ -16,7 +16,15 @@ export default function register({ routes, openData, dataDir, db: pol }) {
   const all = (sql, ...p) => run(() => dbh().prepare(sql).all(...p));
   const one = (sql, ...p) => run(() => dbh().prepare(sql).get(...p));
   const missing = { available: false, error: "responsaveis.db ainda não existe — corra `python3 ingest/run_all.py responsaveis`." };
-  const ok = () => { try { return !!dbh() && !!one("SELECT 1 x FROM mandates LIMIT 1"); } catch { return false; } };
+  const ok = () => { try { return !!dbh() && !!one("SELECT 1 x FROM sqlite_master WHERE name = 'mandates'"); } catch { return false; } };
+  let tblAt = -1, tblSet = null;
+  const hasTable = (t) => {
+    dbh();
+    if (!tblSet || tblAt !== mtime) { tblSet = new Set(all("SELECT name FROM sqlite_master WHERE type = 'table'").map((r) => r.name)); tblAt = mtime; }
+    return tblSet.has(t);
+  };
+  const optAll = (t, sql, ...p) => (hasTable(t) ? all(sql, ...p) : []);
+  const NOTA_PARCIAL = "dados em atualização";
   const norm = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
   const today = () => new Date().toISOString().slice(0, 10);
   const meta = () => Object.fromEntries(all("SELECT key, value FROM meta").map((r) => [r.key, r.value]));
@@ -179,20 +187,22 @@ export default function register({ routes, openData, dataDir, db: pol }) {
     const seen = new Map();
     for (const r of interested) { const k = [r.holder_id, r.section, norm(r.role), r.start_date].join("|"); if (!seen.has(k)) seen.set(k, r); }
     const cres = all("SELECT code, status, role, proposal_url, despacho_url, item_url FROM cresap WHERE entity_nif = ? LIMIT 50", nif);
-    const nomeacoes = all("SELECT source, action, person, role, entity, date, act, source_url FROM nomeacoes WHERE entity_nif = ? ORDER BY date DESC LIMIT 100", nif);
-    const cresap_results = all("SELECT code, role, outcome, candidate, date, pdf_url FROM cresap_results WHERE entity_nif = ? ORDER BY date DESC LIMIT 100", nif);
-    return { available: true, nif, mandates, interested: [...seen.values()], cresap: cres, nomeacoes, cresap_results };
+    const nomeacoes = optAll("nomeacoes", "SELECT source, action, person, role, entity, date, act, source_url FROM nomeacoes WHERE entity_nif = ? ORDER BY date DESC LIMIT 100", nif);
+    const cresap_results = optAll("cresap_results", "SELECT code, role, outcome, candidate, date, pdf_url FROM cresap_results WHERE entity_nif = ? ORDER BY date DESC LIMIT 100", nif);
+    const partial = !hasTable("nomeacoes") || !hasTable("cresap_results");
+    return { available: true, nif, mandates, interested: [...seen.values()], cresap: cres, nomeacoes, cresap_results, ...(partial ? { dados_parciais: true, nota: NOTA_PARCIAL } : {}) };
   };
 
   routes["/api/responsaveis/nomeacoes"] = (q) => {
     if (!ok()) return missing;
     const qs = norm(q.get("q") || ""), limit = Math.min(Number(q.get("limit")) || 40, 100), offset = Math.max(Number(q.get("offset")) || 0, 0);
     const action = q.get("action") || "", year = /^\d{4}$/.test(q.get("year") || "") ? q.get("year") : "";
-    const rows = all("SELECT source, action, person, role, entity, entity_nif, date, act, source_url, match_method FROM nomeacoes ORDER BY date DESC")
+    const rows = optAll("nomeacoes", "SELECT source, action, person, role, entity, entity_nif, date, act, source_url, match_method FROM nomeacoes ORDER BY date DESC")
       .filter((r) => (!qs || norm(`${r.person} ${r.role} ${r.entity || ""}`).includes(qs)) && (!action || r.action === action) && (!year || (r.date || "").startsWith(year)));
-    const years = [...new Set(all("SELECT substr(date,1,4) y FROM nomeacoes WHERE date IS NOT NULL").map((r) => r.y))].sort().reverse();
-    const cres = all("SELECT code, role, entity, entity_nif, outcome, candidate, date, pdf_url FROM cresap_results ORDER BY date DESC");
-    return { available: true, years, total: rows.length, results: rows.slice(offset, offset + limit), cresap_total: cres.length, cresap_results: cres.slice(0, limit),
+    const years = [...new Set(optAll("nomeacoes", "SELECT substr(date,1,4) y FROM nomeacoes WHERE date IS NOT NULL").map((r) => r.y))].sort().reverse();
+    const cres = optAll("cresap_results", "SELECT code, role, entity, entity_nif, outcome, candidate, date, pdf_url FROM cresap_results ORDER BY date DESC");
+    const partial = !hasTable("nomeacoes") || !hasTable("cresap_results");
+    return { available: true, years, total: rows.length, results: rows.slice(offset, offset + limit), cresap_total: cres.length, cresap_results: cres.slice(0, limit), ...(partial ? { dados_parciais: true } : {}),
       note: "Atos da série I do Diário da República (resoluções do Conselho de Ministros e decretos do Presidente da República) e propostas de designação da CReSAP. Ligação à entidade apenas por nome exato; a CReSAP propõe três candidatos, a designação final é do Governo." };
   };
 

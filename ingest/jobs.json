@@ -8,6 +8,24 @@
  ],
  "steps": [
   {
+   "name": "migrate",
+   "script": "migrations.py",
+   "depends": [],
+   "produces": [],
+   "network": false,
+   "est_minutes": 1,
+   "est_peak_mb": 50,
+   "est_disk_mb": 1,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 0,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "none: local schema upgrade, no external data",
+   "notes": "Idempotent in-place schema upgrades (added columns and tables) for databases built by earlier releases."
+  },
+  {
    "name": "agenda",
    "script": "agenda.py",
    "depends": [],

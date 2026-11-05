@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import DATA_DIR, ROOT, UA  # noqa: E402
+import migrations  # noqa: E402
 
 NAME = "responsaveis"
 DB = DATA_DIR / f"{NAME}.db"
@@ -448,10 +449,7 @@ def phase_match_and_links(con):
     log("ET entities matched to NIF by exact name:", upd)
     con.commit()
     # 2. interests with a valid company NIF -> contracts as seller
-    try:
-        con.execute("ALTER TABLE links ADD COLUMN is_public INTEGER DEFAULT 0")
-    except sqlite3.OperationalError:
-        pass
+    migrations.ensure_responsaveis(con)
     con.execute("DELETE FROM links")
     nifs = [r[0] for r in con.execute("SELECT DISTINCT company_nif FROM interests WHERE company_nif IS NOT NULL")]
     agg = {}
@@ -523,7 +521,7 @@ def main():
     phase_appointments(con)
     phase_match_and_links(con)
     import responsaveis_nomeacoes as rn
-    con.executescript(rn.DDL)
+    migrations.ensure_responsaveis(con)
     rn.phase_dre(con, DATA_DIR, log)
     if not os.environ.get("RESP_SKIP_CRESAP"):
         rn.phase_cresap_results(con, DATA_DIR, log, SLEEP)

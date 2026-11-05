@@ -268,7 +268,7 @@ def main():
         existing = sum(dir_mb(data / "raw" / r) for r in s["raw"] if (data / "raw" / r).exists())
         need_gb = max(0, s["est_disk_mb"] - existing) / 1024
         free_gb = free_mb(data) / 1024
-        if free_gb - need_gb < min_free:
+        if free_gb - need_gb < min_free and (s["network"] or s["raw"] or s["est_disk_mb"] > 1):
             res["status"] = "refused"
             res["msg"] = f"disk guard: {free_gb:.1f} GB free, step needs ~{need_gb:.1f} GB, minimum free {min_free} GB"
             print(f"[refused] {n}: {res['msg']}", flush=True)
