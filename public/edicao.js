@@ -44,7 +44,7 @@
       <button class="btn-ed" data-go="${navDate(d.data, 1)}" ${d.data >= d.max ? "disabled" : ""} title="Tecla →">Seguinte ›</button>
       <button class="btn-ed" data-go="">Última edição</button>${extra}</div>
     <div><form class="ed-search" id="ed-s" autocomplete="off"><input type="search" id="ed-q" placeholder="Pesquisar entidade, contrato, lei, tema…" aria-label="Pesquisar"><div class="ed-results" id="ed-r" hidden></div></form>
-      <a class="btn-ed" href="#/painel">A minha lista</a><button class="btn-ed ed-menu" onclick="document.body.classList.toggle('nav-open')">Menu</button><button class="btn-ed" id="b-tema" title="Alternar entre edição da manhã e edição da noite">Edição da noite</button><button class="btn-ed" id="b-print">Imprimir</button></div></div>`;
+      <a class="btn-ed" href="#/painel">A minha lista</a><button class="btn-ed ed-menu" onclick="document.body.classList.toggle('nav-open')">Menu</button><button class="btn-ed" id="b-tema" title="Alternar entre edição da manhã e edição da noite">Edição da noite</button><button class="btn-ed" id="b-print">Imprimir</button><a class="btn-ed gh-link" href="https://github.com/Mais-Democracia/Estado-Aberto" target="_blank" rel="noopener" aria-label="Código aberto no GitHub (abre num novo separador)"><svg class="gh-mark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a></div></div>`;
 
   const plateHost = () => { let h = document.getElementById("ed-plate"); if (h) { h.classList.remove("sk-plate"); h.removeAttribute("aria-hidden"); } if (!h) { h = document.createElement("div"); h.id = "ed-plate"; h.className = "wrap"; const m = document.querySelector("header.masthead"); m.insertBefore(h, m.firstChild); } return h; };
 
@@ -53,7 +53,6 @@
     window.onscroll = null;
     state.cur = d.data; state.max = d.max;
     document.title = `Edição de ${d.extenso}, n.º ${nf0.format(d.numero)} · Estado Aberto`;
-    const ft = d.fontes;
     const S = d.seccoes, n = d.numeros, L = d.lead;
     const tick = d.ticker.concat(d.ticker).map((t) => `<a href="${href(t.ref)}"><b>${esc(t.k)}</b>${esc(t.t)}</a>`).join("");
     const why = d.leadWhy;
@@ -61,7 +60,7 @@
     host.innerHTML = `<div class="ed-head">
         <div class="ear"><b>Edição n.º ${nf0.format(d.numero)}</b>${esc(d.diaSemana)}<br>${esc(d.extenso)}</div>
         <div class="plate"><span class="k reveal" style="--i:0">Dados abertos de Portugal</span><h1 class="reveal" style="--i:1"><a href="#/"><span>Estado <i>Aberto</i></span></a></h1><span class="s reveal" style="--i:3">Diário da democracia portuguesa</span></div>
-        <div class="ear r"><b>Última recolha</b>Votações até ${pd(ft.vote)}<br>Diário da República até ${pd(ft.dre)}<br>Tribunal de Contas até ${pd(ft.tc)}<br>Contratos até ${pd(ft.pub)}</div>
+        <div class="ear-sp" aria-hidden="true"></div>
       </div><div class="flagbar"></div>`;
     $app.innerHTML = `<div class="ed">
       ${topbar(d)}

@@ -460,7 +460,7 @@ export default function (ctx) {
     const leadNote = lead && lead.date && lead.date < D ? `Último registo disponível à data desta edição: ${pdate(lead.date)}.` : null;
     return {
       data: D, extenso: pdate(D), diaSemana: DIA[d.getUTCDay()], numero: days("2012-01-01", D) + 1,
-      defaultData: defaultDate(), min: MIN_DATE, max: todayStr(), fontes: mx,
+      defaultData: defaultDate(), min: MIN_DATE, max: todayStr(),
       desatualizado: rc < add(D, -3) ? { contratos: rc } : null,
       lead, leadNote, leadWhy: leadC ? { tipo: leadC.tipo, score: pct0(leadC.score), why: leadC.why, outros: runners } : null,
       seccoes: S, numeros, haUmAno: ago, ticker: tick.slice(0, 20),

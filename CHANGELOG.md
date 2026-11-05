@@ -5,6 +5,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Removed
+- The "Última recolha" box in the Edição Diária masthead.
+
+### Added
+- GitHub link in the site footer, the edition utility row, the offline page and the no-data state.
+- CI guard that fails when tracked files mention server or developer host details.
+
+### Changed
+- Docs use placeholders (<SERVER_HOST>, <SSH_USER>, <SSH_KEY>) for server host details.
+
 ## [0.1.3] - 2026-11-05
 
 ### Fixed

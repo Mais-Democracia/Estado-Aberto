@@ -51,6 +51,7 @@ scan "token pattern" 'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AK
 scan "hardcoded credential" "(password|passwd|secret|api[_-]?key|token)[[:space:]]*[:=][[:space:]]*[\"'][^\"' ]{8,}[\"']"
 scan "personal email" '[A-Za-z0-9._%+-]+@(gmail|hotmail|outlook|yahoo|icloud|proton|protonmail|live)\.[a-z.]+|[A-Za-z0-9._%+-]+@plugwise\.com'
 scan "LAN address" '(^|[^0-9.])(192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]+\.[0-9]+)([^0-9]|$)'
+scan "server or developer host details" '3[.]77[.]210|ec2[-]user|Lightsail[A-Za-z]*Key|192[.]168[.]|ton[e]l|ps1[k]e'
 
 if [ -n "$RANGE" ]; then
   msgs=$(git log --format=%B "$RANGE" 2>/dev/null || true)

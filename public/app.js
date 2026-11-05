@@ -35,7 +35,7 @@ const api = (p, warm) => {
   return q.then(JSON.parse);
 };
 const apiCached = (p) => EA.mem.has(p) || !!ssRead(p);
-const noDataHtml = (e) => `<section class="panel nodata"><h2>Sem dados locais</h2><p class="empty">Sem dados locais: corra o bootstrap (docs/CONTRIBUTING.md).</p>${e && e.body && e.body.detail ? `<p class="note">${esc(e.body.detail)}</p>` : ""}</section>`;
+const noDataHtml = (e) => `<section class="panel nodata"><h2>Sem dados locais</h2><p class="empty">Sem dados locais: corra o bootstrap (docs/CONTRIBUTING.md).</p><p class="note"><a href="https://github.com/Mais-Democracia/Estado-Aberto" target="_blank" rel="noopener" aria-label="Código aberto no GitHub (abre num novo separador)">Código aberto no GitHub</a></p>${e && e.body && e.body.detail ? `<p class="note">${esc(e.body.detail)}</p>` : ""}</section>`;
 const MONTHS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 const DOW = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const pad = (n) => String(n).padStart(2, "0");
