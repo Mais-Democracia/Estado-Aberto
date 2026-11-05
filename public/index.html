@@ -8,10 +8,30 @@
 <meta property="og:site_name" content="Estado Aberto">
 <meta property="og:title" content="Estado Aberto — o poder público, escrutinado">
 <meta name="description" content="Parlamento, Governo, Presidência, autarquias, instituições públicas e contratos públicos num só lugar.">
-<meta name="ea-version" content="">
+<meta name="ea-version" content="0.1.1">
 <link rel="preload" href="/fonts/fraunces-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/fonts/Lora-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <!--EA-BOOT-->
+<script>
+(function () {
+  var f = window.fetch;
+  if (!f || !window.Response) return;
+  window.fetch = function (u, o) {
+    var url = typeof u === "string" ? u : (u && u.url) || "";
+    var m = ((o && o.method) || (u && u.method) || "GET").toUpperCase();
+    if (m !== "GET" || url.indexOf("/api/") < 0) return f.apply(this, arguments);
+    var a = arguments, self = this, t0 = Date.now(), d = 500;
+    var go = function () {
+      return f.apply(self, a).then(function (r) {
+        if (r.status !== 202) return r;
+        if (Date.now() - t0 + d > 40000) return new Response("", { status: 504, statusText: "carregando" });
+        return new Promise(function (ok) { setTimeout(ok, d); d = Math.min(3000, d * 1.5); }).then(go);
+      });
+    };
+    return go();
+  };
+})();
+</script>
 <script>
 (function () {
   var h = location.hash, home = !h || h === "#" || h === "#/";

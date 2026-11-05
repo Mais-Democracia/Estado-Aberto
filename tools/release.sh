@@ -20,6 +20,7 @@ while [ $# -gt 0 ]; do
 done
 
 die() { echo "release: $*" >&2; exit 1; }
+PY="${PY:-python3}"
 
 [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || die "must be on main"
 [ -z "$(git status --porcelain)" ] || die "working tree not clean"
@@ -88,8 +89,13 @@ manifest = {
 open("ops/release-manifest.json", "w").write(json.dumps(manifest, indent=2) + "\n")
 PY
 
-git add VERSION CHANGELOG.md package.json ops/release-manifest.json
-git commit -q -m "Release $TAG." VERSION CHANGELOG.md package.json ops/release-manifest.json
+sed -i -E "s/^(const VERSION = \")[^\"]*(\";)/\1$NEW\2/" public/sw.js
+sed -i -E "s/(<meta name=\"ea-version\" content=\")[^\"]*(\")/\1$NEW\2/" public/index.html
+node tools/check_version.mjs
+
+FILES=(VERSION CHANGELOG.md package.json ops/release-manifest.json public/sw.js public/index.html)
+git add "${FILES[@]}"
+git commit -q -m "Release $TAG." "${FILES[@]}"
 git tag -a "$TAG" -m "Release $TAG"
 
 echo "release: created commit and tag $TAG (not pushed)"

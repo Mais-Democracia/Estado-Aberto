@@ -574,6 +574,7 @@ async function main() {
     try { v = fs.readFileSync(path.join(root, "VERSION"), "utf8").trim(); } catch {}
     return sha(v + ":" + m);
   })();
+  const appVersion = (() => { try { return fs.readFileSync(path.join(root, "VERSION"), "utf8").trim(); } catch { return ""; } })();
 
   const cache = new Lru(24 * 1048576);
   const staticCache = new Lru(20 * 1048576);
@@ -958,6 +959,7 @@ async function main() {
       const inj = boot ? `<script>window.__EA_BOOT={"/api/edicao/dia":${jsonForScript(boot.raw.toString("utf8"))}}</script>` : "";
       html = html.split("<!--EA-BOOT-->").join(inj);
     }
+    html = html.replace(/(<meta name="ea-version" content=")(")/, `$1${appVersion}$2`);
     const raw = Buffer.from(html);
     indexBody = { ck, raw, size: raw.length, tag: null, v: {}, lru: null };
     return indexBody;

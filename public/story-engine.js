@@ -471,7 +471,7 @@ async function mount(arg, params) {
   if (mid !== S.mid) return;
   if (!def) { S.failed = true; if (!underConstruction(root, slug)) unavailable(root, null, slug, "Esta história não existe ou ainda não foi publicada."); return; }
   let d;
-  try { d = await Promise.race([Promise.resolve(def.load()), new Promise((_, rej) => setTimeout(() => rej(new Error("tempo esgotado")), 20000))]); if (d == null || typeof d !== "object") throw new Error("resposta vazia"); }
+  try { d = await Promise.race([Promise.resolve(def.load()), new Promise((_, rej) => setTimeout(() => rej(new Error("tempo esgotado")), 45000))]); if (d == null || typeof d !== "object") throw new Error("resposta vazia"); }
   catch (e) { console.warn("[story] load", e); if (mid !== S.mid) return; S.failed = true; unavailable(root, def, slug); return; }
   if (mid !== S.mid) return;
   try { build(def, d, params); } catch (e) { console.error(e); S.failed = true; unavailable(root, def, slug, "Ocorreu um erro ao montar a história."); return; }
