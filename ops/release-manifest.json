@@ -1,6 +1,6 @@
 {
-  "version": "0.1.0",
-  "git_sha": "474459186a5a1ac4eeda5ac8d44474b73440f6c5",
+  "version": "0.1.1",
+  "git_sha": "bbf8ec5c2fd88f16b224837d5a8b0a74418c44f6",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "Initial public code base."
+  "notes": "Configurable Python (estado-aberto-python), timers opt-in, AL2023 docs."
 }
