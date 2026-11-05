@@ -26,10 +26,18 @@ Copy the `ops/` directory of the release to the box (from the GitHub tarball, no
 
 ```
 sudo ./ops/install.sh --dry-run
-sudo ./ops/install.sh --node "$(readlink -f $(command -v node))"
+sudo dnf install -y python3.12 poppler-utils nodejs22
+sudo ./ops/install.sh --node "$(readlink -f $(command -v node))" --python /usr/bin/python3.12
 ```
 
-The installer creates `/var/lib/estado-aberto/data` empty. Node under `/home/<SSH_USER>` must be readable by user `estado-aberto`; if it is not, install a system Node 22 and pass that path.
+Amazon Linux 2023 specifics:
+
+- The system `python3` is 3.9 and must not be switched; the installer links `/usr/local/bin/estado-aberto-python` to 3.12 and every ops script uses it.
+- `nodejs22` provides a system Node readable by every user. Node under `/home/<SSH_USER>/.nvm` is not readable by `estado-aberto`; if `nodejs22` is unavailable, install Node 22 or newer under `/usr/local` and pass that path.
+- A 2 GB swapfile already exists; the installer detects it and creates nothing.
+- The installer does not enable the timers. Enable `estado-aberto-updater.timer` and `estado-aberto-daily.timer` only after the first manual `estado-aberto-updater --check` and one supervised `estado-aberto-ingest-queue` run (or `run_all --dry-run`).
+
+The installer creates `/var/lib/estado-aberto/data` empty.
 
 ## 3. Adopt the existing data without copying **[GO]**
 
@@ -44,7 +52,7 @@ sudo chown -R estado-aberto:estado-aberto /var/lib/estado-aberto/data
 sudo chmod -R g+rX /var/lib/estado-aberto/data
 ```
 
-`mv` on the same filesystem is a rename, so it is instant and uses no extra disk. If `/home` is a different filesystem, skip the `mv` and instead `sudo ln -s /home/<SSH_USER>/politica-pt/data /var/lib/estado-aberto/data` (after `rmdir`), and grant `estado-aberto` traversal on `/home/<SSH_USER>`.
+`mv` on the same filesystem is a rename, so it is instant and uses no extra disk. Once the data lives under `/var/lib`, the service user needs read/write on it only; traversal of `/home/<SSH_USER>` is not needed. If `/home` is a different filesystem, skip the `mv` and instead `sudo ln -s /home/<SSH_USER>/politica-pt/data /var/lib/estado-aberto/data` (after `rmdir`), and grant `estado-aberto` traversal on `/home/<SSH_USER>`.
 
 ## 4. First release through the updater **[GO]**
 
@@ -70,7 +78,7 @@ Leave `politica.service` and `/home/<SSH_USER>/politica-pt` untouched and stoppe
 - [ ] `systemctl status estado-aberto` active, `systemctl show estado-aberto -p MemoryCurrent` under 450M
 - [ ] `readlink -f /opt/estado-aberto/current` is `releases/v0.1.0`
 - [ ] `ls /opt/estado-aberto/current/data` resolves to `/var/lib/estado-aberto/data`; data size unchanged (`du -sh`)
-- [ ] `systemctl list-timers | grep estado-aberto` shows updater and daily timers
+- [ ] after the first supervised run, `sudo systemctl enable --now estado-aberto-updater.timer estado-aberto-daily.timer`; `systemctl list-timers | grep estado-aberto` shows both
 - [ ] `estado-aberto-updater --check` prints `up-to-date v0.1.0`
 - [ ] `free -m` shows swap present; `df -h /` still above 5 GB free
 - [ ] After the first 04:30 run, `journalctl -u estado-aberto-daily` shows a clean run

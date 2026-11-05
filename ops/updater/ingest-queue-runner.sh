@@ -6,6 +6,10 @@ STATE_DIR="${STATE_DIR:-/var/lib/estado-aberto/state}"
 DATA_DIR="${DATA_DIR:-/var/lib/estado-aberto/data}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-90}"
 LOCK_WAIT="${LOCK_WAIT:-7200}"
+PY="${ESTADO_ABERTO_PYTHON:-}"
+if [ -z "$PY" ]; then
+  if [ -x /usr/local/bin/estado-aberto-python ]; then PY=/usr/local/bin/estado-aberto-python; else PY=python3; fi
+fi
 
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
 
@@ -18,13 +22,13 @@ queue=("$STATE_DIR"/ingest-queue/*.json)
 sleep "$SETTLE_SECONDS"
 
 for q in "${queue[@]}"; do
-  tag="$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag"])' "$q")"
-  jobs="$(python3 -I -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))["jobs"]))' "$q")"
+  tag="$("$PY" -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["tag"])' "$q")"
+  jobs="$("$PY" -I -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))["jobs"]))' "$q")"
   log "running queued ingest for $tag: $jobs"
   cd "$OPT_DIR/current" || exit 1
-  ESTADO_ABERTO_DATA="$DATA_DIR" python3 ingest/run_all.py --only "$jobs" --profile server
+  ESTADO_ABERTO_DATA="$DATA_DIR" "$PY" ingest/run_all.py --only "$jobs" --profile server
   rc=$?
-  python3 -I - "$STATE_DIR/last_update.json" "$tag" "$jobs" "$rc" <<'PY'
+  "$PY" -I - "$STATE_DIR/last_update.json" "$tag" "$jobs" "$rc" <<'PY'
 import datetime, json, sys
 path, tag, jobs, rc = sys.argv[1:5]
 try:

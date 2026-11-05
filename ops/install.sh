@@ -3,13 +3,17 @@ set -euo pipefail
 
 DRY=0
 NODE_BIN=""
+PYTHON_BIN=""
 SWAP=1
+TIMERS=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift ;;
     --node) NODE_BIN="${2:?--node needs a path}"; shift 2 ;;
+    --python) PYTHON_BIN="${2:?--python needs a path}"; shift 2 ;;
+    --enable-timers) TIMERS=1; shift ;;
     --no-swap) SWAP=0; shift ;;
-    -h|--help) echo "usage: sudo ops/install.sh [--dry-run] [--node /path/to/node] [--no-swap]"; exit 0 ;;
+    -h|--help) echo "usage: sudo ops/install.sh [--dry-run] [--node /path/to/node] [--python /path/to/python3.12] [--enable-timers] [--no-swap]"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -37,7 +41,18 @@ fi
 [ -n "$NODE_BIN" ] || { echo "install: node not found; pass --node /path/to/node" >&2; exit 1; }
 NODE_BIN="$(readlink -f "$NODE_BIN")"
 say "node: $NODE_BIN ($("$NODE_BIN" --version))"
-command -v python3 > /dev/null || { echo "install: python3 missing" >&2; exit 1; }
+py_ok() { "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 12) else 1)' > /dev/null 2>&1; }
+if [ -z "$PYTHON_BIN" ]; then
+  for c in python3.13 python3.12 python3; do
+    p="$(command -v "$c" || true)"
+    if [ -n "$p" ] && py_ok "$p"; then PYTHON_BIN="$p"; break; fi
+  done
+  [ -n "$PYTHON_BIN" ] || { echo "install: no Python >= 3.12 found; install python3.12 or pass --python /path/to/python3.12" >&2; exit 1; }
+fi
+[ -x "$PYTHON_BIN" ] || { echo "install: $PYTHON_BIN is not executable" >&2; exit 1; }
+py_ok "$PYTHON_BIN" || { echo "install: $PYTHON_BIN is older than Python 3.12" >&2; exit 1; }
+PYTHON_BIN="$(readlink -f "$PYTHON_BIN")"
+say "python: $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
 command -v flock > /dev/null || { echo "install: flock missing" >&2; exit 1; }
 command -v curl > /dev/null || { echo "install: curl missing" >&2; exit 1; }
 
@@ -69,8 +84,9 @@ write_env app.env "PORT=3000
 HOST=0.0.0.0"
 write_env ingest.env "ESTADO_ABERTO_CONTACT="
 
-say "node symlink and helper scripts"
+say "node and python symlinks and helper scripts"
 run ln -sfn "$NODE_BIN" /usr/local/bin/estado-aberto-node
+run ln -sfn "$PYTHON_BIN" /usr/local/bin/estado-aberto-python
 put 0755 "$HERE/updater/estado-aberto-updater.sh" /usr/local/sbin/estado-aberto-updater
 put 0755 "$HERE/updater/ingest-queue-runner.sh" /usr/local/sbin/estado-aberto-ingest-queue
 
@@ -96,7 +112,11 @@ for u in "$HERE"/systemd/*.service "$HERE"/systemd/*.timer; do
 done
 run systemctl daemon-reload
 run systemctl enable $SVC.service
-run systemctl enable --now $SVC-updater.timer $SVC-daily.timer
+if [ "$TIMERS" -eq 1 ]; then
+  run systemctl enable --now $SVC-updater.timer $SVC-daily.timer
+else
+  say "timers installed but not enabled; rerun with --enable-timers when ready"
+fi
 
 if [ "$SWAP" -eq 1 ]; then
   say "swap"

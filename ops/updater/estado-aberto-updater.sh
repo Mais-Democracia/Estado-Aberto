@@ -18,6 +18,10 @@ REPO="Mais-Democracia/Estado-Aberto"
 CHANNEL="stable"
 GITHUB_TOKEN=""
 [ -r "$CONF_FILE" ] && . "$CONF_FILE"
+PY="${ESTADO_ABERTO_PYTHON:-}"
+if [ -z "$PY" ]; then
+  if [ -x /usr/local/bin/estado-aberto-python ]; then PY=/usr/local/bin/estado-aberto-python; else PY=python3; fi
+fi
 
 MODE=update
 FORCE_TAG=""
@@ -40,7 +44,7 @@ exec 9> "$STATE_DIR/update.lock"
 flock -n 9 || { log "another update, ingest or daily run holds the lock; try again later"; exit 0; }
 
 write_state() {
-  python3 -I - "$STATE_DIR/last_update.json" "$1" "${2:-}" "${TARGET_TAG:-}" <<'PY'
+  "$PY" -I - "$STATE_DIR/last_update.json" "$1" "${2:-}" "${TARGET_TAG:-}" <<'PY'
 import datetime, json, sys
 path, status, msg, tag = sys.argv[1:5]
 try:
@@ -61,7 +65,7 @@ curl_auth() {
 }
 
 jget() {
-  python3 -I -c '
+  "$PY" -I -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
 for k in sys.argv[2].split("."):
@@ -149,7 +153,7 @@ latest_info() {
 }
 
 asset_url() {
-  python3 -I -c '
+  "$PY" -I -c '
 import json, sys
 d = json.load(open(sys.argv[1]))
 for a in d.get("assets", []):
@@ -216,17 +220,17 @@ REL="$OPT_DIR/releases/$TARGET_TAG"
 
 run_post() {
   local n i step cmd id
-  n="$(python3 -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["post_update"]))' "$MAN")"
+  n="$("$PY" -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["post_update"]))' "$MAN")"
   for ((i = 0; i < n; i++)); do
     step="$(jget "$MAN" "post_update.$i.step")"
     case "$step" in
       doctor)
         log "post_update: doctor"
-        (cd "$REL" && ESTADO_ABERTO_DATA="$DATA_DIR" python3 tools/doctor.py --offline) || return 1 ;;
+        (cd "$REL" && ESTADO_ABERTO_DATA="$DATA_DIR" "$PY" tools/doctor.py --offline) || return 1 ;;
       *) log "post_update: unknown step $step ignored" ;;
     esac
   done
-  n="$(python3 -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["migrations"]))' "$MAN")"
+  n="$("$PY" -I -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["migrations"]))' "$MAN")"
   for ((i = 0; i < n; i++)); do
     id="$(jget "$MAN" "migrations.$i.id")"
     cmd="$(jget "$MAN" "migrations.$i.command")"
@@ -263,10 +267,10 @@ else
   die "$TARGET_TAG unhealthy and rollback did not recover"
 fi
 
-JOBS="$(python3 -I -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))["ingest"]["run_on_update"]))' "$MAN")"
+JOBS="$("$PY" -I -c 'import json,sys; print(",".join(json.load(open(sys.argv[1]))["ingest"]["run_on_update"]))' "$MAN")"
 if [ -n "$JOBS" ]; then
   mkdir -p "$STATE_DIR/ingest-queue"
-  python3 -I - "$STATE_DIR/ingest-queue/$TARGET_TAG.json" "$TARGET_TAG" "$JOBS" <<'PY'
+  "$PY" -I - "$STATE_DIR/ingest-queue/$TARGET_TAG.json" "$TARGET_TAG" "$JOBS" <<'PY'
 import json, sys
 json.dump({"tag": sys.argv[2], "jobs": sys.argv[3].split(",")}, open(sys.argv[1], "w"))
 PY

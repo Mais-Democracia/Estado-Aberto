@@ -34,7 +34,7 @@ esac
 TAG="v$NEW"
 git rev-parse -q --verify "refs/tags/$TAG" > /dev/null && die "tag $TAG exists"
 grep -qE '^## \[Unreleased\]' CHANGELOG.md || die "CHANGELOG has no Unreleased section"
-python3 -I - <<'PY' || die "CHANGELOG Unreleased section is empty"
+"$PY" -I - <<'PY' || die "CHANGELOG Unreleased section is empty"
 import re, sys
 t = open("CHANGELOG.md").read()
 m = re.search(r"^## \[Unreleased\]\n(.*?)(?=^## \[|\Z)", t, re.S | re.M)
@@ -43,9 +43,9 @@ PY
 
 bash tools/ci_guard.sh
 npm run --silent check
-git ls-files -z '*.py' | xargs -0 python3 -m py_compile
-python3 ingest/run_all.py --list > /dev/null
-python3 tools/make_sample.py > /dev/null && node tools/smoke.mjs > /dev/null
+git ls-files -z '*.py' | xargs -0 "$PY" -m py_compile
+"$PY" ingest/run_all.py --list > /dev/null
+"$PY" tools/make_sample.py > /dev/null && node tools/smoke.mjs > /dev/null
 git status --porcelain | grep -q . && die "checks left the tree dirty"
 
 echo "release: $CUR -> $NEW"
@@ -53,7 +53,7 @@ echo "release: $CUR -> $NEW"
 
 PARENT_SHA="$(git rev-parse HEAD)"
 export NEW PARENT_SHA RUN_ON_UPDATE
-python3 -I - <<'PY'
+"$PY" -I - <<'PY'
 import datetime, json, os, re
 new = os.environ["NEW"]
 today = datetime.date.today().isoformat()

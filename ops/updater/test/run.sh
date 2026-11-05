@@ -95,5 +95,22 @@ check "data canary untouched" $?
 [ "$(ls "$OPT_DIR/releases" | wc -l)" -le 2 ]
 check "at most 2 releases kept" $?
 
+PYLOG="$T/py.log"
+printf '#!/usr/bin/env bash\necho "$*" >> "%s"\nexec python3 "$@"\n' "$PYLOG" > "$T/mypy"
+chmod +x "$T/mypy"
+ESTADO_ABERTO_PYTHON="$T/mypy" bash "$UPDATER" --check > "$T/o8.log" 2>&1
+[ -s "$PYLOG" ]
+check "updater honours ESTADO_ABERTO_PYTHON" $?
+
+NODE_PATH_T="$(command -v node)"
+bash "$HERE/../../install.sh" --dry-run --no-swap --node "$NODE_PATH_T" --python "$(command -v python3)" > "$T/i1.log" 2>&1
+grep -q "estado-aberto-python" "$T/i1.log"
+check "installer links estado-aberto-python" $?
+printf '#!/bin/sh\necho "Python 3.9.0"\nexit 1\n' > "$T/oldpy"
+chmod +x "$T/oldpy"
+bash "$HERE/../../install.sh" --dry-run --no-swap --node "$NODE_PATH_T" --python "$T/oldpy" > "$T/i2.log" 2>&1
+[ $? -ne 0 ] && grep -q "older than Python 3.12" "$T/i2.log"
+check "installer refuses Python older than 3.12" $?
+
 echo "passed=$pass failed=$failn"
 [ "$failn" -eq 0 ]
