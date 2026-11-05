@@ -1,0 +1,5 @@
+# Core ingest and runner: Python standard library only (Python 3.12+, 3.14 recommended).
+# System tools: pdftotext (poppler-utils), Node 22 (see .nvmrc) for the web server and UI.
+# Optional extras, none required by the pipeline:
+# pytest>=8        # run ingest/tests
+# ruff>=0.6        # linting

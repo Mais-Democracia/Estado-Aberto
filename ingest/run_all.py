@@ -98,7 +98,7 @@ def is_fresh(step, st, data):
     if not r or r.get("status") != "ok":
         return False
     age = (time.time() - r.get("finished_ts", 0)) / 86400
-    if age > step["fresh_days"]:
+    if age > step["fresh_days"] * 0.8:
         return False
     return all((data / p).exists() for p in step["produces"])
 
@@ -251,7 +251,7 @@ def main():
         os.nice(prof["nice"])
 
     results = {}
-    for n in order:
+    for pos, n in enumerate(order, 1):
         s = steps[n]
         res = results[n] = {"status": None}
         bad_dep = [d for d in s["depends"] if results.get(d, {}).get("status") in ("failed", "timeout", "offline_fail", "refused", "blocked")]
@@ -276,7 +276,7 @@ def main():
         if s["est_peak_mb"] > max_mb:
             print(f"WARN {n}: est_peak_mb {s['est_peak_mb']} > {max_mb}", flush=True)
         timeout_s = max(600, s["est_minutes"] * 3 * 60 + 600) * a.timeout_scale
-        print(f"[run] {n} (est {s['est_minutes']} min, {s['est_peak_mb']} MB)", flush=True)
+        print(f"[run {pos}/{len(order)}] {n} (est {s['est_minutes']} min, {s['est_peak_mb']} MB)", flush=True)
         before = free_mb(data)
         started = time.time()
         rc, tstat, rss, secs, log = run_step(s, data, env, timeout_s, data / "logs")
