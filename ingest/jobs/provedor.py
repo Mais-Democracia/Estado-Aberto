@@ -11,14 +11,13 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "provedor"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://www.provedor-jus.pt"
 LIST = BASE + "/atividade/relatorios-anuais-de-atividade/"
-UA = "politica-pt/0.1 (personal civic project; contact: contact@example.org)"
 GAP = 1.5
 _last = [0.0]
 _rp = []

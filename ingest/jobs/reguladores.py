@@ -18,11 +18,11 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
 NAME = "reguladores"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BUA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 MAX_REQ = int(os.environ.get("REGUL_MAX_REQ", "100000"))
 DELAY = 1.2
@@ -292,7 +292,7 @@ def open_db():
     return c
 
 def ro(name):
-    p = ROOT / "data" / name
+    p = DATA_DIR / name
     return sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=60) if p.exists() else None
 
 # ---------------------------------------------------------------- bodies, board, DRE

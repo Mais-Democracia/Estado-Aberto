@@ -28,12 +28,12 @@ from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "anuncios"
-DB = ROOT / "data" / f"{NAME}.db"
-POLITICA = ROOT / "data" / "politica.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+POLITICA = DATA_DIR / "politica.db"
+RAW = DATA_DIR / "raw" / NAME
 DATASET = "66d72fbc58cd7a63dae28712"
 API = f"https://dados.gov.pt/api/1/datasets/{DATASET}/"
 DATASET_URL = "https://dados.gov.pt/pt/datasets/contratos-publicos-portal-base-impic-anuncios-de-2012-a-2026/"

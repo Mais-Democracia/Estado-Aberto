@@ -5,7 +5,7 @@ import json
 import sqlite3
 from datetime import datetime
 
-from common import ROOT, db, get, get_json, set_meta
+from common import DATA_DIR, db, get, get_json, ROOT, set_meta
 
 INE = "https://www.ine.pt/ine/json_indicador/pindica.jsp?op=2&varcd=0011609&Dim1=S7A2021&Dim3=T&Dim4=T&lang=PT"
 WD = "https://query.wikidata.org/sparql"
@@ -19,7 +19,7 @@ def ensure_column(con):
 
 
 def municipios(con):
-    src = ROOT / "data" / "autarquias.db"
+    src = DATA_DIR / "autarquias.db"
     if not src.exists():
         print("autarquias.db missing: municipalities skipped"); return
     a = sqlite3.connect(f"file:{src}?mode=ro", uri=True)

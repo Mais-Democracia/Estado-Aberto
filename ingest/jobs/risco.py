@@ -24,16 +24,16 @@ import zipfile
 from collections import Counter, defaultdict
 from datetime import date, datetime
 
-from common import ROOT
+from common import DATA_DIR, ROOT
 
 NAME = "risco"
-DB = ROOT / "data" / f"{NAME}.db"
-POLITICA = ROOT / "data" / "politica.db"
-EXPORT = ROOT / "data" / "exports" / "risco_contracts.csv.gz"
-ANUNCIOS = ROOT / "data" / "anuncios.db"
-AUTARQUIAS = ROOT / "data" / "autarquias.db"
-RAW_CONTRACTS = ROOT / "data" / "raw" / "contracts"
-PROCMAP_CACHE = ROOT / "data" / "raw" / NAME / "procmap.tsv.gz"
+DB = DATA_DIR / f"{NAME}.db"
+POLITICA = DATA_DIR / "politica.db"
+EXPORT = DATA_DIR / "exports" / "risco_contracts.csv.gz"
+ANUNCIOS = DATA_DIR / "anuncios.db"
+AUTARQUIAS = DATA_DIR / "autarquias.db"
+RAW_CONTRACTS = DATA_DIR / "raw" / "contracts"
+PROCMAP_CACHE = DATA_DIR / "raw" / NAME / "procmap.tsv.gz"
 VERSION = 3
 
 AD = "Ajuste Direto Regime Geral"

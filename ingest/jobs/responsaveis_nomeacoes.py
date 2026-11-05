@@ -35,7 +35,7 @@ def entity_index(con, root):
     idx = {}
     for name, nif in con.execute("SELECT entity, entity_nif FROM mandates WHERE entity_nif IS NOT NULL GROUP BY entity, entity_nif"):
         idx.setdefault(norm(name), set()).add(nif)
-    pol = sqlite3.connect(f"file:{root / 'data' / 'politica.db'}?mode=ro", uri=True)
+    pol = sqlite3.connect(f"file:{root / 'politica.db'}?mode=ro", uri=True)
     for name, nif in pol.execute("SELECT name, nif FROM entities WHERE nif IS NOT NULL"):
         idx.setdefault(norm(name), set()).add(nif)
     return idx
@@ -48,7 +48,7 @@ def link(idx, entity):
 
 
 def phase_dre(con, root, log):
-    dre = sqlite3.connect(f"file:{root / 'data' / 'dre.db'}?mode=ro", uri=True)
+    dre = sqlite3.connect(f"file:{root / 'dre.db'}?mode=ro", uri=True)
     idx = entity_index(con, root)
     con.execute("DELETE FROM nomeacoes WHERE source='dre'")
     n = 0
@@ -94,7 +94,7 @@ def d10(txt):
 
 
 def phase_cresap_results(con, root, log, sleep=1.0):
-    cache = root / "data" / "raw" / "responsaveis" / "cresap_pdf"
+    cache = root / "raw" / "responsaveis" / "cresap_pdf"
     cache.mkdir(parents=True, exist_ok=True)
     con.execute("DELETE FROM cresap_results")
     n = 0

@@ -33,12 +33,12 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "educacao"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-POLITICA = ROOT / "data" / "politica.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+POLITICA = DATA_DIR / "politica.db"
 _last = {}
 
 SCHEMA = """

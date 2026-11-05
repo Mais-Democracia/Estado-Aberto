@@ -38,12 +38,11 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "responsaveis"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0 (politica-pt civic project; contact@example.org)"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 SLEEP = float(os.environ.get("RESP_SLEEP", "1.0"))
 MAX_REQ = int(os.environ.get("RESP_MAX_REQ", "3000"))
 LIST_REFRESH_H = float(os.environ.get("RESP_LIST_REFRESH_H", "48"))
@@ -402,7 +401,7 @@ def phase_cresap(con):
 
 # ----------------------------------------------------------------------------- ministerios cabinet nominations
 def phase_appointments(con):
-    p = ROOT / "data" / "ministerios.db"
+    p = DATA_DIR / "ministerios.db"
     if not p.exists():
         con.execute("INSERT INTO blocked VALUES ('ministerios.db', 'ficheiro inexistente')"); return
     mc = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
@@ -417,7 +416,7 @@ def phase_appointments(con):
 
 # ----------------------------------------------------------------------------- entity matching + contracts cross-view
 def phase_match_and_links(con):
-    pol = sqlite3.connect(f"file:{ROOT / 'data' / 'politica.db'}?mode=ro", uri=True)
+    pol = sqlite3.connect(f"file:{DATA_DIR / 'politica.db'}?mode=ro", uri=True)
     pol.execute("PRAGMA query_only=ON")
     # 1. ET entity (organisation) -> entities.nif by EXACT normalised name, only when unique (method recorded)
     byname, muni = {}, {}
@@ -525,9 +524,9 @@ def main():
     phase_match_and_links(con)
     import responsaveis_nomeacoes as rn
     con.executescript(rn.DDL)
-    rn.phase_dre(con, ROOT, log)
+    rn.phase_dre(con, DATA_DIR, log)
     if not os.environ.get("RESP_SKIP_CRESAP"):
-        rn.phase_cresap_results(con, ROOT, log, SLEEP)
+        rn.phase_cresap_results(con, DATA_DIR, log, SLEEP)
     stats = {k: con.execute(q).fetchone()[0] for k, q in {
         "mandates": "SELECT COUNT(*) FROM mandates", "holders_total": "SELECT COUNT(DISTINCT holder_id) FROM mandates",
         "holders_checked": "SELECT COUNT(*) FROM holders", "declarations": "SELECT COUNT(*) FROM declarations",

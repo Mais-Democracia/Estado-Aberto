@@ -25,10 +25,10 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
-DB = ROOT / "data" / "regioes.db"
-RAW = ROOT / "data" / "raw" / "regioes"
+DB = DATA_DIR / "regioes.db"
+RAW = DATA_DIR / "raw" / "regioes"
 RAW.mkdir(parents=True, exist_ok=True)
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
 _last = {}
@@ -567,7 +567,7 @@ def parse_mad_budget(db):
 
 # ----------------------------------------------------------------------------- DRE
 def load_dre(db):
-    p = ROOT / "data" / "dre.db"
+    p = DATA_DIR / "dre.db"
     if not p.exists():
         db.execute("INSERT INTO blocked VALUES(NULL,'legislação regional','data/dre.db','módulo dre não corrido')")
         return
@@ -788,7 +788,7 @@ MAI_ABBR = {"PSD/AD": "PSD", "PCTP/MRPP": "MRPP"}
 def merge_mai(db):
     """Resultados oficiais da MAI (data/eleicoes.db, só leitura) como fonte única; a Wikipedia só onde a MAI não tem (Açores 2016)
     e para o quadro de reconciliação."""
-    p = ROOT / "data" / "eleicoes.db"
+    p = DATA_DIR / "eleicoes.db"
     ids = {("acores", 2024): "reg-ac-2024", ("acores", 2020): "reg-ac-2020", ("madeira", 2025): "reg-ma-2025",
            ("madeira", 2024): "reg-ma-2024", ("madeira", 2023): "reg-ma-2023", ("madeira", 2019): "reg-ma-2019"}
     have = set()
@@ -831,7 +831,7 @@ def merge_mai(db):
 
 # ----------------------------------------------------------------------------- contratos
 def contracts(db):
-    c = sqlite3.connect(f"file:{ROOT / 'data' / 'politica.db'}?mode=ro", uri=True)
+    c = sqlite3.connect(f"file:{DATA_DIR / 'politica.db'}?mode=ro", uri=True)
     cand = c.execute("""SELECT buyer_nif,
         sum(location LIKE '%Região Autónoma dos Açores%') az, sum(location LIKE '%Região Autónoma da Madeira%') ma
         FROM contracts WHERE location LIKE '%Região Autónoma%' AND buyer_nif IS NOT NULL GROUP BY buyer_nif""").fetchall()

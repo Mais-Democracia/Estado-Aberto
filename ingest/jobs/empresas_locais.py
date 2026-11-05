@@ -19,14 +19,14 @@ import time
 import unicodedata
 import urllib.request
 
-from common import ROOT
+from common import DATA_DIR, ROOT
 
 NAME = "empresas_locais"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-POL = ROOT / "data" / "politica.db"
-AUT = ROOT / "data" / "autarquias.db"
-RESP = ROOT / "data" / "responsaveis.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+POL = DATA_DIR / "politica.db"
+AUT = DATA_DIR / "autarquias.db"
+RESP = DATA_DIR / "responsaveis.db"
 BUA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 SEL = {  # ano -> URL do JSON em dados.gov.pt (datasets DGAL 'Setor Empresarial Local <ano>')
     2015: "https://dados.gov.pt/s/resources/setor-empresarial-local-2015/20180514-160257/AVSEL2015.json",

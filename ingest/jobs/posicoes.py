@@ -7,10 +7,10 @@ from collections import defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
 NAME = "posicoes"
-DB = ROOT / "data" / f"{NAME}.db"
+DB = DATA_DIR / f"{NAME}.db"
 CONFIG = ROOT / "seed" / "posicoes_topicos.json"
 WINDOW_DAYS = 45
 SENSE = {"favor": "favor", "contra": "contra", "abstencao": "abstenção"}
@@ -121,8 +121,8 @@ def main():
     out = sqlite3.connect(DB, timeout=60)
     out.execute("PRAGMA journal_mode=WAL")
     out.executescript(SCHEMA)
-    iv = sqlite3.connect(f"file:{ROOT / 'data' / 'intervencoes.db'}?mode=ro", uri=True, timeout=60)
-    vt = sqlite3.connect(f"file:{ROOT / 'data' / 'votacoes.db'}?mode=ro", uri=True, timeout=60)
+    iv = sqlite3.connect(f"file:{DATA_DIR / 'intervencoes.db'}?mode=ro", uri=True, timeout=60)
+    vt = sqlite3.connect(f"file:{DATA_DIR / 'votacoes.db'}?mode=ro", uri=True, timeout=60)
     titles = {b: (t, k) for b, t, k in vt.execute("SELECT bid, titulo, key FROM iniciativas")}
     ini_t = {}
     for bid, (t, _) in titles.items():

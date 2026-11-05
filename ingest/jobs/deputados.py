@@ -33,16 +33,15 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "deputados"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://www.parlamento.pt"
 LIST_URL = BASE + "/DeputadoGP/Paginas/Deputados.aspx"
 LEG = "XVII"
 SEATS = 230
-UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0 (politica-pt civic project; contact@example.org)"
 SLEEP = float(os.environ.get("DEPUTADOS_SLEEP", "1.2"))
 REFRESH_H = float(os.environ.get("DEPUTADOS_REFRESH_H", "20"))
 
@@ -412,7 +411,7 @@ def main():
     client = Client()
 
     # 0. official files hook
-    uf = ROOT / "data" / "ar_urls.json"
+    uf = DATA_DIR / "ar_urls.json"
     if uf.exists():
         try:
             urls = json.loads(uf.read_text())

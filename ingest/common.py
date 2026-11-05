@@ -1,15 +1,28 @@
 """Shared helpers: database schema + HTTP fetching (stdlib only)."""
+import hashlib
 import html
 import json
+import os
 import re
 import sqlite3
+import sys
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DB_PATH = ROOT / "data" / "politica.db"
-UA = "politica-pt/0.1 (personal civic project; contact: contact@example.org)"
+DATA_DIR = Path(os.environ.get("ESTADO_ABERTO_DATA") or ROOT / "data").expanduser().resolve()
+DB_PATH = DATA_DIR / "politica.db"
+CONTACT = os.environ.get("ESTADO_ABERTO_CONTACT") or "+https://github.com/Mais-Democracia/Estado-Aberto"
+UA = f"Estado-Aberto/1.0 ({CONTACT})"
+DELAY = float(os.environ.get("ESTADO_ABERTO_DELAY", "0.5"))
+TRIES = int(os.environ.get("ESTADO_ABERTO_TRIES", "4"))
+REFRESH = os.environ.get("ESTADO_ABERTO_REFRESH") == "1" or "--refresh" in sys.argv
+CACHE_DIR = DATA_DIR / "cache" / "http"
+RETRY_CODES = {408, 425, 429, 500, 502, 503, 504}
+_last_hit = {}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -101,7 +114,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
 
 def db():
-    DB_PATH.parent.mkdir(exist_ok=True)
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH, timeout=600)
     con.executescript(SCHEMA)
     return con
@@ -111,16 +124,81 @@ def set_meta(con, key, value):
     con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
 
 
-def get(url, params=None, headers=None, timeout=60):
+def polite(url):
+    host = urllib.parse.urlsplit(url).netloc
+    wait = DELAY - (time.time() - _last_hit.get(host, 0.0))
+    if wait > 0:
+        time.sleep(wait)
+    _last_hit[host] = time.time()
+
+
+def request(url, headers=None, timeout=60, data=None, tries=None):
+    tries = tries or TRIES
+    err = None
+    for i in range(tries):
+        polite(url)
+        req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **(headers or {})})
+        try:
+            return urllib.request.urlopen(req, timeout=timeout)
+        except urllib.error.HTTPError as e:
+            err = e
+            if e.code not in RETRY_CODES:
+                raise
+            ra = e.headers.get("Retry-After") if e.headers else None
+            pause = float(ra) if ra and ra.isdigit() else 0
+        except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+            err = e
+            pause = 0
+        if i + 1 < tries:
+            time.sleep(min(60, max(pause, 2 ** (i + 1))))
+    raise err
+
+
+def cache_file(url, params=None):
+    key = url + "?" + urllib.parse.urlencode(sorted((params or {}).items()))
+    host = urllib.parse.urlsplit(url).netloc or "local"
+    return CACHE_DIR / host / hashlib.sha1(key.encode()).hexdigest()
+
+
+def get(url, params=None, headers=None, timeout=60, cache=False, max_age_h=None):
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read().decode("utf-8", "replace")
+    f = cache_file(url) if cache else None
+    if f and not REFRESH and f.exists() and (max_age_h is None or time.time() - f.stat().st_mtime < max_age_h * 3600):
+        return f.read_text("utf-8", "replace")
+    try:
+        with request(url, headers, timeout) as r:
+            body = r.read().decode("utf-8", "replace")
+    except Exception:
+        if f and f.exists():
+            return f.read_text("utf-8", "replace")
+        raise
+    if f:
+        f.parent.mkdir(parents=True, exist_ok=True)
+        tmp = f.with_name(f.name + ".part")
+        tmp.write_text(body, "utf-8")
+        tmp.replace(f)
+    return body
 
 
-def get_json(url, params=None, headers=None, timeout=60):
-    return json.loads(get(url, params, headers, timeout))
+def get_json(url, params=None, headers=None, timeout=60, cache=False, max_age_h=None):
+    return json.loads(get(url, params, headers, timeout, cache, max_age_h))
+
+
+def download(url, dest, headers=None, timeout=120, force=False):
+    dest = Path(dest)
+    if dest.exists() and not force and not REFRESH:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_name(dest.name + ".part")
+    with request(url, headers, timeout) as r, open(tmp, "wb") as out:
+        while True:
+            chunk = r.read(1 << 20)
+            if not chunk:
+                break
+            out.write(chunk)
+    tmp.replace(dest)
+    return dest
 
 
 def plain(s):

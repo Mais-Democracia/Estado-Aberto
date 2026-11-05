@@ -28,13 +28,13 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
 NAME = "seguranca"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-POLITICA = ROOT / "data" / "politica.db"
-AUTARQUIAS = ROOT / "data" / "autarquias.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+POLITICA = DATA_DIR / "politica.db"
+AUTARQUIAS = DATA_DIR / "autarquias.db"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 politica-pt/0.1"
 INE_URL = "https://www.ine.pt/ine/json_indicador/pindica.jsp?op=2&varcd={v}&Dim1=T&lang=PT"
 INE_META = "https://www.ine.pt/bddXplorer/htdocs/minfo.jsp?var_cd={v}&lingua=PT"

@@ -11,11 +11,11 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
 NAME = "igf"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://igf.gov.pt"
 LIST = BASE + "/relatorios-administracao-local-autarquica"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -119,7 +119,7 @@ def classify(title):
 
 
 def load_registry():
-    p = ROOT / "data" / "politica.db"
+    p = DATA_DIR / "politica.db"
     if not p.exists():
         return {}, {}
     c = sqlite3.connect(f"file:{p}?mode=ro", uri=True)

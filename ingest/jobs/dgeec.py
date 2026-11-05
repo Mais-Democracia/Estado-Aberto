@@ -19,15 +19,15 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from orcamento import Book  # noqa: E402
 
 NAME = "dgeec"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-AUT = ROOT / "data" / "autarquias.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+AUT = DATA_DIR / "autarquias.db"
 IND_DATASETS = ["5d385f4e454ae3079533be59", "5d39ccb5454ae3e5136214f6", "5d388cca454ae36a2dbdc82c"]
 INFO_DATASET = "619d1c86078190caa6492d7a"
 LEVELS = {"1ciclo": "1.º ciclo", "2ciclo": "2.º ciclo", "3ciclo": "3.º ciclo", "secundario-ch": "Secundário científico-humanístico", "secundario-profissional": "Secundário profissional"}

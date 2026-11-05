@@ -26,11 +26,11 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "presidencia"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://www.presidencia.pt"
 LIST_URL = BASE + "/umbraco/Surface/PartialViewSurface/RequestFilterList"
 MIN_GAP = 1.2
@@ -236,7 +236,7 @@ def ini_key(r):
 
 
 def build_votacoes(con, cur):
-    v = sqlite3.connect(f"file:{ROOT/'data'/'votacoes.db'}?mode=ro", uri=True, timeout=60)
+    v = sqlite3.connect(f"file:{DATA_DIR/'votacoes.db'}?mode=ro", uri=True, timeout=60)
     v.row_factory = sqlite3.Row
     ini = {r["bid"]: r for r in v.execute("SELECT * FROM iniciativas")}
     fases = {}
@@ -364,7 +364,7 @@ def build_votacoes(con, cur):
     # ---------- promulgations of AR decrees (votacoes), merged into DRE rows when dre_act_id is known
     n_prom = 0
     dre_dates = {}
-    d = sqlite3.connect(f"file:{ROOT/'data'/'dre.db'}?mode=ro", uri=True, timeout=60)
+    d = sqlite3.connect(f"file:{DATA_DIR/'dre.db'}?mode=ro", uri=True, timeout=60)
     for r in d.execute("SELECT promulgated FROM acts WHERE kind IN ('Lei','Lei Orgânica','Decreto Regulamentar') AND promulgated!=''"):
         dre_dates[r[0]] = dre_dates.get(r[0], 0) + 1
     # explicit link by "Lei n/ano" (iniciativas.lei_ref) when the initiative has no dre_act_id
@@ -406,7 +406,7 @@ def build_votacoes(con, cur):
 
 # ----------------------------------------------------------------------------- DRE
 def build_dre(con, cur):
-    d = sqlite3.connect(f"file:{ROOT/'data'/'dre.db'}?mode=ro", uri=True, timeout=60)
+    d = sqlite3.connect(f"file:{DATA_DIR/'dre.db'}?mode=ro", uri=True, timeout=60)
     d.row_factory = sqlite3.Row
     n = 0
     for r in d.execute("SELECT * FROM acts WHERE kind IN ('Lei','Lei Orgânica','Decreto-Lei','Decreto Regulamentar','Decreto') AND promulgated!=''"):
@@ -479,9 +479,9 @@ def parse_tc(h):
 
 
 def build_tc(con, cur, dec_to_bid, ini, tcmap):
-    j = sqlite3.connect(f"file:{ROOT/'data'/'justica.db'}?mode=ro", uri=True, timeout=60)
+    j = sqlite3.connect(f"file:{DATA_DIR/'justica.db'}?mode=ro", uri=True, timeout=60)
     j.row_factory = sqlite3.Row
-    cache_j = ROOT / "data" / "raw" / "justica" / "tc" / "d"
+    cache_j = DATA_DIR / "raw" / "justica" / "tc" / "d"
     n = 0
     rows = list(j.execute("SELECT * FROM tc_acordaos WHERE tipo IN ('Fiscalização preventiva','Fiscalização sucessiva abstrata') ORDER BY data"))
     for r in rows:

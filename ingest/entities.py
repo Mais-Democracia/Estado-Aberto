@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 
 from classify import classify
-from common import ROOT, UA, db, set_meta
+from common import DATA_DIR, db, ROOT, set_meta, UA
 import urllib.request
 
-RAW = ROOT / "data" / "raw" / "base" / "entidades.json"
+RAW = DATA_DIR / "raw" / "base" / "entidades.json"
 URL = "https://dados.gov.pt/s/resources/contratos-publicos-portal-base-impic-entidades/20261025-100656-1ae8ad2c/entidades.json"
 
 

@@ -21,11 +21,14 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common import DATA_DIR  # noqa: E402
+
 ROOT = Path(__file__).resolve().parent.parent.parent
-RISCO = ROOT / "data" / "risco.db"
-POLITICA = ROOT / "data" / "politica.db"
+RISCO = DATA_DIR / "risco.db"
+POLITICA = DATA_DIR / "politica.db"
 LABELS = ROOT / "docs" / "risco_labels.csv"
-OUT = ROOT / "data" / "exports" / "risco_precision.json"
+OUT = DATA_DIR / "exports" / "risco_precision.json"
 N = 100
 SEED = 20261030
 COLS = ["sample_id", "stratum_flag", "contract_id", "procedure_id", "signed", "procedure", "price", "score", "all_flags",

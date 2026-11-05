@@ -3,9 +3,9 @@ import json
 import re
 import urllib.request
 
-from common import ROOT, UA, db, set_meta
+from common import DATA_DIR, db, ROOT, set_meta, UA
 
-RAW = ROOT / "data" / "raw" / "mods"
+RAW = DATA_DIR / "raw" / "mods"
 DS = "668d65dbcb1b953e80198435"
 
 

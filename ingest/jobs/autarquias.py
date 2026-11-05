@@ -32,13 +32,13 @@ import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from common import ROOT, UA
+from common import DATA_DIR, ROOT, UA
 
 NAME = "autarquias"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-EXPORT = ROOT / "data" / "exports" / f"{NAME}.csv"
-POLITICA = ROOT / "data" / "politica.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+EXPORT = DATA_DIR / "exports" / f"{NAME}.csv"
+POLITICA = DATA_DIR / "politica.db"
 
 MAI25 = "https://www.eleicoes.mai.gov.pt/autarquicas2025/assets/static"
 MAI21 = "https://www.eleicoes.mai.gov.pt/autarquicas2021/assets/static"

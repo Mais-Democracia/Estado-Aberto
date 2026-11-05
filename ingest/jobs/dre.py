@@ -29,11 +29,11 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 
-from common import ROOT, UA
+from common import DATA_DIR, ROOT, UA
 
 NAME = "dre"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://diariodarepublica.pt"
 CSRF = "T6C+9iB49TLra4jEsMeSckDMNhQ="  # OutSystems AnonymousCSRFToken (public constant in /dr/scripts/OutSystems.js)
 SLEEP = float(os.environ.get("DRE_SLEEP", "1.0"))
@@ -437,7 +437,7 @@ def same_subject(a, b):
 def phase_initiatives(con):
     """Link acts to parliament initiatives in data/politica.db (read-only): explicit citation in the act text,
     or near-identical title for AR laws."""
-    pdb = ROOT / "data" / "politica.db"
+    pdb = DATA_DIR / "politica.db"
     if not pdb.exists():
         return
     try:

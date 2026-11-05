@@ -21,11 +21,11 @@ import urllib.request
 from collections import defaultdict
 from html.parser import HTMLParser
 
-from common import ROOT, UA
+from common import DATA_DIR, ROOT, UA
 
 NAME = "ministerios"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://portugal.gov.pt"
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 SLEEP = 0.7
@@ -331,7 +331,7 @@ def main():
         m_ = re.search(r"(\d{1,2}) de ([a-zç]+) de (\d{4})", norm(sv or ""))
         m_ = re.search(r"(\d{1,2}) (?:de )?([a-z]+) (?:de )?(\d{4})", norm(sv or ""))
         return f"{m_.group(3)}-{pm.get(m_.group(2), 0):02d}-{int(m_.group(1)):02d}" if m_ and m_.group(2) in pm else ""
-    ppl = sqlite3.connect(f"file:{ROOT / 'data' / 'politica.db'}?mode=ro", uri=True)
+    ppl = sqlite3.connect(f"file:{DATA_DIR / 'politica.db'}?mode=ro", uri=True)
     wiki = ppl.execute("SELECT name, role, since, source FROM people WHERE body='Governo' AND role LIKE 'Ministr%'").fetchall()
     ppl.close()
     for slug, name, short, nslug in MINISTRIES:
@@ -388,7 +388,7 @@ def main():
     con.commit()
 
     # --- 4. tutela: regras sobre o registo de entidades
-    pol = sqlite3.connect(f"file:{ROOT / 'data' / 'politica.db'}?mode=ro", uri=True)
+    pol = sqlite3.connect(f"file:{DATA_DIR / 'politica.db'}?mode=ro", uri=True)
     ents = pol.execute("SELECT id, nif, name, kind FROM entities WHERE is_public=1 AND kind IN (%s)" % ",".join("?" * len(KIND_OK)), tuple(KIND_OK)).fetchall()
     log("entidades públicas candidatas:", len(ents))
     by_name = {}
@@ -495,7 +495,7 @@ def main():
     # --- 7. despesa por ministério
     pol.close()
     pol = sqlite3.connect(":memory:", uri=True)
-    pol.execute("ATTACH DATABASE ? AS p", (f"file:{ROOT / 'data' / 'politica.db'}?mode=ro",))
+    pol.execute("ATTACH DATABASE ? AS p", (f"file:{DATA_DIR / 'politica.db'}?mode=ro",))
     con.execute("DROP TABLE IF EXISTS tn"); con.execute("CREATE TABLE tn (ministry TEXT, nif TEXT)")
     seen = set()
     rows = [(r[0], r[1]) for r in con.execute("SELECT ministry, nif FROM bodies WHERE nif IS NOT NULL")]

@@ -26,12 +26,12 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 
-from common import ROOT
+from common import DATA_DIR, ROOT
 
 NAME = "estado_empresas"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-POLITICA = ROOT / "data" / "politica.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+POLITICA = DATA_DIR / "politica.db"
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 API = "https://dados.gov.pt/api/1/datasets/"
 DSET_URL = "https://dados.gov.pt/pt/datasets/"

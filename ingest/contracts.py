@@ -10,9 +10,9 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-from common import ROOT, UA, db, set_meta
+from common import DATA_DIR, db, ROOT, set_meta, UA
 
-RAW = ROOT / "data" / "raw" / "contracts"
+RAW = DATA_DIR / "raw" / "contracts"
 DS = "66d72d488ca4b7cb2de28712"   # dados.gov.pt dataset: Contratos Públicos - Portal Base - Contratos de 2012 a 2026
 
 

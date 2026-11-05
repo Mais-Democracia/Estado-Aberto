@@ -24,12 +24,12 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from common import ROOT
+from common import DATA_DIR, ROOT, UA
 
 NAME = "eleicoes"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-AUT = ROOT / "data" / "autarquias.db"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
+AUT = DATA_DIR / "autarquias.db"
 MAI = "https://www.eleicoes.mai.gov.pt"
 BUA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
 GAP = 1.1
@@ -207,7 +207,7 @@ def load_municipios(con):
         rows = a.execute("SELECT dico, name, district, nif FROM municipios").fetchall()
         a.close()
     ent = {}
-    pol = ROOT / "data" / "politica.db"
+    pol = DATA_DIR / "politica.db"
     if pol.exists():
         p = sqlite3.connect(f"file:{pol}?mode=ro", uri=True, timeout=30)
         for i, nif in p.execute("SELECT id, nif FROM entities WHERE kind='municipio'"):
@@ -401,7 +401,7 @@ def link_entities(con, municipios):
     """Link parishes to politica.db entities (kind=freguesia): (1) parent municipio + normalised name; (2) unique normalised
     name among entities without parent (older BASE-sourced entities such as 'União das Freguesias de X')."""
     nfr = con.execute("SELECT COUNT(*) FROM freguesias").fetchone()[0]
-    pol = ROOT / "data" / "politica.db"
+    pol = DATA_DIR / "politica.db"
     ent, orphan = {}, {}
     if pol.exists():
         p = sqlite3.connect(f"file:{pol}?mode=ro", uri=True, timeout=30)
@@ -764,7 +764,7 @@ def wiki_fetch():
             time.sleep(w)
         _last[0] = time.time()
         try:
-            req = urllib.request.Request(u, headers={"User-Agent": "politica-pt/0.1 (personal civic project; contact@example.org)"})
+            req = urllib.request.Request(u, headers={"User-Agent": UA})
             fn.write_text(json.loads(urllib.request.urlopen(req, timeout=40).read())["parse"]["text"]["*"])
         except Exception as e:
             print("  ! wiki fetch", page, e)

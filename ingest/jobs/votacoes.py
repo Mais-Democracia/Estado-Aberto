@@ -35,15 +35,14 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "votacoes"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BASE = "https://www.parlamento.pt"
 LIST_URL = BASE + "/ActividadeParlamentar/Paginas/IniciativasLegislativas.aspx"
 DET_URL = BASE + "/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID="
-UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0 (politica-pt civic project; contact@example.org)"
 SLEEP = float(os.environ.get("VOTACOES_SLEEP", "1.1"))
 REFRESH_H = float(os.environ.get("VOTACOES_REFRESH_H", "72"))
 MAX_REQ = int(os.environ.get("VOTACOES_MAX_REQ", "2500"))
@@ -69,8 +68,8 @@ def seats_for(leg):
     out = None
     if leg == "XVII":
         out = dict(SEATS_XVII)
-    elif leg in LEG_ELECTION and (ROOT / "data" / "eleicoes.db").exists():
-        e = sqlite3.connect(f"file:{ROOT / 'data' / 'eleicoes.db'}?mode=ro", uri=True)
+    elif leg in LEG_ELECTION and (DATA_DIR / "eleicoes.db").exists():
+        e = sqlite3.connect(f"file:{DATA_DIR / 'eleicoes.db'}?mode=ro", uri=True)
         out = {}
         for party, m in e.execute("SELECT party, mandates FROM results WHERE election_id = ? AND level = 'nacional' AND mandates > 0", (LEG_ELECTION[leg],)):
             code = "PSD" if "PSD" in party else {"PCP-PEV": "PCP", "B.E.": "BE"}.get(party, party)
@@ -603,7 +602,7 @@ def resolve_diplomas(client, con):
 def link_dre(con):
     """DRE act id ONLY for initiatives whose AR page has a Diário da República publication phase, matched by act kind + NUMBER/YEAR
     stated by the AR (on the initiative page or its 'texto aprovado' page). No title/summary matching: several bills can amend the same law."""
-    f = ROOT / "data" / "dre.db"
+    f = DATA_DIR / "dre.db"
     if not f.exists():
         return 0
     con.execute("UPDATE iniciativas SET dre_act_id = NULL")

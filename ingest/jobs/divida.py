@@ -2,17 +2,16 @@ import datetime
 import re
 import sqlite3
 import sys
-import urllib.request
+import urllib.parse
 import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, download, get  # noqa: E402
 
 NAME = "divida"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
-UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 FILES = {
     "stock": "Stock_divida_valores_mensais_Debt_stock_monthly_figures.xlsx",
     "ind": "Indicadores_divida_slonga_Debt_indicators_historical_series.xlsx",
@@ -61,24 +60,14 @@ def to_date(v):
 
 
 def fetch(name):
-    RAW.mkdir(parents=True, exist_ok=True)
     p = RAW / name
     if p.exists():
         return p
-    legacy = Path("/tmp/igd") / name
-    if legacy.exists():
-        p.write_bytes(legacy.read_bytes())
-        return p
-    req = urllib.request.Request(SOURCE, headers={"User-Agent": UA})
-    html = urllib.request.urlopen(req, timeout=60).read().decode("utf-8", "replace")
-    m = re.search(r'href="([^"]*' + re.escape(name) + r')"', html)
+    page = get(SOURCE, cache=True, max_age_h=24)
+    m = re.search(r'href="([^"]*' + re.escape(name) + r')"', page)
     if not m:
         raise RuntimeError("ficheiro não encontrado: " + name)
-    url = m.group(1)
-    if url.startswith("/"):
-        url = "https://www.igcp.pt" + url
-    p.write_bytes(urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": UA}), timeout=120).read())
-    return p
+    return download(urllib.parse.urljoin(SOURCE, m.group(1)), p)
 
 
 def load(rows, date_row, spec, unit, grp, db):

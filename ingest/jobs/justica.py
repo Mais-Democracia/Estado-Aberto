@@ -27,11 +27,11 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 
 NAME = "justica"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 MIN_GAP = 1.15
 _last = {}
@@ -201,7 +201,7 @@ def comarca_of(name):
 
 
 def build_registry(con):
-    pol = ro(ROOT / "data" / "politica.db")
+    pol = ro(DATA_DIR / "politica.db")
     rows = pol.execute("SELECT id, nif, name, buyer_contracts, buyer_value FROM entities WHERE kind='tribunal_justica'").fetchall()
     con.execute("DELETE FROM tribunais")
     for r in rows:
@@ -232,7 +232,7 @@ def build_registry(con):
     # Ministry of Justice bodies (data/ministerios.db built by the `ministerios` module from the portal registry + Governo pages)
     con.execute("DELETE FROM mj_bodies")
     try:
-        mj = ro(ROOT / "data" / "ministerios.db")
+        mj = ro(DATA_DIR / "ministerios.db")
         for r in mj.execute("SELECT nif, entity_id, name, source_url FROM bodies WHERE ministry='justica' AND nif IS NOT NULL").fetchall():
             con.execute("INSERT OR REPLACE INTO mj_bodies VALUES (?,?,?,?)", (r["nif"], r["entity_id"], r["name"], r["source_url"]))
     except Exception as e:
@@ -406,7 +406,7 @@ def link_tc_dre(con):
     """Link TC acórdãos to the Diário da República acts already loaded in data/dre.db (acts.kind 'Acórdão do Tribunal Constitucional';
     acts.number = 'N/YYYY' equals the TC number). The official DR summary supplies the dispositive part when the full text was not read."""
     try:
-        dre = ro(ROOT / "data" / "dre.db")
+        dre = ro(DATA_DIR / "dre.db")
         rows = dre.execute("SELECT id, number, summary FROM acts WHERE kind LIKE 'Acórdão do Tribunal Constitucional%'").fetchall()
     except Exception as e:
         print("  dre.db unavailable:", e)
@@ -450,7 +450,7 @@ class EntityMatcher:
     """Match free-text titles/entity strings to the registry (data/politica.db `entities`) by normalised name."""
 
     def __init__(self):
-        pol = ro(ROOT / "data" / "politica.db")
+        pol = ro(DATA_DIR / "politica.db")
         self.by = {}
         for r in pol.execute("SELECT id, nif, name, kind, buyer_value FROM entities WHERE nif IS NOT NULL AND is_public=1"):
             if r["kind"] == "freguesia":

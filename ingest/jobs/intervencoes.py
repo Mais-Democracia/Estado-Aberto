@@ -13,13 +13,12 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "intervencoes"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 PAGE = "https://www.parlamento.pt/DAR/Paginas/DAR1Serie.aspx"
-UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0 (politica-pt civic project; contact@example.org)"
 SLEEP = float(os.environ.get("INTERV_SLEEP", "1.5"))
 MAX_REQ = int(os.environ.get("INTERV_MAX_REQ", "400"))
 OFFLINE = os.environ.get("INTERV_OFFLINE") == "1"
@@ -141,7 +140,13 @@ def discover(client, leg):
     f = cache_path(f"index_{leg}.json")
     if OFFLINE and f.exists():
         return [tuple(x) for x in json.loads(f.read_text())]
-    t = client.fetch(PAGE)
+    try:
+        t = client.fetch(PAGE)
+    except RuntimeError:
+        if f.exists():
+            print("parlamento.pt unreachable; using cached index", f.name)
+            return [tuple(x) for x in json.loads(f.read_text())]
+        raise
     lname, lopts = select_options(t, "ddlLegislatura")
     sname, _ = select_options(t, "ddlSessaoLegislativa")
     want = LEG_VALUE[leg]
@@ -349,7 +354,7 @@ def norm_name(s):
 
 def deputy_map(con_main):
     m = {}
-    base = ROOT / "data"
+    base = DATA_DIR
     if (base / "deputados.db").exists():
         d = sqlite3.connect(f"file:{base / 'deputados.db'}?mode=ro", uri=True)
         for bid, name, party in d.execute("SELECT bid, name, party FROM deputados"):
@@ -369,7 +374,7 @@ def deputy_map(con_main):
 
 
 def ini_map():
-    base = ROOT / "data" / "votacoes.db"
+    base = DATA_DIR / "votacoes.db"
     m = {}
     if base.exists():
         v = sqlite3.connect(f"file:{base}?mode=ro", uri=True)

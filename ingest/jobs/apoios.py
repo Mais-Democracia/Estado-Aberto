@@ -14,12 +14,12 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import ROOT  # noqa: E402
+from common import DATA_DIR, ROOT  # noqa: E402
 from jobs import apoios_pdf  # noqa: E402
 
 NAME = "apoios"
-DB = ROOT / "data" / f"{NAME}.db"
-RAW = ROOT / "data" / "raw" / NAME
+DB = DATA_DIR / f"{NAME}.db"
+RAW = DATA_DIR / "raw" / NAME
 UA = "Mozilla/5.0 (X11; Linux x86_64; rv:130.0) Gecko/20100101 Firefox/130.0"
 DELAY = {"www.dgartes.gov.pt": 10.5}
 _last = {}
@@ -695,7 +695,7 @@ def ingest_ica(sink, sources):
 
 # ----------------------------------------------------------------------------- ligação ao registo, consolidação, troca atómica
 def load_entities():
-    p = ROOT / "data" / "politica.db"
+    p = DATA_DIR / "politica.db"
     if not p.exists():
         return {}, {}, {}
     con = sqlite3.connect(f"file:{p}?mode=ro", uri=True, timeout=60)
@@ -777,7 +777,7 @@ def link_and_consolidate(db):
     db.executemany("UPDATE apoios_n SET nome=? WHERE bkey=? AND pessoa_singular=0", [(v, k) for k, v in best.items() if not k.startswith("P")])
     db.commit()
     # sobreposição com fundos europeus (COMPETE/FCT: operações POCI-01-0145-FEDER*), apenas indicativa
-    fp = ROOT / "data" / "fundos.db"
+    fp = DATA_DIR / "fundos.db"
     ov = 0
     if fp.exists():
         try:
