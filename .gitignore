@@ -1,0 +1,14 @@
+data/*
+!data/.gitkeep
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.bak*
+*.whl
+*.log
+node_modules/
+.env
+.env.*
+__pycache__/
+*.pyc

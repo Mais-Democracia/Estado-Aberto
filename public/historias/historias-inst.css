@@ -1,0 +1,6 @@
+.hi-search { display: flex; flex-wrap: wrap; gap: .5rem; margin: .5rem 0 1rem; align-items: end; }
+.hi-search label { flex: 1 1 14rem; font: 600 .78rem var(--st-sans); color: var(--st-mute); display: flex; flex-direction: column; gap: .3rem; }
+.hi-search input { font: 400 1rem var(--st-text); padding: .55rem .7rem; border: 1px solid var(--st-line); background: var(--st-paper); color: var(--st-ink); }
+.hi-search button { font: 600 .9rem var(--st-sans); padding: .6rem 1rem; border: 1px solid var(--st-ink); background: var(--st-ink); color: var(--st-paper); cursor: pointer; }
+.hi-msg { flex-basis: 100%; margin: 0; font: 400 .85rem var(--st-sans); color: var(--st-redink); }
+.hi-msg:empty { display: none; }

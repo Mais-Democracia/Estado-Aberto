@@ -1,0 +1,107 @@
+{
+  "intro": "Portugal é uma república semipresidencialista (Constituição de 1976, a «Terceira República»). O poder está repartido por quatro órgãos de soberania — Presidente da República, Assembleia da República, Governo e Tribunais (CRP art. 110.º) — que se fiscalizam mutuamente. Nenhum governa sozinho: o Governo precisa da confiança do Parlamento, o Parlamento pode ser dissolvido pelo Presidente, o Presidente pode vetar leis, e os Tribunais (em especial o Constitucional) podem anular o que viole a Constituição.",
+  "powers": [
+    {
+      "id": "presidente",
+      "name": "Presidente da República",
+      "tagline": "Chefe de Estado e árbitro do sistema",
+      "color": "#b3261e",
+      "article": "CRP art. 120.º–140.º",
+      "how": "Eleito por sufrágio universal e direto para 5 anos, com um máximo de dois mandatos consecutivos. Não governa nem legisla no dia a dia, mas tem poderes decisivos nos momentos de crise.",
+      "can": [
+        "Promulgar ou vetar as leis do Parlamento e os decretos do Governo (art. 134.º, 136.º). Um veto político sobre uma lei da AR pode ser ultrapassado se os deputados a reconfirmarem por maioria absoluta (ou 2/3 em certas matérias). Um veto a um decreto do Governo é absoluto.",
+        "Pedir ao Tribunal Constitucional a fiscalização preventiva de uma lei antes de a promulgar (art. 278.º, 279.º).",
+        "Nomear o Primeiro-Ministro, tendo em conta os resultados eleitorais (art. 187.º), e os restantes membros do Governo sob proposta do PM.",
+        "Dissolver a Assembleia da República, ouvidos os partidos e o Conselho de Estado (art. 133.º e), salvo nos 6 meses após a eleição ou no último semestre do seu mandato (art. 172.º).",
+        "Demitir o Governo, só quando seja necessário para assegurar o regular funcionamento das instituições democráticas, ouvido o Conselho de Estado (art. 195.º).",
+        "Ser Comandante Supremo das Forças Armadas e declarar guerra ou paz (sob proposta do Governo e autorização da AR).",
+        "Marcar eleições, convocar referendos (com proposta da AR ou do Governo) e conceder indultos.",
+        "Nomear, sob proposta do Governo, o Procurador-Geral da República e o Presidente do Tribunal de Contas, e os embaixadores."
+      ],
+      "cannot": [
+        "Propor ou aprovar leis por iniciativa própria.",
+        "Governar ou dirigir a administração pública.",
+        "Dissolver o Parlamento em qualquer altura (ver limites acima) ou demitir o Governo por simples discordância política."
+      ],
+      "doing": "presidente"
+    },
+    {
+      "id": "parlamento",
+      "name": "Assembleia da República",
+      "tagline": "O Parlamento: faz as leis e fiscaliza o Governo",
+      "color": "#1d4ed8",
+      "article": "CRP art. 147.º–181.º",
+      "how": "230 deputados eleitos por sufrágio universal por círculos eleitorais (método de Hondt), para legislaturas de 4 anos divididas em 4 sessões legislativas. Representa todos os cidadãos portugueses.",
+      "can": [
+        "Aprovar leis sobre todas as matérias e, em exclusivo, sobre as da sua reserva (direitos e liberdades, eleições, organização judiciária, sistema fiscal, etc.; art. 164.º, 165.º).",
+        "Aprovar o Orçamento do Estado e as Grandes Opções do Plano (art. 161.º g).",
+        "Apreciar o Programa do Governo e votar moções de confiança e de censura. Uma moção de censura aprovada por maioria absoluta derruba o Governo (art. 194.º).",
+        "Fiscalizar o Governo: perguntas e requerimentos, debates, audições em comissão, comissões de inquérito, apreciação parlamentar de decretos-leis (art. 169.º).",
+        "Rever a Constituição, por maioria de 2/3 dos deputados em funções (art. 286.º).",
+        "Autorizar o Governo a legislar (autorizações legislativas) e autorizar o estado de sítio/emergência declarado pelo Presidente.",
+        "Eleger 10 dos 13 juízes do Tribunal Constitucional, o Provedor de Justiça e membros de várias entidades independentes (por maioria de 2/3 em muitos casos)."
+      ],
+      "cannot": [
+        "Executar ou administrar: não gere ministérios nem serviços públicos.",
+        "Impor a sua vontade ao Presidente sem uma nova confirmação das leis vetadas.",
+        "Aprovar leis contrárias à Constituição (o Tribunal Constitucional pode anulá-las)."
+      ],
+      "doing": "parlamento"
+    },
+    {
+      "id": "governo",
+      "name": "Governo",
+      "tagline": "Conduz a política geral e administra o Estado",
+      "color": "#047857",
+      "article": "CRP art. 182.º–201.º",
+      "how": "Formado pelo Primeiro-Ministro, ministros e secretários de Estado. O PM é nomeado pelo Presidente, que ouve os partidos com assento parlamentar. O Governo responde politicamente perante o Presidente e a Assembleia da República.",
+      "can": [
+        "Definir e executar a política geral do país e dirigir a administração pública (ministérios, institutos, forças de segurança, etc.).",
+        "Legislar por decreto-lei em todas as matérias não reservadas à AR, e nas reservadas com autorização legislativa (art. 198.º).",
+        "Apresentar propostas de lei e a proposta de Orçamento do Estado ao Parlamento.",
+        "Fazer regulamentos para executar as leis (decretos regulamentares, portarias) e negociar tratados.",
+        "Propor ao Presidente nomeações importantes e pedir moções de confiança."
+      ],
+      "cannot": [
+        "Governar sem a tolerância do Parlamento: uma moção de censura aprovada ou uma moção de confiança chumbada obriga à demissão.",
+        "Legislar nas matérias de reserva absoluta da Assembleia da República.",
+        "Promulgar os próprios decretos: precisa da promulgação do Presidente (e da referenda ministerial)."
+      ],
+      "doing": "governo"
+    },
+    {
+      "id": "tribunais",
+      "name": "Tribunais",
+      "tagline": "Administram a justiça e travam o que viola a Constituição",
+      "color": "#7c3aed",
+      "article": "CRP art. 202.º–224.º",
+      "how": "Independentes e apenas sujeitos à lei. Há vários ramos: tribunais judiciais (STJ), administrativos e fiscais (STA), o Tribunal de Contas e o Tribunal Constitucional (13 juízes). O Ministério Público é autónomo e exerce a ação penal.",
+      "can": [
+        "Julgar processos civis, penais, administrativos e fiscais, e dirimir conflitos entre cidadãos, empresas e Estado.",
+        "Recusar aplicar normas inconstitucionais (qualquer tribunal), com recurso para o Tribunal Constitucional.",
+        "O Tribunal Constitucional pode declarar a inconstitucionalidade com força obrigatória geral (art. 281.º), anulando uma lei, e fiscalizar preventivamente leis antes de entrarem em vigor.",
+        "O Tribunal de Contas fiscaliza a legalidade e a regularidade das despesas públicas.",
+        "O Ministério Público investiga crimes e defende a legalidade democrática."
+      ],
+      "cannot": [
+        "Criar leis ou escolher a política do Governo.",
+        "Agir sem ser provocados (princípio do pedido), com exceção do Ministério Público no âmbito penal."
+      ],
+      "doing": "tribunais"
+    }
+  ],
+  "others": [
+    {"name": "Regiões Autónomas (Açores e Madeira)", "text": "Têm assembleias legislativas e governos regionais próprios, com poderes legislativos sobre matérias de interesse regional (art. 225.º–234.º). O Presidente nomeia um Representante da República em cada região."},
+    {"name": "Poder local", "text": "308 municípios e cerca de 3.000 freguesias, com órgãos eleitos (câmara municipal, assembleia municipal, junta e assembleia de freguesia) e finanças próprias (art. 235.º–265.º)."},
+    {"name": "Entidades independentes", "text": "Provedor de Justiça, Comissão Nacional de Eleições, Banco de Portugal, ERC, Autoridade da Concorrência e outros reguladores fiscalizam áreas específicas sem depender do Governo."}
+  ],
+  "lawFlow": [
+    {"step": "Iniciativa", "text": "Deputados, grupos parlamentares, o Governo, as Assembleias Regionais ou grupos de cidadãos (mínimo de 20.000 assinaturas) apresentam um projeto de lei (da AR) ou uma proposta de lei (do Governo)."},
+    {"step": "Admissão e distribuição", "text": "A Mesa da AR admite a iniciativa e envia-a à comissão competente, que nomeia um relator."},
+    {"step": "Generalidade", "text": "O Plenário debate e vota na generalidade os princípios da proposta. Se chumbar, o processo termina."},
+    {"step": "Especialidade", "text": "A comissão (ou o Plenário) analisa artigo a artigo, ouve entidades e vota propostas de alteração."},
+    {"step": "Votação final global", "text": "O Plenário vota o texto final. Aprovado, segue como decreto da Assembleia."},
+    {"step": "Promulgação", "text": "O Presidente tem 20 dias para promulgar, vetar ou enviar ao Tribunal Constitucional (8 dias para pedir fiscalização preventiva). Num veto político, a AR pode confirmar o diploma."},
+    {"step": "Referenda e publicação", "text": "O Primeiro-Ministro referenda o ato e a lei é publicada no Diário da República, entrando em vigor na data nela fixada."}
+  ]
+}

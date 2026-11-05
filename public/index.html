@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estado Aberto — o poder público, escrutinado</title>
+<meta name="theme-color" content="#0b3d24">
+<meta property="og:site_name" content="Estado Aberto">
+<meta property="og:title" content="Estado Aberto — o poder público, escrutinado">
+<meta name="description" content="Parlamento, Governo, Presidência, autarquias, instituições públicas e contratos públicos num só lugar.">
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/edicao.css">
+<link rel="stylesheet" href="/story.css">
+</head>
+<body>
+<div class="utility">
+  <div class="wrap">
+    <span>Dados abertos oficiais · projeto independente</span>
+    <span id="freshness"></span>
+  </div>
+</div>
+<header class="masthead">
+  <div class="wrap mast">
+    <a class="wordmark" href="#/" aria-label="Estado Aberto — início"><span class="wm-txt">Estado <span>Aberto</span><small>o poder público, escrutinado</small></span></a>
+    <form class="search" id="gsearch" autocomplete="off" role="search">
+      <input id="gq" type="search" placeholder="Pesquisar entidade, NIF, contrato, lei ou tema…" aria-label="Pesquisa global">
+      <button type="submit">Pesquisar</button>
+      <div id="gresults" class="results" hidden></div>
+    </form>
+    <a class="follow-link" href="#/painel">A minha lista <b id="followcount">0</b></a>
+    <button class="menu-btn" aria-label="Menu" onclick="document.body.classList.toggle('nav-open')">Menu</button>
+  </div>
+  <nav class="mainnav" id="nav" aria-label="Secções"><div class="wrap" id="navwrap"></div></nav>
+</header>
+<main id="app" class="wrap" aria-live="polite"></main>
+<footer class="foot"><div class="wrap">
+  <div class="foot-grid">
+    <div class="foot-brand"><span>Estado Aberto<small>Dados abertos oficiais</small></span></div>
+    <div>
+      <p><b>Fontes:</b> Portal BASE / IMPIC (contratos públicos, <a href="https://dados.gov.pt">dados.gov.pt</a>), Agenda da Assembleia da República, Presidência da República, Wikidata e Wikipédia.</p>
+      <p>Os indicadores de risco são sinais estatísticos relativos a entidades semelhantes — <b>não constituem acusação</b> nem prova de irregularidade.</p>
+    </div>
+  </div>
+  <div class="foot-bar">Estado Aberto · projeto independente, sem ligação a qualquer entidade pública.</div>
+</div></footer>
+<script src="/app.js"></script>
+<script src="/novidades.js"></script>
+<script src="/portal.js"></script>
+<script src="/edicao.js"></script>
+<script src="/story-morphs.js"></script>
+<script src="/story-engine.js"></script>
+<script src="/historias/parlamento.js"></script>
+<script src="/historias/governo.js"></script>
+<script src="/historias/leis-justica.js"></script>
+<script src="/historias/dinheiro.js"></script>
+<script src="/historias/poder-local.js"></script>
+<script src="/historias/instituicoes.js"></script>
+<script src="/historias/indicadores.js"></script>
+<script>window.PORTAL_START && window.PORTAL_START();</script>
+</body>
+</html>

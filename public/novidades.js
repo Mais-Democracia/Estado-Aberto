@@ -1,0 +1,16 @@
+window.NOVIDADES = [
+  { route: "divida", title: "Dívida pública (IGCP)", desc: "Stock mensal da dívida direta do Estado, composição e prazo médio desde 2001.", api: "divida/overview", num: (o) => Portal.int(Math.round(o.latest.total / 1000)) + " mil M€ de dívida" },
+  { route: "dgeec", title: "Educação (DGEEC)", desc: "Alunos, docentes e escolas das estatísticas oficiais da educação.", api: "dgeec/overview", num: (o) => Portal.int(o.indicators.length) + " indicadores" },
+  { route: "imigracao", title: "Imigração", desc: "Residentes estrangeiros por nacionalidade e região.", api: "imigracao/overview", num: (o) => Portal.int(o.residentes.total[o.residentes.total.length - 1].value) + " residentes estrangeiros" },
+  { route: "votacoes", title: "Intervenções parlamentares", desc: "Discursos em plenário ligados às iniciativas debatidas.", api: "intervencoes/stats", num: (o) => Portal.int(o.coverage.speeches) + " intervenções" },
+  { route: "posicoes", title: "Posições dos partidos", desc: "Temas dos discursos em plenário e declarações de voto confrontadas com o voto real.", api: "posicoes/overview", num: (o) => Portal.int(o.declarations.declaracoes) + " declarações de voto verificadas" },
+  { route: "responsaveis", title: "Responsáveis e nomeações", desc: "Quem decide, nomeações publicadas e ligações a entidades.", api: "responsaveis/coverage", num: (o) => Portal.int(o.appointments) + " nomeações" },
+  { route: "igf", title: "Inspeção-Geral de Finanças", desc: "Relatórios de auditoria e controlo a municípios e entidades, desde 2010.", api: "igf/overview", num: (o) => Portal.int(o.total.n) + " relatórios" },
+  { route: "provedor", title: "Provedor de Justiça", desc: "Relatórios anuais à Assembleia da República e recomendações.", api: "provedor/overview", num: (o) => Portal.int(o.counts.n) + " relatórios desde " + o.counts.y0 },
+  { route: "autarquias", title: "População das freguesias", desc: "Censos 2021 ligados a cada freguesia e município.", num: (o, st) => Portal.int(st.counts.freguesias) + " freguesias" },
+  { route: "justica", title: "Justiça", desc: "Tribunais, acórdãos do Constitucional e documentos do Tribunal de Contas.", api: "justica/overview", num: (o) => Portal.int(o.counts.acordaos_tc) + " acórdãos do TC" },
+  { route: "estado", title: "O Estado em números", desc: "Trabalhadores públicos, remunerações e empresas do Estado.", api: "estado/overview", num: (o) => Portal.int(o.companies.n) + " empresas do Estado" },
+  { route: "habitacao", title: "Habitação", desc: "Alojamento local, censos de alojamentos e habitação social.", api: "habitacao/overview", num: (o) => Portal.int(o.al.n) + " alojamentos locais" },
+  { route: "apoios", title: "Apoios públicos", desc: "Subsídios e apoios por área, beneficiário e concentração.", api: "apoios/overview", num: (o) => Portal.eur(o.totals.total) + " em apoios" },
+  { route: "reguladores", title: "Reguladores", desc: "Administradores, decisões e coimas das entidades reguladoras.", api: "reguladores/overview", num: (o) => Portal.int(o.n_decisions) + " decisões" },
+];
