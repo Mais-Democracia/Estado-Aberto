@@ -1,0 +1,12 @@
+[Unit]
+Description=Estado Aberto AI digest (06:50 and 13:00 Lisbon)
+
+[Timer]
+OnCalendar=*-*-* 06:50:00 Europe/Lisbon
+OnCalendar=*-*-* 13:00:00 Europe/Lisbon
+RandomizedDelaySec=120
+Persistent=false
+Unit=estado-aberto-ai-import.service
+
+[Install]
+WantedBy=timers.target

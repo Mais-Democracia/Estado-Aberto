@@ -101,7 +101,7 @@ Use the issue templates (`.github/ISSUE_TEMPLATE/`) or add a backlog line that i
 
 ## Server and release flow: agents never deploy and never upload data
 
-Agents never deploy, never log in to or send files to any server, never trigger or edit the release flow, and never upload data. Releases are cut by maintainers. The production server updates itself by running the released tools. A future server-side AI workflow area (`ops/ai/`) is described in `docs/ARCHITECTURE.md` as planned and is not implemented; even then it must not be able to ship data or reach deploy credentials.
+Agents never deploy, never log in to or send files to any server, never trigger or edit the release flow, and never upload data. Releases are cut by maintainers. The production server updates itself by running the released tools. The server-side AI digest in `ops/ai/` (documented in `docs/AI_DIGEST.md`) publishes articles automatically without per-article human approval; the repository owner approved this on 2026-11-06, subject to its verifier, reviewer, confidence, budget and kill-switch gates. It must never be able to ship data or reach deploy credentials, and agents editing it must keep those gates and run `python3 ingest/tests/test_ai.py`.
 
 ## Multi-agent workflow
 

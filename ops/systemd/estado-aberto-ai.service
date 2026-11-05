@@ -1,0 +1,39 @@
+[Unit]
+Description=Estado Aberto AI digest (draft, verify, review)
+After=network-online.target estado-aberto-updater.service estado-aberto-daily.service estado-aberto-ingest-queue.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=estado-aberto-ai
+Group=estado-aberto-ai
+WorkingDirectory=/opt/estado-aberto/current
+EnvironmentFile=-/etc/estado-aberto/ai.env
+Environment=CLAUDE_BIN=/opt/claude-cli/claude
+Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
+Environment=ESTADO_ABERTO_STATE=/var/lib/estado-aberto/state
+Environment=HOME=/var/lib/estado-aberto/state/ai/home
+ExecStartPre=/usr/bin/mkdir -p /var/lib/estado-aberto/state/ai/home
+ExecStart=/usr/bin/flock -w 1500 /var/lib/estado-aberto/state/update.lock /usr/local/bin/estado-aberto-python ops/ai/run.py
+TimeoutStartSec=1800
+RuntimeMaxSec=1800
+Nice=15
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryHigh=380M
+MemoryMax=450M
+ProtectSystem=strict
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+ReadOnlyPaths=/var/lib/estado-aberto/data
+ReadWritePaths=/var/lib/estado-aberto/state/ai
+SyslogIdentifier=estado-aberto-ai

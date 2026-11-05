@@ -1,0 +1,20 @@
+[Unit]
+Description=Estado Aberto AI digest import into the ledger
+Requires=estado-aberto-ai.service
+After=estado-aberto-ai.service
+
+[Service]
+Type=oneshot
+User=estado-aberto
+Group=estado-aberto
+WorkingDirectory=/opt/estado-aberto/current
+EnvironmentFile=-/etc/estado-aberto/ingest.env
+Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
+Environment=ESTADO_ABERTO_STATE=/var/lib/estado-aberto/state
+ExecStart=/usr/bin/flock -w 1500 /var/lib/estado-aberto/state/update.lock /usr/local/bin/estado-aberto-python ingest/jobs/diario_ia.py
+TimeoutStartSec=600
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryMax=200M
+SyslogIdentifier=estado-aberto-ai-import

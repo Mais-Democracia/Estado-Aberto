@@ -53,16 +53,12 @@ Production runs on a small AWS Lightsail instance: 1 GB RAM, 2 vCPU, 40 GB SSD. 
 
 A new module states its expected size, time and peak RAM in `docs/SOURCES.md`.
 
-## Planned: server-side AI workflow area (not implemented)
+## Server-side AI digest
 
-This section is a design intent only. Nothing described here exists in the repository or on any server.
+Approved by the repository owner on 2026-11-06: AI-written articles are published automatically, without per-article human approval, only when every safety gate passes. Code lives in `ops/ai/`, documented in `docs/AI_DIGEST.md`.
 
-A reserved directory `ops/ai/` would hold a draft-review-publish queue for machine-assisted drafts such as story scenes, summaries or backlog suggestions:
-
-- Drafts are written to a queue; a human reviews each one; only an approved draft is published, through the normal pull-request path.
-- The area is sandboxed: no network access except the allow-listed public sources and the model endpoint, no write access outside its own queue directory.
-- It is memory-budgeted so it can never starve the portal on a 1 GB machine; it runs only when the portal is idle and is killed first.
-- It can never ship data and has no access to deploy credentials, release tooling or the production databases for writing.
-- Everything it produces is subject to the same honesty rules: sourced, no invented numbers, labelled as machine-assisted until reviewed.
-
-Until this is designed in detail and approved by the maintainers, contributors and agents must not add code under `ops/ai/`.
+- A staged pipeline (bundle, triage, selection, drafting, code verification, review) writes approved article files to `state/ai/published/<date>/`; `ingest/jobs/diario_ia.py` imports them into `diario.db` as the app user.
+- Publish gate: the code verifier passes (every number, date and name is in the evidence, hrefs are allowed, at most 250 words), the reviewer says ok and confidence is at least 0.7. Anything else is kept as rejected for audit and the event stays in the plain list.
+- The AI job runs as its own user with read-only data and write access only to `state/ai`, inside a systemd sandbox with a memory cap and runtime cap, and never ships data or reaches deploy credentials, release tooling or any production database for writing.
+- Hard budgets (daily, monthly, articles per day), an audit log and two kill switches (`AI_ENABLED=0`, the `STOP` file). It is disabled until the owner enables it.
+- Articles are labelled as machine-written and carry sources; honesty rules still apply: sourced, no invented numbers.

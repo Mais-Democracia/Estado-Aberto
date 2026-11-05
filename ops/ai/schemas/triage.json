@@ -1,0 +1,1 @@
+{"type":"object","required":["ranking"],"properties":{"ranking":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["id","motivo"],"properties":{"id":{"type":"integer"},"motivo":{"type":"string","maxLength":200}}}}}}

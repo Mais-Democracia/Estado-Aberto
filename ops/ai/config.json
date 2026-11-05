@@ -1,0 +1,59 @@
+{
+  "provider": "cli",
+  "claude_bin_default": "/opt/claude-cli/claude",
+  "models": {"haiku": "haiku", "sonnet": "sonnet", "opus": "opus"},
+  "prices_usd_per_million": {"haiku": [1, 5], "sonnet": [3, 15], "opus": [5, 25]},
+  "eur_per_usd": 0.92,
+  "budgets": {"max_usd_day": 2.5, "max_usd_month": 60, "max_articles": 5},
+  "pipeline": {"shortlist_size": 25, "select_from": 12},
+  "stages": {
+    "triage": {"tier": "haiku", "prompt": "triage", "schema": "triage", "max_usd": 0.15, "max_turns": 3},
+    "selecao": {"tier": "opus", "prompt": "selecao", "schema": "selecao", "max_usd": 0.40, "max_turns": 3},
+    "redacao": {"tier": "sonnet", "prompt": "redacao", "schema": "artigo", "max_usd": 0.40, "max_turns": 6},
+    "revisao": {"tier": "opus", "prompt": "revisao", "schema": "revisao", "max_usd": 0.40, "max_turns": 6}
+  },
+  "prompt_versions": {"triage": "1", "selecao": "1", "redacao": "1", "revisao": "1"},
+  "estimates": {
+    "triage": {"in_per_candidate": 320, "out": 1500},
+    "selecao": {"in_per_candidate": 1000, "out": 1000},
+    "redacao": {"in": 38000, "out": 1500},
+    "revisao": {"in": 19500, "out": 600}
+  },
+  "cli": {
+    "timeout_s": 420,
+    "args": [
+      "-p",
+      "--model", "{model}",
+      "--output-format", "json",
+      "--json-schema", "{schema_json}",
+      "--system-prompt-file", "{system_prompt_file}",
+      "--tools", "Read,Grep,Glob",
+      "--allowedTools", "{read_rules}",
+      "--disallowedTools", "Bash,WebFetch,WebSearch,Write,Edit,Task",
+      "--strict-mcp-config",
+      "--setting-sources", "",
+      "--permission-mode", "dontAsk",
+      "--max-turns", "{max_turns}",
+      "--no-session-persistence",
+      "--max-budget-usd", "{max_usd}"
+    ]
+  },
+  "confianca_min": 0.7,
+  "max_words": 250,
+  "pdf": {"max_bytes": 10485760, "timeout_s": 20, "max_pages": 8, "max_chars": 60000},
+  "related_api": {
+    "votacoes": "/api/votacoes/iniciativa?key={fonte_ref}",
+    "leis": "/api/initiative?key={fonte_ref}",
+    "agenda": "/api/initiative?key={fonte_ref}",
+    "anuncios": "/api/contract?id={fonte_ref}",
+    "entities": "/api/entity?id={fonte_ref}"
+  },
+  "site_routes": ["#/leis", "#/votacoes", "#/deputados", "#/anuncios", "#/orcamento", "#/edicao", "#/divida", "#/dre", "#/autarquias", "#/apoios", "#/fundos", "#/ministerios"],
+  "allowed_hosts": [
+    "parlamento.pt", "app.parlamento.pt", "agenda.parlamento.pt", "dre.pt", "diariodarepublica.pt", "data.dre.pt", "files.dre.pt",
+    "portugal.gov.pt", "presidencia.pt", "tcontas.pt", "igf.gov.pt", "dgo.gov.pt", "ine.pt", "dados.gov.pt",
+    "base.gov.pt", "entidadetransparencia.pt", "tribunalconstitucional.pt", "concorrencia.pt", "erc.pt", "cnpd.pt",
+    "sns.gov.pt", "justica.gov.pt", "eleicoes.mai.gov.pt", "cresap.pt", "eo.gov.pt", "alra.pt", "alram.pt", "madeira.gov.pt", "azores.gov.pt"
+  ],
+  "nomes_comuns": ["Portugal", "Governo", "Estado", "Parlamento", "Assembleia", "República", "Plenário", "Presidente", "Ministério", "Ministro", "Ministra", "Comissão", "Lei", "Decreto", "Portaria", "Despacho", "Resolução", "Projeto", "Proposta", "Diário", "Estado Aberto", "União Europeia"]
+}

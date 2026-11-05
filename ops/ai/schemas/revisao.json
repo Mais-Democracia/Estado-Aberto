@@ -1,0 +1,1 @@
+{"type":"object","required":["veredicto","alegacoes_sem_suporte"],"properties":{"veredicto":{"type":"string","enum":["ok","rejeitar"]},"alegacoes_sem_suporte":{"type":"array","maxItems":20,"items":{"type":"string","maxLength":300}}}}

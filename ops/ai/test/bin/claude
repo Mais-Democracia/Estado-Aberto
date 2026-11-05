@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+import json
+import os
+import re
+import sys
+from pathlib import Path
+
+argv = sys.argv[1:]
+opt = {}
+i = 0
+while i < len(argv):
+    if argv[i].startswith("--") and i + 1 < len(argv):
+        opt[argv[i]] = argv[i + 1]
+        i += 2
+    else:
+        i += 1
+prompt = sys.stdin.read()
+sp = Path(opt.get("--system-prompt-file", "")).read_text(encoding="utf-8") if opt.get("--system-prompt-file") else ""
+m = re.match(r"# stage: (\w+)", sp)
+stage = m.group(1) if m else "?"
+cwd = Path.cwd()
+log = os.environ.get("AI_STUB_LOG")
+if log:
+    with open(log, "a", encoding="utf-8") as f:
+        f.write(json.dumps({"stage": stage, "cwd": str(cwd), "model": opt.get("--model"), "allowed": opt.get("--allowedTools"), "schema": bool(opt.get("--json-schema"))}) + "\n")
+
+
+def rd(name):
+    p = cwd / name
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
+def strip(s):
+    return re.sub(r"</?fonte_nao_confiavel>\s*", "", s).strip()
+
+
+usage = {"input_tokens": 1000, "output_tokens": 300}
+if stage == "triage":
+    c = json.loads(rd("candidates.json"))
+    out = {"ranking": [{"id": x["id"], "motivo": "relevante"} for x in sorted(c, key=lambda x: -(x["score"] or 0))]}
+    usage = {"input_tokens": 8000, "output_tokens": 1500}
+elif stage == "selecao":
+    c = json.loads(rd("candidates.json"))
+    n = json.loads(rd("limite.json"))["max_historias"]
+    out = {"historias": [{"evento_id": x["id"], "motivo": "importante"} for x in c[:n]]}
+    usage = {"input_tokens": 12000, "output_tokens": 1000}
+elif stage == "redacao":
+    f = json.loads(rd("facts.json"))
+    ev = f["eventos"][0]
+    titulo, resumo = strip(ev["titulo"]), strip(ev["resumo_curto"])
+    corpo = resumo + " O caso consta do registo oficial."
+    if "INVENTADO" in titulo:
+        corpo += " Foram gastos 7 777 777 euros."
+    if "ignora" in rd("texto.txt").lower():
+        corpo += " Segundo o texto, o valor foi de 999 999 euros."
+    hrefs = json.loads(rd("fontes.json"))["hrefs_permitidos"]
+    out = {"titulo": titulo, "lead": resumo, "corpo": corpo,
+           "pontos_chave": ["Facto registado.", "Fonte oficial.", "Dados do dia."],
+           "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "entidades": [], "confianca": 0.9}
+    usage = {"input_tokens": 38000, "output_tokens": 1500}
+elif stage == "revisao":
+    bad = "REJEITAR" in rd("facts.json")
+    out = {"veredicto": "rejeitar" if bad else "ok", "alegacoes_sem_suporte": ["afirmacao sem suporte"] if bad else []}
+    usage = {"input_tokens": 19500, "output_tokens": 600}
+else:
+    sys.exit(2)
+print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": "", "structured_output": out, "usage": usage}))
