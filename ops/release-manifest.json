@@ -1,6 +1,6 @@
 {
-  "version": "0.1.4",
-  "git_sha": "b08490dccccf4e9e5475ec17247f144232313328",
+  "version": "0.1.5",
+  "git_sha": "da888dda5462bf04b1dc08c4d6589d6cee0cff56",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Removed\n- The \"\u00daltima recolha\" box in the Edi\u00e7\u00e3o Di\u00e1ria masthead.\n\n### Added\n- GitHub link in the site footer, the edition utility row, the offline page and the no-data state.\n- CI guard that fails when tracked files mention server or developer host details.\n\n### Changed\n- Docs use placeholders (<SERVER_HOST>, <SSH_USER>, <SSH_KEY>) for server host details."
+  "notes": "### Added\n- Site-wide dark mode toggle, following the system preference on the first visit and remembering the choice.\n\n### Removed\n- The edition box in the Edi\u00e7\u00e3o Di\u00e1ria masthead and the print button."
 }
