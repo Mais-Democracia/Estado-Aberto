@@ -185,6 +185,7 @@ async function navScenario(prefetch) {
     const res = [];
     for (const r of NAV_ROUTES) {
       await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 5, y: 600 });
+      await cdp.send("Runtime.evaluate", { expression: "document.activeElement && document.activeElement.blur()" });
       await sleep(150);
       const rect = (await cdp.send("Runtime.evaluate", { returnByValue: true, expression: `(() => { window.scrollTo(0, 0); const a = document.querySelector('.mainnav .menu a[data-r="${r}"]'); if (!a) return null; const g = a.closest('.grp'); g.classList.add('open'); const b = a.getBoundingClientRect(); const x = b.left + b.width / 2, y = b.top + b.height / 2; const hit = document.elementFromPoint(x, y); return { x, y, hit: hit ? hit.outerHTML.slice(0, 80) : null, w: b.width, h: b.height }; })()` })).result.value;
       if (!rect) { res.push({ route: r, ms: null }); continue; }
