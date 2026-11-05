@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-05
+
 ### Fixed
 - Edition page never finishing on small servers: the two local-government contract queries read 6.4 GB per computation and are now bounded by the week through the published-date index (84 MB), with a bounded fallback when the index is missing.
 - Background jobs get a generous watchdog (ESTADO_ABERTO_WORKER_TIMEOUT_MS, default 10 minutes) and are retried with exponential backoff (30 s, 2 min, 10 min, 30 min cap); every kill and worker crash is logged with route, elapsed time and stack.
