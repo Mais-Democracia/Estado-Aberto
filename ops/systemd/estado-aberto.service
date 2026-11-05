@@ -1,0 +1,25 @@
+[Unit]
+Description=Estado Aberto web server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=estado-aberto
+Group=estado-aberto
+WorkingDirectory=/opt/estado-aberto/current
+EnvironmentFile=-/etc/estado-aberto/app.env
+Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
+ExecStart=/usr/local/bin/estado-aberto-node --max-old-space-size=256 --no-warnings server.mjs
+Restart=on-failure
+RestartSec=5
+MemoryHigh=350M
+MemoryMax=450M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/estado-aberto
+SyslogIdentifier=estado-aberto
+
+[Install]
+WantedBy=multi-user.target

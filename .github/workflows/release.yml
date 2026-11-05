@@ -1,0 +1,66 @@
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Guard and checks
+        run: |
+          bash tools/ci_guard.sh
+          npm run check
+          git ls-files -z '*.py' | xargs -0 python3 -m py_compile
+          python3 ingest/run_all.py --list
+          python3 tools/make_sample.py && node tools/smoke.mjs
+
+      - name: Verify tag, VERSION, manifest and CHANGELOG
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          ver="${TAG#v}"
+          [ "$(cat VERSION)" = "$ver" ] || { echo "VERSION does not match $TAG"; exit 1; }
+          python3 -I - "$ver" <<'PY'
+          import json, sys
+          m = json.load(open("ops/release-manifest.json"))
+          assert m["version"] == sys.argv[1], "manifest version mismatch"
+          PY
+          grep -qE "^## \[$ver\]" CHANGELOG.md || { echo "CHANGELOG has no section for $ver"; exit 1; }
+
+      - name: Build code-only artifacts
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          mkdir -p dist
+          git archive --format=tar.gz -o "dist/estado-aberto-$TAG.tar.gz" "$TAG"
+          cp ops/release-manifest.json dist/release-manifest.json
+          (cd dist && sha256sum "estado-aberto-$TAG.tar.gz" release-manifest.json > SHA256SUMS)
+          awk -v v="${TAG#v}" '
+            $0 ~ "^## \\[" v "\\]" {on=1; next}
+            on && /^## \[/ {exit}
+            on {print}
+          ' CHANGELOG.md > dist/NOTES.md
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$TAG" \
+            "dist/estado-aberto-$TAG.tar.gz" dist/SHA256SUMS dist/release-manifest.json \
+            --title "$TAG" --notes-file dist/NOTES.md --verify-tag

@@ -1,0 +1,16 @@
+[Unit]
+Description=Estado Aberto release updater (pull model)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=estado-aberto
+Group=estado-aberto
+ExecStart=/usr/local/sbin/estado-aberto-updater
+TimeoutStartSec=900
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryMax=200M
+SyslogIdentifier=estado-aberto-updater

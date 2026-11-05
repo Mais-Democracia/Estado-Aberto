@@ -1,0 +1,22 @@
+{
+  "version": "0.1.0",
+  "git_sha": "474459186a5a1ac4eeda5ac8d44474b73440f6c5",
+  "min_updater_version": 1,
+  "node_version": "22",
+  "python_min": "3.12",
+  "resources": {
+    "min_ram_mb": 200,
+    "min_free_disk_gb": 5
+  },
+  "post_update": [
+    {
+      "step": "doctor"
+    }
+  ],
+  "ingest": {
+    "run_on_update": [],
+    "schedule_changes": []
+  },
+  "migrations": [],
+  "notes": "Initial public code base."
+}

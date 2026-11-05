@@ -1,0 +1,18 @@
+[Unit]
+Description=Estado Aberto daily ingest
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=estado-aberto
+Group=estado-aberto
+WorkingDirectory=/opt/estado-aberto/current
+EnvironmentFile=-/etc/estado-aberto/ingest.env
+Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
+ExecStart=/usr/bin/flock -w 7200 /var/lib/estado-aberto/state/update.lock /usr/bin/python3 ingest/run_all.py --schedule daily --profile server
+TimeoutStartSec=14400
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryMax=400M
+SyslogIdentifier=estado-aberto-daily
