@@ -1,6 +1,6 @@
 # Story payloads: `/api/historias/<slug>`
 
-Module `server/modules/historias.mjs`. Read-only; reuses the in-process routes of the other modules (`routes[...]`) and opens the same SQLite files read-only. Cached in memory 10 min (stale-while-revalidate, invalidated on restart), pre-warmed 4 s after start. Warm response under 5 ms. Real captured payloads: `docs/historias-fixtures/`.
+Module `server/modules/historias.mjs`. Read-only; reuses the in-process routes of the other modules (`routes[...]`) and opens the same SQLite files read-only. Cached in memory 10 min (stale-while-revalidate, invalidated on restart), pre-warmed 4 s after start. Warm response under 5 ms. Real captured payloads: `the synthetic sample data (tools/make_sample.py)`.
 
 Slugs: `parlamento`, `governo`, `dinheiro`, `poder-local`, `instituicoes`, `leis-justica`, `indicadores`. `GET /api/historias` lists them with the guiding question.
 
