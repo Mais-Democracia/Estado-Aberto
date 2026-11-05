@@ -1,6 +1,6 @@
 {
-  "version": "0.1.1",
-  "git_sha": "bbf8ec5c2fd88f16b224837d5a8b0a74418c44f6",
+  "version": "0.1.2",
+  "git_sha": "ae70393369f02ffafecc244c41ed4d78514504e8",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "Configurable Python (estado-aberto-python), timers opt-in, AL2023 docs."
+  "notes": "### Changed\n- Server never blocks the event loop: API routes run in a worker thread with a disk cache, and a first request on a slow route answers 202 carregando instead of hanging.\n- Cheap /api/status, gzip/brotli compression, ETag and caching headers.\n- Client loads routes lazily, prefetches on hover, renders the home from boot data and registers a service worker with an offline page.\n- Client retries API GETs answered with 202 carregando with backoff and never caches them.\n- Release helper keeps VERSION, package.json, the manifest, the service worker version and the page version tag in step, and `npm run check` fails if they disagree.\n\n### Added\n- Continuous integration, release workflow and release helper.\n- Pull-model updater, systemd units and first-time installer for the production server.\n- Operations, releasing and AWS migration documentation."
 }

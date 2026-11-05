@@ -1,9 +1,11 @@
 {
   "name": "estado-aberto",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.5" },
+  "engines": {
+    "node": ">=22.5"
+  },
   "scripts": {
     "start": "node --no-warnings server.mjs",
     "check": "find . -path ./node_modules -prune -o -path ./data -prune -o \\( -name '*.mjs' -o -name '*.js' \\) -type f -print | sort | xargs -n1 node --check && node tools/check_version.mjs",
