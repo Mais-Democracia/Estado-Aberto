@@ -1,0 +1,1 @@
+Follow `AGENTS.md` at the repository root. Its first rule is the data policy: never commit, attach or upload real data. Standard library only, UI text in Portuguese, honest empty states, commits as `Location: Description.`.

@@ -1,0 +1,39 @@
+name: Bug report
+description: Something is wrong, empty, slow or misleading
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach data files, databases or secrets. Screenshots of a page are fine.
+  - type: input
+    id: page
+    attributes:
+      label: Page or API route
+      placeholder: "#/igf or /api/igf/overview"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happens, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Say whether you used the synthetic sample or data from the ingest tools.
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Browser, Node version, Python version, OS.
+  - type: checkboxes
+    id: policy
+    attributes:
+      label: Data policy
+      options:
+        - label: I have not attached real data or secrets.
+          required: true

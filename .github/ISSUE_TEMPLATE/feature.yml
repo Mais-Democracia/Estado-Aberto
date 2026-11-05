@@ -1,0 +1,45 @@
+name: Feature request
+description: Propose a change to the portal, server or tools
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Question or problem this answers
+      description: What would a citizen or journalist be able to find out?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+    validations:
+      required: true
+  - type: dropdown
+    id: section
+    attributes:
+      label: Section
+      options:
+        - Parlamento
+        - Governo
+        - Dinheiro público
+        - Poder local
+        - Instituições
+        - Leis e justiça
+        - Indicadores
+        - Edição Diária / histórias
+        - Tools / infrastructure
+    validations:
+      required: true
+  - type: textarea
+    id: budget
+    attributes:
+      label: Resource impact
+      description: Memory, disk, request volume. Production has 1 GB RAM.
+  - type: checkboxes
+    id: policy
+    attributes:
+      label: Data policy
+      options:
+        - label: This does not require committing or uploading real data.
+          required: true

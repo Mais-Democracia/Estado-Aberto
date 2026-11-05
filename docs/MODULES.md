@@ -3,6 +3,28 @@
 Each data domain (e.g. `dre`, `autarquias_financas`, `educacao`, `parlamento_ar`, `ministerios`) is made of up to 3 files.
 **Never edit `server.mjs`, `public/portal.js`, `public/app.js`, `ingest/common.py` or `data/politica.db`** from a module — use the hooks below.
 
+## 0. Scaffold and menu
+
+Create the three files, the manifest entry and the menu entry in one step:
+
+```sh
+python3 tools/new_module.py <name> --section <parlamento|governo|dinheiro|poder-local|instituicoes|leis-justica|indicadores>
+```
+
+The portal menu has seven sections plus Roadmap, defined in `Portal.NAV_GROUPS` (`public/portal.js`):
+
+| Section | `--section` | Typical content |
+|---|---|---|
+| Parlamento | `parlamento` | calendário, leis, votações, posições, deputados, intervenções |
+| Governo | `governo` | Governo, ministérios, quem decide, Presidência, Estado e empresas |
+| Dinheiro público | `dinheiro` | contratos, orçamento, apoios, anúncios, fundos, dívida |
+| Poder local | `poder-local` | municípios, freguesias, regiões, empresas locais, eleições |
+| Instituições | `instituicoes` | diretório, reguladores, educação, saúde, segurança |
+| Leis e justiça | `leis-justica` | Diário da República, justiça, Provedor, atos do Presidente |
+| Indicadores | `indicadores` | séries do INE, habitação, imigração, educação |
+
+The scaffold writes working stubs without comments, adds the job to `ingest/jobs.json` (or prints the snippet if the manifest is absent) and appends the page to the chosen menu group, then prints a TODO checklist. Replace the placeholder source URL and schema before running. Resource budget: the production box has 1 GB RAM, so stream downloads, run sequentially and bound every response.
+
 ## 1. Ingest job — `ingest/jobs/<name>.py`
 * Must define `main()`; run with `python3 ingest/run_all.py <name>` (or no arg = all jobs).
 * **Open your database with `PRAGMA journal_mode=WAL` (and `timeout>=60`) and commit in small batches**, so the live site (read-only connections) is never blocked while your ingest runs. A long write transaction in the default mode makes your API return "Dados em atualização".
@@ -33,4 +55,4 @@ Always escape dynamic text with `Portal.esc`. Style with existing CSS classes (`
 ## Quality bar
 * Real data only — if a source is unreachable, say so on the page (`<p class="note warn">`) instead of inventing anything.
 * Add a short entry to `docs/SOURCES.md`: source, URL, licence, update frequency, coverage, known gaps.
-* Commit only your own files, with a clear message: `git add <your files> && git commit`.
+* Commit only your own files, as `Location: Description.`. No real data is ever committed (`docs/DATA_POLICY.md`).

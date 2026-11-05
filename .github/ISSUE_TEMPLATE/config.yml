@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Data policy
+    url: https://github.com/Mais-Democracia/Estado-Aberto/blob/main/docs/DATA_POLICY.md
+    about: No real data is ever attached to an issue or PR.
+  - name: Contributing guide
+    url: https://github.com/Mais-Democracia/Estado-Aberto/blob/main/CONTRIBUTING.md
+    about: Setup, checks and how to add a data source.
+  - name: Roadmap and backlog
+    url: https://github.com/Mais-Democracia/Estado-Aberto/blob/main/docs/ROADMAP_PROCESS.md
+    about: How roadmap items are proposed and tracked.

@@ -1,0 +1,82 @@
+name: New data source
+description: Propose a public source to ingest
+labels: [data-source]
+body:
+  - type: markdown
+    attributes:
+      value: Do not attach the data. Describe where to get it; the ingest tools download it.
+  - type: input
+    id: url
+    attributes:
+      label: Source URL
+    validations:
+      required: true
+  - type: input
+    id: publisher
+    attributes:
+      label: Publisher
+    validations:
+      required: true
+  - type: dropdown
+    id: format
+    attributes:
+      label: Format
+      options: [CSV, XLSX, PDF, API, HTML, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: licence
+    attributes:
+      label: Licence and robots.txt / terms check
+      description: Licence, link to the terms, what robots.txt says, date checked.
+    validations:
+      required: true
+  - type: input
+    id: frequency
+    attributes:
+      label: Update frequency
+  - type: textarea
+    id: reach
+    attributes:
+      label: Reachable from where
+      description: Anonymous from any network, or only some networks, or needs a login (then it cannot be used).
+    validations:
+      required: true
+  - type: dropdown
+    id: section
+    attributes:
+      label: Proposed section
+      options:
+        - Parlamento
+        - Governo
+        - Dinheiro público
+        - Poder local
+        - Instituições
+        - Leis e justiça
+        - Indicadores
+    validations:
+      required: true
+  - type: input
+    id: menu
+    attributes:
+      label: Proposed menu entry
+  - type: textarea
+    id: questions
+    attributes:
+      label: Questions it answers about decisions, reports or audits
+    validations:
+      required: true
+  - type: textarea
+    id: size
+    attributes:
+      label: Size, time and RAM estimate
+      description: Download size, rows, ingest time, peak memory. Production has 1 GB RAM.
+    validations:
+      required: true
+  - type: checkboxes
+    id: policy
+    attributes:
+      label: Data policy
+      options:
+        - label: I am not attaching data and I verified the URL with curl.
+          required: true

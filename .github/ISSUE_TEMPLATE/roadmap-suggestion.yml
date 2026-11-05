@@ -1,0 +1,43 @@
+name: Roadmap suggestion
+description: Suggest something for the roadmap or backlog
+labels: [roadmap]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Short title
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it matters
+      description: The public question it helps answer.
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: Sources
+      description: URLs you checked, with licence and robots status if data is involved.
+  - type: dropdown
+    id: section
+    attributes:
+      label: Section
+      options:
+        - Parlamento
+        - Governo
+        - Dinheiro público
+        - Poder local
+        - Instituições
+        - Leis e justiça
+        - Indicadores
+        - Edição Diária / histórias
+        - Tools / infrastructure
+    validations:
+      required: true
+  - type: dropdown
+    id: help
+    attributes:
+      label: Can you build it?
+      options: ["Yes", "With guidance", "No, suggestion only"]
