@@ -80,6 +80,61 @@
       "out": 600
     }
   },
+  "runtime": {
+    "auth_mode": "api_key",
+    "login": {
+      "args": [
+        "-p",
+        "--model",
+        "{model}",
+        "--output-format",
+        "json",
+        "--json-schema",
+        "{schema_json}",
+        "--system-prompt-file",
+        "{system_prompt_file}",
+        "--tools",
+        "Read,Grep,Glob",
+        "--allowedTools",
+        "{read_rules}",
+        "--disallowedTools",
+        "Bash,WebFetch,WebSearch,Write,Edit,Task,NotebookEdit,Read(//home/**),Grep(//home/**),Glob(//home/**),Read(//root/**),Grep(//root/**),Glob(//root/**),Read(//etc/**),Grep(//etc/**),Glob(//etc/**),Read(//proc/**),Grep(//proc/**),Glob(//proc/**),Read(//var/lib/estado-aberto/data/**),Grep(//var/lib/estado-aberto/data/**),Glob(//var/lib/estado-aberto/data/**),Read(~/.claude/**),Grep(~/.claude/**),Glob(~/.claude/**),Read(~/.ssh/**),Grep(~/.ssh/**),Glob(~/.ssh/**)",
+        "--strict-mcp-config",
+        "--restricted",
+        "--safe-mode",
+        "--disable-slash-commands",
+        "--setting-sources",
+        "project,local",
+        "--permission-mode",
+        "dontAsk",
+        "--no-session-persistence",
+        "--max-budget-usd",
+        "{max_usd}"
+      ],
+      "provenance": {
+        "-p": "verified in claude --help 2.1.314",
+        "--model": "verified in claude --help 2.1.314",
+        "--output-format": "verified in claude --help 2.1.314",
+        "--json-schema": "verified in claude --help 2.1.314 (only with --print)",
+        "--system-prompt-file": "referenced in 2.1.314 help only as --system-prompt[-file] (under --bare); not listed as a separate option; confirm with check_cli.py --live",
+        "--tools": "verified in claude --help 2.1.314",
+        "--allowedTools": "verified in claude --help 2.1.314",
+        "--disallowedTools": "verified in claude --help 2.1.314; Read(//abs/**) absolute-path and ~ rule syntax follows the allow rules already used and is confirmed only by check_cli.py --live (deny wins over allow)",
+        "--strict-mcp-config": "verified in claude --help 2.1.314",
+        "--restricted": "verified in claude --help 2.1.314 (drops code tools, ignores user/project/local settings files, confines file tools to the working directory); OAuth login is not a settings file and stays usable: confirm with check_cli.py --live",
+        "--safe-mode": "verified in claude --help 2.1.314 (disables hooks, MCP, CLAUDE.md, skills, plugin customizations; auth and permissions work normally)",
+        "--disable-slash-commands": "verified in claude --help 2.1.314",
+        "--setting-sources": "verified in claude --help 2.1.314 (user, project, local); login mode omits user so ~/.claude/settings.json hooks and MCP are not loaded",
+        "--permission-mode": "verified in claude --help 2.1.314 (choices acceptEdits, auto, bypassPermissions, manual, dontAsk, plan)",
+        "--no-session-persistence": "verified in claude --help 2.1.314",
+        "--max-budget-usd": "verified in claude --help 2.1.314"
+      },
+      "auth_check": [
+        "auth",
+        "status"
+      ]
+    }
+  },
   "cli": {
     "timeout_s": 420,
     "args": [

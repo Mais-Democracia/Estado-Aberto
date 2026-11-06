@@ -7,6 +7,7 @@ PYTHON_BIN=""
 SWAP=1
 TIMERS=0
 AI_TIMER=0
+AI_LOGIN_USER=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift ;;
@@ -14,8 +15,9 @@ while [ $# -gt 0 ]; do
     --python) PYTHON_BIN="${2:?--python needs a path}"; shift 2 ;;
     --enable-timers) TIMERS=1; shift ;;
     --enable-ai-timer) AI_TIMER=1; shift ;;
+    --ai-login-user) AI_LOGIN_USER="${2:?--ai-login-user needs a user name}"; shift 2 ;;
     --no-swap) SWAP=0; shift ;;
-    -h|--help) echo "usage: sudo ops/install.sh [--dry-run] [--node /path/to/node] [--python /path/to/python3.12] [--enable-timers] [--enable-ai-timer] [--no-swap]"; exit 0 ;;
+    -h|--help) echo "usage: sudo ops/install.sh [--dry-run] [--node /path/to/node] [--python /path/to/python3.12] [--enable-timers] [--enable-ai-timer] [--ai-login-user NAME] [--no-swap]"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -57,6 +59,15 @@ PYTHON_BIN="$(readlink -f "$PYTHON_BIN")"
 say "python: $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
 command -v flock > /dev/null || { echo "install: flock missing" >&2; exit 1; }
 command -v curl > /dev/null || { echo "install: curl missing" >&2; exit 1; }
+AI_LOGIN_HOME=""
+if [ -n "$AI_LOGIN_USER" ]; then
+  id "$AI_LOGIN_USER" > /dev/null 2>&1 || { echo "install: --ai-login-user $AI_LOGIN_USER does not exist" >&2; exit 1; }
+  [ "$AI_LOGIN_USER" != "root" ] || { echo "install: --ai-login-user must not be root" >&2; exit 1; }
+  AI_LOGIN_HOME="$(getent passwd "$AI_LOGIN_USER" | cut -d: -f6)"
+  case "$AI_LOGIN_HOME" in /home/*) ;; *) echo "install: login home $AI_LOGIN_HOME is not under /home" >&2; exit 1 ;; esac
+  [ -x "$AI_LOGIN_HOME/.local/bin/claude" ] || { echo "install: $AI_LOGIN_HOME/.local/bin/claude not found or not executable" >&2; exit 1; }
+  [ -d "$AI_LOGIN_HOME/.claude" ] || { echo "install: $AI_LOGIN_HOME/.claude missing; log in with the claude CLI first" >&2; exit 1; }
+fi
 
 say "system user"
 if ! id "$SVC" > /dev/null 2>&1; then
@@ -117,6 +128,22 @@ AI_MAX_ARTICLES=5" > "$dst"
   chmod 0640 "$dst"
 }
 write_ai_env
+set_env_key() {
+  local f="/etc/$SVC/ai.env" k="$1" v="$2"
+  if [ "$DRY" -eq 1 ]; then echo "  would set $k=$v in $f"; return; fi
+  if grep -q "^$k=" "$f"; then sed -i "s|^$k=.*|$k=$v|" "$f"; else printf '%s=%s\n' "$k" "$v" >> "$f"; fi
+}
+AI_DROPIN=/etc/systemd/system/$SVC-ai.service.d/login.conf
+if [ -n "$AI_LOGIN_USER" ]; then
+  say "AI login mode for user $AI_LOGIN_USER (home $AI_LOGIN_HOME)"
+  run usermod -aG "$SVC" "$AI_LOGIN_USER"
+  run chown -R "$AI_LOGIN_USER":"$SVC" /var/lib/$SVC/state/ai
+  set_env_key AI_AUTH_MODE login
+  set_env_key CLAUDE_BIN "$AI_LOGIN_HOME/.local/bin/claude"
+else
+  if [ -e "$AI_DROPIN" ]; then run rm -f "$AI_DROPIN"; fi
+  if grep -qs '^AI_AUTH_MODE=login' /etc/$SVC/ai.env; then set_env_key AI_AUTH_MODE api_key; fi
+fi
 
 say "node and python symlinks and helper scripts"
 run ln -sfn "$NODE_BIN" /usr/local/bin/estado-aberto-node
@@ -147,6 +174,15 @@ say "systemd units"
 for u in "$HERE"/systemd/*.service "$HERE"/systemd/*.timer; do
   put 0644 "$u" "/etc/systemd/system/$(basename "$u")"
 done
+if [ -n "$AI_LOGIN_USER" ]; then
+  run install -d -m 0755 /etc/systemd/system/$SVC-ai.service.d
+  if [ "$DRY" -eq 1 ]; then
+    echo "  would install $HERE/systemd/$SVC-ai-login.conf -> $AI_DROPIN (user $AI_LOGIN_USER)"
+  else
+    sed -e "s|__AI_LOGIN_USER__|$AI_LOGIN_USER|g" -e "s|__AI_LOGIN_HOME__|$AI_LOGIN_HOME|g" "$HERE/systemd/$SVC-ai-login.conf" > "$AI_DROPIN"
+    chmod 0644 "$AI_DROPIN"
+  fi
+fi
 run systemctl daemon-reload
 run systemctl enable $SVC.service
 if [ "$TIMERS" -eq 1 ]; then

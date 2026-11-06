@@ -42,6 +42,12 @@ def load_config():
     extra = os.environ.get("AI_CONFIG")
     if extra:
         _merge(cfg, json.loads(Path(extra).read_text(encoding="utf-8")))
+    mode = os.environ.get("AI_AUTH_MODE") or cfg["runtime"]["auth_mode"]
+    if mode not in ("api_key", "login"):
+        raise ValueError(f"auth_mode invalido: {mode}")
+    cfg["runtime"]["auth_mode"] = mode
+    if mode == "login":
+        cfg["cli"] = dict(cfg["cli"], args=cfg["runtime"]["login"]["args"], provenance=cfg["runtime"]["login"]["provenance"])
     b = cfg["budgets"]
     b["max_usd_day"] = float(os.environ.get("AI_MAX_USD_DAY", b["max_usd_day"]))
     b["max_usd_month"] = float(os.environ.get("AI_MAX_USD_MONTH", b["max_usd_month"]))
