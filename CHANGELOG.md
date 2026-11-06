@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- "A minha lista" is now per visitor (random id kept in the browser) instead of shared by everyone; existing shared entries are dropped.
+
 ## [0.3.8] - 2026-11-06
 
 ### Changed

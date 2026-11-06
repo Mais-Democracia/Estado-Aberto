@@ -45,6 +45,7 @@ const lazyDb = (name) => ({
 });
 const db = lazyDb("politica");
 
+const visitorOf = (v) => { if (!/^[0-9a-f-]{32,40}$/.test(String(v || ""))) throw new DataMissing("user", "visitante inválido"); return String(v); };
 let userHandle = null, userTouched = false;
 const userDb = {
   prepare(sql) {
@@ -53,7 +54,7 @@ const userDb = {
       try {
         fs.mkdirSync(dataDir, { recursive: true });
         userHandle = new DatabaseSync(path.join(dataDir, "user.db"));
-        userHandle.exec("CREATE TABLE IF NOT EXISTS follows (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, ref TEXT, label TEXT, created TEXT, UNIQUE(kind, ref));");
+        userHandle.exec("DROP TABLE IF EXISTS follows; CREATE TABLE IF NOT EXISTS visitor_follows (id INTEGER PRIMARY KEY AUTOINCREMENT, visitor TEXT NOT NULL, kind TEXT, ref TEXT, label TEXT, created TEXT, UNIQUE(visitor, kind, ref));");
       } catch (e) { userHandle = null; throw new DataMissing("user", `não pôde ser aberta (${e.message})`); }
     }
     return userHandle.prepare(sql);
@@ -230,7 +231,6 @@ const routes = {
       out.flags = flagsFor(e, b, out.topSuppliers[0] && { ...out.topSuppliers[0], seller_nif: out.topSuppliers[0].nif }, out.mods);
       out.peer = peerMedians(e.kind);
     }
-    out.following = !!userDb.prepare("SELECT 1 x FROM follows WHERE kind = 'entity' AND ref = ?").get(String(e.id));
     return out;
   },
   "/api/contracts": (q) => {
@@ -277,15 +277,16 @@ const routes = {
     };
   },
   "/api/follows": (q, req, body) => {
+    const v = visitorOf(q.get("v") || body?.v);
     if (req.method === "POST") {
-      userDb.prepare("INSERT OR IGNORE INTO follows (kind, ref, label, created) VALUES (?,?,?,?)").run(body.kind, String(body.ref), body.label || "", new Date().toISOString());
+      userDb.prepare("INSERT OR IGNORE INTO visitor_follows (visitor, kind, ref, label, created) VALUES (?,?,?,?,?)").run(v, body.kind, String(body.ref), body.label || "", new Date().toISOString());
       return { ok: true };
     }
-    if (req.method === "DELETE") { userDb.prepare("DELETE FROM follows WHERE kind = ? AND ref = ?").run(q.get("kind"), q.get("ref")); return { ok: true }; }
-    return { follows: userDb.prepare("SELECT * FROM follows ORDER BY created DESC").all() };
+    if (req.method === "DELETE") { userDb.prepare("DELETE FROM visitor_follows WHERE visitor = ? AND kind = ? AND ref = ?").run(v, q.get("kind"), q.get("ref")); return { ok: true }; }
+    return { follows: userDb.prepare("SELECT id, kind, ref, label, created FROM visitor_follows WHERE visitor = ? ORDER BY created DESC").all(v) };
   },
-  "/api/feed": () => {
-    const follows = userDb.prepare("SELECT * FROM follows ORDER BY created DESC").all();
+  "/api/feed": (q) => {
+    const follows = userDb.prepare("SELECT id, kind, ref, label, created FROM visitor_follows WHERE visitor = ? ORDER BY created DESC").all(visitorOf(q.get("v")));
     const items = [];
     for (const f of follows) {
       if (f.kind === "entity") {
@@ -365,7 +366,6 @@ const routes = {
       initiative: init,
       steps: all(`SELECT s.date, s.phase, s.body, s.detail, s.relator, s.source, e.title event_title, e.local, e.section FROM initiative_steps s LEFT JOIN events e ON e.id = s.event_id WHERE s.initiative_key = ? ORDER BY s.date`, init.key),
       votes: all("SELECT date, result, favor, against, abstention FROM votes WHERE initiative_key = ? ORDER BY date", init.key),
-      following: !!userDb.prepare("SELECT 1 x FROM follows WHERE kind = 'initiative' AND ref = ?").get(init.key),
     };
   },
   "/api/activity": () => ({

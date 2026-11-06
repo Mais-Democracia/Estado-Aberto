@@ -107,14 +107,15 @@ Portal.bars = bars;
 
 /* ---------- follows ---------- */
 let followState = [];
-async function refreshFollows() { try { followState = (await api("follows")).follows; } catch { followState = []; } $("#followcount").textContent = followState.length; }
+const visitorId = () => { let v = localStorage.getItem("ea:vid"); if (!v) { v = crypto.randomUUID(); localStorage.setItem("ea:vid", v); } return v; };
+async function refreshFollows() { try { followState = (await api("follows?v=" + visitorId())).follows; } catch { followState = []; } $("#followcount").textContent = followState.length; }
 const isFollowing = (kind, ref) => followState.some((f) => f.kind === kind && String(f.ref) === String(ref));
 Portal.followButton = (kind, ref, label) => `<button class="btn ${isFollowing(kind, ref) ? "on" : ""}" data-follow="${kind}" data-ref="${esc(ref)}" data-label="${esc(label)}">${isFollowing(kind, ref) ? "A seguir ✓" : "+ Seguir"}</button>`;
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-follow]"); if (!b) return;
   const kind = b.dataset.follow, ref = b.dataset.ref;
-  if (isFollowing(kind, ref)) await fetch(`/api/follows?kind=${kind}&ref=${encodeURIComponent(ref)}`, { method: "DELETE" });
-  else await fetch("/api/follows", { method: "POST", body: JSON.stringify({ kind, ref, label: b.dataset.label }) });
+  if (isFollowing(kind, ref)) await fetch(`/api/follows?v=${visitorId()}&kind=${kind}&ref=${encodeURIComponent(ref)}`, { method: "DELETE" });
+  else await fetch("/api/follows", { method: "POST", body: JSON.stringify({ v: visitorId(), kind, ref, label: b.dataset.label }) });
   await refreshFollows();
   b.outerHTML = Portal.followButton(kind, ref, b.dataset.label);
 });
@@ -363,7 +364,7 @@ Portal.page("contrato", async (id) => {
 });
 
 Portal.page("painel", async () => {
-  const d = await api("feed");
+  const d = await api("feed?v=" + visitorId());
   $app.innerHTML = `
     <div class="crumbs"><a href="#/">Início</a> / A minha lista</div>
     <div class="pagehead"><div><div class="kicker">Seguir</div><h1>A minha lista</h1><p class="lead">Entidades, temas e leis que segue. Aqui aparecem os novos contratos, eventos e passos legislativos que lhes dizem respeito.</p></div></div>
@@ -373,8 +374,8 @@ Portal.page("painel", async () => {
       ${i.type === "contract" ? `<a href="#/contrato/${i.id}"><b>${esc((i.object || "").slice(0, 110))}</b></a><div class="small muted">${esc(i.buyer_name || "")} → ${esc(i.seller_name || "")} · ${Portal.eurFull(i.price)}</div>` : i.type === "event" ? `<a href="#/calendario"><b>${esc(i.title.split("\n")[0])}</b></a><div class="small muted">${esc(i.section)}</div>` : `<a href="#/leis/${encodeURIComponent(i.key)}"><b>${esc(i.phase)}</b></a><div class="small muted">${esc(i.body || "")}</div>`}</div></div>`).join("") || '<p class="empty">Sem novidades.</p>'}</section>
     <section class="panel"><h2>A seguir (${d.follows.length})</h2>${d.follows.map((f) => `<div class="row"><div class="what"><span class="tag">${esc(f.kind)}</span> ${f.kind === "entity" ? `<a href="#/entidade/${esc(f.ref)}">${esc(f.label)}</a>` : f.kind === "initiative" ? `<a href="#/leis/${encodeURIComponent(f.ref)}">${esc(f.label)}</a>` : esc(f.label || f.ref)}</div>
       <button class="btn" data-unfollow="${esc(f.kind)}|${esc(f.ref)}">Deixar</button></div>`).join("")}</section></div>`;
-  $("#tf").onsubmit = async (e) => { e.preventDefault(); const t = new FormData(e.target).get("t").trim(); if (!t) return; await fetch("/api/follows", { method: "POST", body: JSON.stringify({ kind: "topic", ref: t, label: "Tema: " + t }) }); await refreshFollows(); route(); };
-  $app.querySelectorAll("[data-unfollow]").forEach((b) => (b.onclick = async () => { const [k, r] = b.dataset.unfollow.split("|"); await fetch(`/api/follows?kind=${k}&ref=${encodeURIComponent(r)}`, { method: "DELETE" }); await refreshFollows(); route(); }));
+  $("#tf").onsubmit = async (e) => { e.preventDefault(); const t = new FormData(e.target).get("t").trim(); if (!t) return; await fetch("/api/follows", { method: "POST", body: JSON.stringify({ v: visitorId(), kind: "topic", ref: t, label: "Tema: " + t }) }); await refreshFollows(); route(); };
+  $app.querySelectorAll("[data-unfollow]").forEach((b) => (b.onclick = async () => { const [k, r] = b.dataset.unfollow.split("|"); await fetch(`/api/follows?v=${visitorId()}&kind=${k}&ref=${encodeURIComponent(r)}`, { method: "DELETE" }); await refreshFollows(); route(); }));
 });
 
 Portal.page("parlamento", async () => {
