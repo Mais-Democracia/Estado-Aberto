@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0",
-  "git_sha": "df78239a9248d16a93b4dbb0ec864134358b5bd2",
+  "version": "0.2.1",
+  "git_sha": "0e944102b1a5fd8ce9b931528447356efbbbd287",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Added\n- Daily edition ledger (`diario.db`) built from the local databases, with numbered editions from 2026-11-06.\n- 6-hourly refresh timers, plus daily and weekly timers, with an ordered shared lock and failure alerts.\n- AI digest pipeline (disabled by default, timer never enabled by the installer unless `--enable-ai-timer` is given).\n- New front page with an AI column and a full-list view."
+  "notes": "### Changed\n- AI pipeline hardening: retraction command, stricter verifier, cost accounting, privacy rules, CLI flag validation."
 }
