@@ -775,6 +775,86 @@ INSERT INTO voto_partido VALUES(5001,'PSD','favor','gp',NULL,NULL),(5001,'PS','a
         self.assertEqual(linking.sync_initiatives(v, d, None), 0)
         self.assertEqual(v.execute("SELECT lei_ref, estado, dr_date FROM iniciativas WHERE bid=300").fetchone(), ("Lei 65/2026", "Publicado", "2026-11-05"))
 
+    LEI65 = "Altera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos, e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional."
+    PL86 = "Altera o Código do Imposto sobre o Valor Acrescentado, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional"
+
+    def fz_act(self, **kw):
+        a = {"id": "1191346238", "kind": "Lei", "number": "65/2026", "legislature": "XVII", "date": "2026-11-05", "summary": self.LEI65, "title": "Lei n.º 65/2026", "text": ""}
+        a.update(kw)
+        return a
+
+    def fz_ini(self, num=86, leg="XVII", titulo=None, **kw):
+        i = {"bid": 356900 + num, "key": f"Proposta de Lei|{num}|{leg}", "tipo": "Proposta de Lei", "numero": num, "leg": leg, "titulo": titulo or self.PL86,
+             "lei_ref": None, "estado": "Aprovado (aguarda publicação)", "resultado_final": "Aprovado", "data_votacao_final": "2026-10-09"}
+        i.update(kw)
+        return i
+
+    def test_fuzzy_links_law_whose_title_changed_in_parliament(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        hits = linking.match(self.fz_act(), [self.fz_ini()])
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["key"], "Proposta de Lei|86|XVII")
+        self.assertEqual(hits[0]["method"], "título aproximado")
+        self.assertGreaterEqual(hits[0]["score"], 0.92)
+        self.assertIn("Decreto-Lei", hits[0]["evidence"].replace("decretolei", "Decreto-Lei"))
+        self.assertEqual(linking.best(self.fz_act(), self.fz_vcon([self.fz_ini()]))["bid"], 356986)
+
+    def fz_vcon(self, inis):
+        v = sqlite3.connect(":memory:")
+        v.execute("CREATE TABLE iniciativas (bid INTEGER, key TEXT, tipo TEXT, numero INTEGER, leg TEXT, titulo TEXT, lei_ref TEXT, estado TEXT, resultado_final TEXT, data_votacao_final TEXT)")
+        for i in inis:
+            v.execute("INSERT INTO iniciativas VALUES(?,?,?,?,?,?,?,?,?,?)", tuple(i[c] for c in ("bid", "key", "tipo", "numero", "leg", "titulo", "lei_ref", "estado", "resultado_final", "data_votacao_final")))
+        return v
+
+    def test_fuzzy_rejects_other_law_amending_same_code(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        other = self.fz_ini(70, titulo="Altera o Código do Imposto sobre o Valor Acrescentado, alargando o âmbito de aplicação da taxa reduzida aos serviços de restauração e bebidas e o Decreto-Lei n.º 394/90, de 11 de dezembro")
+        self.assertEqual(linking.match(self.fz_act(), [other]), [])
+
+    def test_fuzzy_rejects_other_legislature(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        self.assertEqual(linking.match(self.fz_act(), [self.fz_ini(86, leg="XVI")]), [])
+
+    def test_fuzzy_never_links_decree_law(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        self.assertEqual(linking.match(self.fz_act(kind="Decreto-Lei", number="213/2026"), [self.fz_ini()]), [])
+        self.assertEqual(linking.fuzzy(self.fz_act(kind="Decreto-Lei"), [self.fz_ini()]), [])
+
+    def test_fuzzy_ambiguity_stays_unlinked_and_stale_votes_ignored(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        twin = self.fz_ini(87)
+        with self.assertLogs("linking", "WARNING"):
+            self.assertEqual(linking.match(self.fz_act(), [self.fz_ini(), twin]), [])
+        self.assertEqual(linking.match(self.fz_act(), [self.fz_ini(data_votacao_final="2025-01-09")]), [])
+        self.assertEqual(linking.match(self.fz_act(), [self.fz_ini(estado="Em curso", resultado_final="Rejeitado")]), [])
+        self.assertEqual(linking.match(self.fz_act(), [self.fz_ini(lei_ref="Lei 12/2026")]), [])
+
+    def test_fuzzy_needs_citation_below_sure_threshold(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        a = self.fz_act(summary=self.LEI65.replace("Decreto-Lei n.º 31/2006, de 15 de fevereiro", "regime geral"))
+        i = self.fz_ini(titulo=self.PL86.replace("Decreto-Lei n.º 31/2006, de 15 de fevereiro", "regime geral"))
+        self.assertTrue(linking.match(a, [i]))
+        a2 = self.fz_act(summary=self.LEI65.replace("Decreto-Lei n.º 31/2006", "regime geral").replace("rastreabilidade, a certificação e o controlo", "rastreabilidade e a fiscalização"))
+        self.assertEqual(linking.match(a2, [self.fz_ini()]), [])
+
+    def test_link_pass_uses_fuzzy_tier(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        d = sqlite3.connect(":memory:")
+        d.execute("CREATE TABLE acts (id TEXT, kind TEXT, number TEXT, year INT, date TEXT, title TEXT, summary TEXT, url TEXT, legislature TEXT, x TEXT, text TEXT)")
+        d.execute("INSERT INTO acts VALUES('1191346238','Lei','65/2026',2026,'2026-11-05','Lei n.º 65/2026',?,'u','XVII',NULL,'')", (self.LEI65,))
+        v = self.fz_vcon([self.fz_ini()])
+        self.assertEqual(linking.link_acts(d, v, None), 1)
+        row = d.execute("SELECT initiative_key, method, score FROM act_initiatives").fetchone()
+        self.assertEqual(row[:2], ("Proposta de Lei|86|XVII", "título aproximado"))
+        self.assertGreaterEqual(row[2], 0.92)
+
     def test_decree_law_keeps_honest_no_plenary_vote_notice(self):
         d = sqlite3.connect(self.src / "dre.db")
         d.execute("INSERT INTO acts VALUES('A9','Decreto-Lei','213/2026',2026,'2026-11-05','Decreto-Lei n.º 213/2026','Altera o regime dos revendedores','https://dre.pt/a9',NULL,NULL,'Artigo primeiro.')")
@@ -850,6 +930,31 @@ class V(unittest.TestCase):
     def good(self, art, bdir):
         r = self.check(art, bdir)
         self.assertTrue(r["ok"], r)
+
+    def test_place_names_verbatim_in_evidence_need_no_declaration(self):
+        b = self.bundle(texto="O apoio decorre da crise no Médio Oriente e da posição da União Europeia sobre Portugal.")
+        self.good(self.art("O apoio decorre da crise no Médio Oriente e da posição da União Europeia, aplicável em Portugal."), b)
+        self.good(self.art("O apoio decorre da crise no MEDIO ORIENTE."), b)
+
+    def test_place_names_absent_from_evidence_still_fail(self):
+        b = self.bundle(texto="O apoio decorre da crise no Médio Oriente.")
+        self.bad(self.art("O apoio aplica-se também em Lisboa."), b, "nome_isolado")
+        self.bad(self.art("O apoio decorre da crise em Atlantida Nova."), b, "nome_sem_suporte")
+
+    def test_person_names_only_in_text_still_need_declaration(self):
+        b = self.bundle(texto="O requerimento foi assinado por Rui Mendes Antunes no Médio Oriente.")
+        self.bad(self.art("O requerimento foi assinado por Rui Mendes Antunes."), b, "nome_so_no_texto_nao_declarado")
+
+    def test_saved_draft_with_place_name_in_text_passes_place_rule(self):
+        base = Path.home() / "ea-ai-debug2" / "bundles"
+        found = [d for d in base.glob("*") if (d / "rascunho_revisao.txt").exists() and (d / "texto.txt").exists() and "Médio Oriente" in (d / "texto.txt").read_text(encoding="utf-8", errors="ignore")] if base.exists() else []
+        if not found:
+            self.skipTest("saved draft not present")
+        d = found[0]
+        raw = (d / "rascunho_revisao.txt").read_text(encoding="utf-8")
+        art = json.loads(raw[raw.index("{"):raw.rindex("}") + 1])
+        r = self.verify.verify(art, d, self.cfg)
+        self.assertFalse([p for p in r["problemas"] if "Médio Oriente" in p], r)
 
     def test_percent_is_not_a_count(self):
         b = self.bundle(resumo="Participaram 15 deputados na sessao.")
