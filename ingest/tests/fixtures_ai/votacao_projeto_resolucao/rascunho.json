@@ -1,0 +1,99 @@
+{
+ "edicao_data": "2026-11-06",
+ "evidence_hash": "e8e65313d8feea6ab4d564c389775422211c0f0cae58156e207387e6b39731f0",
+ "evento_ids": [
+  3
+ ],
+ "titulo": "Parlamento aprova recomendação ao Governo sobre pensão dos antigos combatentes",
+ "lead": "O Plenário aprovou na generalidade, a 30 de setembro de 2026, o Projeto de Resolução n.º 1259/XVII, que recomenda ao Governo o aumento da pensão dos antigos combatentes e a revisão do complemento especial de pensão.",
+ "corpo": "O Plenário da Assembleia da República aprovou, a 30 de setembro de 2026, o Projeto de Resolução n.º 1259/XVII, intitulado «Recomenda ao Governo o aumento do valor da pensão dos antigos combatentes e a revisão do complemento especial de pensão». A votação foi na generalidade, segundo os dados do Parlamento.\n\nSegundo a tabela de votação, votaram a favor CH, PS, L, PCP, BE, PAN e JPP, que somam 130 lugares. Votaram contra PSD e CDS-PP, com 91 lugares. A IL absteve-se, com 9 lugares.\n\nPor se tratar de um projeto de resolução, o texto é uma recomendação dirigida ao Governo. Os ficheiros disponíveis não incluem o conteúdo detalhado da iniciativa, como valores concretos de aumento, nem informação sobre os passos seguintes da sua tramitação.\n\nA iniciativa pode ser consultada na página do Parlamento e na secção de votações do Estado Aberto.",
+ "pontos_chave": [
+  "O Projeto de Resolução n.º 1259/XVII foi aprovado na generalidade a 30 de setembro de 2026.",
+  "Votaram a favor CH, PS, L, PCP, BE, PAN e JPP, com 130 lugares.",
+  "PSD e CDS-PP votaram contra, com 91 lugares; a IL absteve-se, com 9 lugares.",
+  "O texto recomenda ao Governo o aumento da pensão dos antigos combatentes e a revisão do complemento especial de pensão."
+ ],
+ "fontes": [
+  {
+   "label": "Parlamento – detalhe da iniciativa (Projeto de Resolução n.º 1259/XVII)",
+   "href": "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=377245"
+  },
+  {
+   "label": "Estado Aberto – votação da iniciativa",
+   "href": "#/votacoes/377245"
+  }
+ ],
+ "numeros_citados": [
+  "1259",
+  "130",
+  "91",
+  "9",
+  "30"
+ ],
+ "calculos": [],
+ "entidades": [
+  {
+   "nome": "Assembleia da República",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Parlamento",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Governo",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "CH",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "PS",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "L ",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "PCP",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "BE",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "PAN",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "JPP",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "PSD",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "CDS-PP",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "IL",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Estado Aberto",
+   "tipo": "organizacao"
+  }
+ ],
+ "blocos": {
+  "lei": null,
+  "votacao": null,
+  "intervencoes": []
+ },
+ "explicacao": null,
+ "confianca": 0.85
+}

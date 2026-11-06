@@ -1,0 +1,18 @@
+{
+ "hrefs_permitidos": [
+  "#/anuncios",
+  "#/apoios",
+  "#/autarquias",
+  "#/deputados",
+  "#/divida",
+  "#/dre",
+  "#/edicao",
+  "#/fundos",
+  "#/leis",
+  "#/ministerios",
+  "#/orcamento",
+  "#/votacoes",
+  "#/votacoes/377245",
+  "https://www.parlamento.pt/ActividadeParlamentar/Paginas/DetalheIniciativa.aspx?BID=377245"
+ ]
+}

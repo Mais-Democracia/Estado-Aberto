@@ -1,0 +1,59 @@
+{
+ "edicao_data": "2026-11-06",
+ "evidence_hash": "81c536d5323053b2507e55d7f935ba7914aa04f91e25ba2e0109f535e2b45946",
+ "evento_ids": [
+  13
+ ],
+ "titulo": "Presidente da República promulga dois diplomas do Governo, um deles sobre a TAP",
+ "lead": "O Presidente da República promulgou, a 2 de novembro de 2026, dois diplomas do Governo como Decretos-Leis, entre os quais o que estabelece um regime especial para a TAP.",
+ "corpo": "O Presidente da República promulgou como Decretos-Leis dois diplomas do Governo, a 2 de novembro de 2026, segundo a informação divulgada pela Presidência da República.\n\nUm dos diplomas estabelece um regime especial aplicável à TAP – Transportes Aéreos Portugueses, S. A., em matéria de governação societária e de gestão. Os ficheiros disponíveis só incluem um resumo truncado da nota da Presidência, pelo que o conteúdo do segundo diploma não pode ser descrito.\n\nA promulgação surge após outros atos do Presidente da República a 30 de outubro. Nessa data, promulgou como Lei o Decreto da Assembleia da República n.º 112/XVII, que altera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo. Promulgou ainda como Decreto-Lei o diploma que estabelece o Regime Jurídico dos Graus Académicos e Diplomas do Ensino Superior, que, segundo a Presidência, substitui o regime em vigor desde 2006.",
+ "pontos_chave": [
+  "Presidente da República promulgou dois diplomas do Governo como Decretos-Leis a 2 de novembro de 2026.",
+  "Um dos diplomas cria um regime especial para a TAP em matéria de governação societária e de gestão.",
+  "O conteúdo do segundo diploma não consta integralmente dos dados disponíveis.",
+  "A 30 de outubro tinham sido promulgados o Decreto da Assembleia da República n.º 112/XVII e o regime dos graus académicos do ensino superior."
+ ],
+ "fontes": [
+  {
+   "label": "Presidência da República: Presidente da República promulga dois diplomas do Governo",
+   "href": "https://www.presidencia.pt/atualidade/toda-a-atualidade/2026/11/presidente-da-republica-promulga-dois-diplomas-do-governo/"
+  }
+ ],
+ "numeros_citados": [
+  "2 novembro",
+  "30 outubro",
+  "112",
+  "2006"
+ ],
+ "calculos": [],
+ "entidades": [
+  {
+   "nome": "Presidente da República",
+   "tipo": "pessoa",
+   "cargo_publico": "Presidente da República"
+  },
+  {
+   "nome": "Presidência da República",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Governo",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "TAP – Transportes Aéreos Portugueses, S. A.",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Assembleia da República",
+   "tipo": "organizacao"
+  }
+ ],
+ "blocos": {
+  "lei": null,
+  "votacao": null,
+  "intervencoes": []
+ },
+ "explicacao": null,
+ "confianca": 0.6
+}

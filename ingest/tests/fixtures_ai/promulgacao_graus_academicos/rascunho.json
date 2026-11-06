@@ -1,0 +1,58 @@
+{
+ "edicao_data": "2026-11-06",
+ "evidence_hash": "c4a9ce5e9b8865c14a3867d738e290edb13038f19e5a812542c0349cd159e1b2",
+ "evento_ids": [
+  12
+ ],
+ "titulo": "Presidente da República promulga novo regime dos graus académicos do ensino superior",
+ "lead": "O Presidente da República promulgou, a 30 de outubro de 2026, como Decreto-Lei, o diploma do Governo que estabelece o Regime Jurídico dos Graus Académicos e Diplomas do Ensino Superior.",
+ "corpo": "O Presidente da República promulgou como Decreto-Lei o diploma do Governo que estabelece o Regime Jurídico dos Graus Académicos e Diplomas do Ensino Superior. O ato ocorreu a 30 de outubro de 2026, segundo a informação divulgada no portal da Presidência da República.\n\nTrata-se, de acordo com a mesma fonte, de uma reforma que substitui o regime em vigor desde 2006 e atualiza o enquadramento do ensino superior. Os dados disponíveis não detalham o conteúdo das alterações nem a data de entrada em vigor.\n\nNa mesma data, o Presidente da República promulgou também, como Lei, o Decreto da Assembleia da República n.º 112/XVII, que altera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo.",
+ "pontos_chave": [
+  "O Presidente da República promulgou o diploma como Decreto-Lei a 30 de outubro de 2026.",
+  "O diploma estabelece o Regime Jurídico dos Graus Académicos e Diplomas do Ensino Superior.",
+  "A reforma substitui o regime em vigor desde 2006, segundo a Presidência da República.",
+  "Na mesma data foi promulgado o Decreto da Assembleia da República n.º 112/XVII, sobre IVA e impostos especiais de consumo."
+ ],
+ "fontes": [
+  {
+   "label": "Presidência da República: promulgação de diploma do Governo",
+   "href": "https://www.presidencia.pt/atualidade/toda-a-atualidade/2026/10/presidente-da-republica-promulga-diploma-do-governo-221734/"
+  },
+  {
+   "label": "Ato do Presidente: promulgação de decreto da Assembleia da República",
+   "href": "#/atos-presidente/pr%3Apresidente-da-republica-promulga-decreto-da-assembleia-da-republica-221733%3A2026-10-30"
+  }
+ ],
+ "numeros_citados": [
+  "30 de outubro",
+  "2026",
+  "2006"
+ ],
+ "calculos": [],
+ "entidades": [
+  {
+   "nome": "Presidente da República",
+   "tipo": "pessoa",
+   "cargo_publico": "Presidente da República"
+  },
+  {
+   "nome": "Governo",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Assembleia da República",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Presidência da República",
+   "tipo": "organizacao"
+  }
+ ],
+ "blocos": {
+  "lei": null,
+  "votacao": null,
+  "intervencoes": []
+ },
+ "explicacao": null,
+ "confianca": 0.8
+}

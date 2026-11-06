@@ -35,6 +35,11 @@ VOTE_VERB = re.compile(r"\bvot(?:ou|aram|ando)\b|\babst(?:eve|iveram|endo)[- ]se
 DIR = re.compile(r"\ba\s+favor\b|\bcontra\b|\babst(?:eve|iveram|endo)[- ]se\b|\babsten[cç][aã]o\b", re.I)
 
 
+ALLOW_FILE = Path(__file__).resolve().parent / "instituicoes_publicas.json"
+LINKW = {"de", "do", "da", "dos", "das", "e", "sobre", "o", "a", "os", "as", "para", "em", "no", "na", "nos", "nas", "ao", "aos", "por", "com"}
+VOTE_LIST = re.compile(r"(?P<dir>a\s+favor|contra|absten[cç][aã]o\s+d[aeo]s?|abstiveram-se|absteve-se)\s+(?P<lst>[A-ZÀ-Ý][\w-]*(?:\s*,\s*[A-ZÀ-Ý][\w-]*|\s+e\s+[A-ZÀ-Ý][\w-]*)*)")
+
+
 def ws(s):
     return re.sub(r"[\s\u00a0]+", " ", str(s)).strip()
 
@@ -61,6 +66,105 @@ def fold(s):
 
 def toks(s):
     return " ".join(re.findall(r"[a-z0-9]+", fold(s)))
+
+
+def stem_n(w):
+    if len(w) > 5 and w.endswith("oes"):
+        return w[:-3] + "ao"
+    if len(w) > 5 and w.endswith("ais"):
+        return w[:-3] + "al"
+    if len(w) > 3 and w.endswith("s"):
+        return w[:-1]
+    return w
+
+
+def stem_g(w):
+    w = stem_n(w)
+    return w[:-1] if len(w) > 4 and w[-1] in "ao" else w
+
+
+def skey(s, gender=False):
+    f = stem_g if gender else stem_n
+    return " ".join(f(w) for w in toks(s).split())
+
+
+def load_allow(cfg):
+    p = Path(cfg.get("lista_instituicoes") or ALLOW_FILE)
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raw = {}
+    rx = []
+    for x in raw.get("padroes", []):
+        try:
+            rx.append(re.compile(fold(str(x)), re.I))
+        except re.error:
+            continue
+    names = list(raw.get("instituicoes", [])) + list(cfg.get("instituicoes_publicas", []))
+    termos = {stem_n(w) for t in raw.get("termos_juridicos", []) for w in toks(t).split()}
+    pref = {stem_n(w) for t in cfg.get("prefixos_instituicao", []) for w in toks(t).split()}
+    return {"exact": {skey(x) for x in names}, "rx": rx, "termos": termos, "inst_words": termos | pref,
+            "siglas": {fold(x) for x in raw.get("siglas", [])}, "comuns": {fold(x) for x in raw.get("palavras_comuns", [])}}
+
+
+def subseq(a, b):
+    it = iter(b)
+    return all(c in it for c in a)
+
+
+def acronym_in(acr, words):
+    acr = acr.lower()
+    for i, w in enumerate(words):
+        if w in LINKW or w[0] != acr[0]:
+            continue
+        ini = ""
+        for x in words[i:i + 2 * len(acr) + 4]:
+            if x in LINKW:
+                continue
+            ini += x[0]
+            if len(ini) > len(acr) + 1:
+                break
+            if ini[-1] == acr[-1] and subseq(acr, ini):
+                return True
+    return False
+
+
+def is_acronym(name):
+    t = name.replace("-", "").replace(" ", "")
+    return t.isalpha() and t.isupper() and 2 <= len(t) <= 8
+
+
+def inst_ok(name, ev, al):
+    t = toks(name)
+    if not t:
+        return False
+    words = t.split()
+    inst = any(stem_n(w) in al["inst_words"] for w in words)
+    if (inst or is_acronym(name)) and f" {skey(name, inst)} " in (ev["skg"] if inst else ev["sk"]):
+        return True
+    if skey(name) in al["exact"] or any(p.fullmatch(t) for p in al["rx"]):
+        return True
+    if is_acronym(name):
+        a = re.sub(r"[^a-z]", "", fold(name))
+        return a in al["siglas"] or acronym_in(a, ev["words"])
+    core = [w for w in words if w not in LINKW]
+    if core and all(stem_n(w) in al["termos"] or w in al["comuns"] for w in core):
+        return True
+    if len(core) >= 2:
+        ini = "".join(w[0] for w in core).upper()
+        if re.search(r"(?<![\w-])" + ini + r"(?![\w-])", ev["struct"] + "\n" + ev["texto"]):
+            return True
+    return False
+
+
+def text_votes(text):
+    out = set()
+    for m in VOTE_LIST.finditer(text):
+        d = fold(m.group("dir"))
+        sense = "favor" if "favor" in d else "contra" if "contra" in d else "abstencao"
+        for p in re.split(r"\s*,\s*|\s+e\s+", m.group("lst")):
+            out.add((party_key(p), sense))
+    return out
 
 
 def norm_num(s):
@@ -304,8 +408,9 @@ def load_evidence(bdir):
     struct = TAGS.sub(" ", "\n".join(strs))
     allnum = TAGS.sub(" ", "\n".join(nums)) + "\n" + texto
     lei = obj.get("lei") if isinstance(obj, dict) and isinstance(obj.get("lei"), dict) else None
+    both = struct + "\n" + texto
     return {"struct": struct, "texto": texto, "numtext": allnum, "votes": votes, "ref_year": int(ref[:4]) if ref[:4].isdigit() else None,
-            "lei": lei, "coll": ws(struct + "\n" + texto)}
+            "lei": lei, "coll": ws(both), "sk": " " + skey(both) + " ", "skg": " " + skey(both, True) + " ", "words": toks(both).split()}
 
 
 def name_runs(text, commons):
@@ -501,6 +606,8 @@ def _verify(art, bdir, cfg):
         if len(qs) != 1:
             problems.append(f"numero_citado_invalido:{str(s)[:30]}")
             continue
+        if qs[0][1] == "n" and qs[0][0].isdigit() and any(fd == int(qs[0][0]) for _, _, fd in fdates):
+            continue
         if not supported(qs[0], evq | dset):
             problems.append(f"numero_citado_sem_suporte:{qs[0][0]}:{qs[0][1]}")
     for m in QUOTE.finditer(blob):
@@ -509,6 +616,7 @@ def _verify(art, bdir, cfg):
             problems.append(f"citacao_nao_literal:{span[:40]}")
     blob0 = blob
     commons = set(cfg.get("nomes_comuns", []))
+    al = load_allow(cfg)
     publicas = {toks(x) for x in cfg.get("instituicoes_publicas", [])}
     for c in sorted(cfg.get("instituicoes_publicas", []), key=len, reverse=True):
         blob = re.sub(r"(?<!\w)" + re.escape(c) + r"(?!\w)", " ", blob, flags=re.I)
@@ -519,7 +627,7 @@ def _verify(art, bdir, cfg):
     st, tx = " " + toks(ev["struct"]) + " ", " " + toks(ev["texto"]) + " "
     cargos = [fold(c) for c in cfg.get("cargos_publicos", [])]
     for key, e in declared.items():
-        if f" {key} " not in st and f" {key} " not in tx and (e["tipo"] == "pessoa" or key not in publicas):
+        if f" {key} " not in st and f" {key} " not in tx and (e["tipo"] == "pessoa" or (key not in publicas and not inst_ok(e["nome"], ev, al))):
             problems.append(f"entidade_sem_suporte:{e['nome']}")
         if e["tipo"] == "pessoa":
             cargo = fold(e["cargo_publico"])
@@ -546,6 +654,8 @@ def _verify(art, bdir, cfg):
         key = toks(" ".join(words))
         pk = f" {key} "
         if any(pk in d for d in dkeys) or any(pk in p for p in phrases):
+            continue
+        if inst_ok(" ".join(words), ev, al):
             continue
         if len(core) == 1 and len(words) == 1:
             w = core[0]
@@ -577,6 +687,8 @@ def _verify(art, bdir, cfg):
         table = {(party_key(p), s) for p, s in ev["votes"]}
         if blocos and blocos.get("votacao"):
             table = {(party_key(r["partido"]), r["voto"]) for r in blocos["votacao"].get("por_partido", [])}
+        if not table:
+            table = text_votes(ev["struct"] + "\n" + ev["texto"])
         for p, d, s in claims:
             if not table:
                 problems.append(f"voto_sem_tabela:{p}")

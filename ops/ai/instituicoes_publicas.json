@@ -1,0 +1,66 @@
+{
+  "instituicoes": [
+    "Presidência da República", "Presidência do Conselho de Ministros", "Presidente da República", "Assembleia da República",
+    "Conselho de Ministros", "Conselho de Estado", "Governo", "Governo da República", "Parlamento", "Plenário", "Tribunal Constitucional", "Tribunal de Contas",
+    "Supremo Tribunal de Justiça", "Supremo Tribunal Administrativo", "Provedor de Justiça", "Procuradoria-Geral da República",
+    "Ministério Público", "Autoridade Tributária e Aduaneira", "Autoridade Tributária", "Diário da República", "Banco de Portugal",
+    "Banco Central Europeu", "União Europeia", "Comissão Europeia", "Parlamento Europeu", "Conselho Europeu", "Conselho da União Europeia",
+    "Tribunal de Justiça da União Europeia", "Segurança Social", "Serviço Nacional de Saúde", "Estado Aberto", "Estado Português",
+    "Região Autónoma dos Açores", "Região Autónoma da Madeira", "Governo Regional", "Assembleia Legislativa", "Entidade Reguladora dos Serviços Energéticos",
+    "Instituto Nacional de Estatística", "Comissão do Mercado de Valores Mobiliários", "Autoridade da Concorrência", "Comissão Nacional de Eleições",
+    "Conselho Superior da Magistratura", "Conselho Superior do Ministério Público", "Tribunal da Relação", "Banco de Fomento", "Caixa Geral de Depósitos"
+  ],
+  "padroes": [
+    "ministerio d[aeo]s? .+",
+    "secretaria de estado d[aeo]s? .+",
+    "secretaria geral d[aeo]s? .+",
+    "direcao geral d[aeo]s? .+",
+    "inspecao geral d[aeo]s? .+",
+    "instituto d[aeo]s? .+",
+    "instituto nacional d[aeo]s? .+",
+    "agencia (?:nacional )?d[aeo]s? .+",
+    "autoridade (?:nacional )?d[aeo]s? .+",
+    "comissao (?:nacional )?d[aeo]s? .+",
+    "gabinete d[aeo]s? .+",
+    "tribunal (?:da relacao|administrativo|judicial|de comarca|central administrativo|arbitral).*",
+    "camara municipal d[aeo]s? .+",
+    "assembleia municipal d[aeo]s? .+",
+    "junta de freguesia d[aeo]s? .+",
+    "uniao das freguesias d[aeo]s? .+",
+    "municipio d[aeo]s? .+",
+    "freguesia d[aeo]s? .+",
+    "regiao autonoma d[aeo]s? .+",
+    "governo regional d[aeo]s? .+",
+    "comunidade intermunicipal d[aeo]s? .+",
+    "area metropolitana d[aeo]s? .+",
+    "universidade d[aeo]s? .+",
+    "conselho (?:nacional|superior|geral|regional) d[aeo]s? .+",
+    "entidade reguladora d[aeo]s? .+",
+    "codigo d[aeo]s? .+",
+    "regime juridico d[aeo]s? .+",
+    "lei d[aeo]s? .+",
+    "decreto da assembleia da republica.*",
+    "decreto regulamentar.*",
+    "decreto legislativo regional.*",
+    "estatuto d[aeo]s? .+"
+  ],
+  "termos_juridicos": [
+    "Decreto", "Decreto-Lei", "Decreto-Lei Regional", "Decreto Regulamentar", "Decreto Legislativo", "Lei", "Lei Orgânica", "Lei de Bases", "Lei Constitucional", "Portaria", "Despacho",
+    "Resolução", "Regulamento", "Diretiva", "Directiva", "Decisão", "Deliberação", "Parecer", "Aviso", "Declaração", "Retificação", "Código", "Estatuto",
+    "Regime", "Regime Jurídico", "Orçamento", "Orçamento do Estado", "Proposta", "Projeto", "Projeto de Lei", "Projeto de Resolução", "Proposta de Lei",
+    "Constituição", "Constituição da República Portuguesa", "Imposto", "Taxa", "Contribuição", "Isenção", "Benefício", "Diploma", "Diplomas", "Série", "Número", "Artigo", "Capítulo",
+    "Secção", "Anexo", "Presidente", "Primeiro-Ministro", "Ministro", "Ministra", "Secretário", "Secretária", "Deputado", "Deputada", "Estado", "República", "Governo",
+    "Assembleia", "Parlamento", "Autarquia", "Município", "Freguesia", "Câmara", "Junta", "Tribunal", "Ministério", "Direção-Geral", "Instituto", "Agência", "Comissão"
+  ],
+  "siglas": [
+    "IVA", "IRS", "IRC", "ISP", "IEC", "IMT", "IMI", "IUC", "IS", "UE", "PR", "AR", "AT", "DGEG", "DRE", "OE", "SNS", "INE", "CMVM", "ERSE", "ANACOM", "AIMA",
+    "IEFP", "IRN", "ADSE", "CGD", "BCE", "BdP", "TC", "STJ", "PGR", "TAP", "CP", "REN", "CCDR", "AMT", "ASAE", "ANEPC", "IGF", "OCDE", "ONU", "NATO", "PIB", "PRR", "PT2030"
+  ],
+  "palavras_comuns": [
+    "Segundo", "Trata-se", "Nessa", "Nesse", "Nesta", "Neste", "Nestes", "Nestas", "Esta", "Este", "Estes", "Estas", "Essa", "Esse", "Depois", "Antes", "Também", "Além", "Ainda", "Porém",
+    "Contudo", "Todavia", "Assim", "Desta", "Deste", "Dessa", "Desse", "Quanto", "Quando", "Enquanto", "Entretanto", "Mesmo", "Cada", "Todos", "Todas", "Outros", "Outras", "Alguns", "Algumas",
+    "Existem", "Existe", "Houve", "Foram", "Foi", "Será", "Serão", "Pode", "Podem", "Deve", "Devem", "Para", "Pelo", "Pela", "Pelos", "Pelas", "Sem", "Sobre", "Sob", "Perante", "Mediante",
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+    "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo", "Plenário", "Parlamento", "Governo"
+  ]
+}

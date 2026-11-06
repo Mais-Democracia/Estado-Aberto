@@ -1017,6 +1017,62 @@ class R(unittest.TestCase):
         art["corpo"] += " O PS votou a favor."
         self.assertTrue(any(p.startswith("voto_sem_tabela") for p in self.problems(art, d)))
 
+    def test_real_rejected_drafts_now_pass(self):
+        for name in ("promulgacao_dois_diplomas", "promulgacao_graus_academicos", "votacao_projeto_resolucao"):
+            art, d = self.load(name)
+            self.assertEqual(self.problems(art, d), [], name)
+
+    def test_planted_fakes_fail_on_real_bundles(self):
+        art, d = self.load("promulgacao_graus_academicos")
+        art["corpo"] += " O regime abrange 4 500 estudantes."
+        self.assertTrue(any(p.startswith("numero_sem_suporte:4500") for p in self.problems(art, d)))
+        art, d = self.load("promulgacao_graus_academicos")
+        art["corpo"] += " A medida entra em vigor a 15 de dezembro de 2026."
+        self.assertTrue(any(p.startswith("data_sem_suporte") for p in self.problems(art, d)))
+        art, d = self.load("promulgacao_graus_academicos")
+        art["corpo"] += " A empresária Maria Fernandes criticou o diploma."
+        self.assertTrue(any("Maria Fernandes" in p for p in self.problems(art, d)))
+        art, d = self.load("promulgacao_graus_academicos")
+        art["corpo"] += " A Agência Fantasma de Ensino Superior acompanhará a medida."
+        self.assertTrue(any("Agência Fantasma" in p for p in self.problems(art, d)))
+        art, d = self.load("promulgacao_graus_academicos")
+        art["corpo"] += " A ZXQ também foi consultada."
+        self.assertTrue(any("ZXQ" in p for p in self.problems(art, d)))
+        art, d = self.load("promulgacao_graus_academicos")
+        art["entidades"].append({"nome": "Autoridade Inventada do Ensino", "tipo": "organizacao"})
+        self.assertTrue(any(p.startswith("entidade_sem_suporte:Autoridade Inventada") for p in self.problems(art, d)))
+        art, d = self.load("votacao_projeto_resolucao")
+        art["corpo"] = art["corpo"].replace("A IL absteve-se", "A IL votou contra")
+        self.assertTrue(any(p.startswith("voto_incoerente:IL") for p in self.problems(art, d)))
+        art, d = self.load("votacao_projeto_resolucao")
+        art["corpo"] += " O PSD votou a favor."
+        self.assertTrue(any(p.startswith("voto_incoerente:PSD") for p in self.problems(art, d)))
+        art, d = self.load("votacao_projeto_resolucao")
+        art["numeros_citados"].append("31")
+        self.assertTrue(any(p.startswith("numero_citado_sem_suporte:31") for p in self.problems(art, d)))
+
+    def test_institution_tiers(self):
+        art, d = self.load("promulgacao_graus_academicos")
+        ev = self.verify.load_evidence(d)
+        al = self.verify.load_allow(self.cfg)
+        ok = lambda n: self.verify.inst_ok(n, ev, al)
+        for n in ("Decretos-Leis", "Decreto-Lei", "Presidência da República", "Presidência do Conselho de Ministros", "IVA", "IEC", "UE", "Ministério da Cultura",
+                  "Direção-Geral de Energia e Geologia", "Instituto da Mobilidade", "Câmara Municipal de Faro", "Tribunal Constitucional", "Estado Aberto"):
+            self.assertTrue(ok(n), n)
+        for n in ("Maria Fernandes", "Autoridade Fantasma de Fiscalização", "ZXQ", "Pereira"):
+            self.assertFalse(ok(n), n)
+        self.assertTrue(self.verify.acronym_in("dgeg", "direcao geral de energia e geologia".split()))
+        self.assertTrue(self.verify.acronym_in("irs", "imposto sobre o rendimento das pessoas singulares".split()))
+        self.assertFalse(self.verify.acronym_in("irs", "imposto sobre o valor acrescentado".split()))
+
+    def test_allowlist_file_is_extensible_without_code_changes(self):
+        art, d = self.load("promulgacao_graus_academicos")
+        art["entidades"].append({"nome": "Observatório Fictício da Educação", "tipo": "organizacao"})
+        self.assertTrue(any(p.startswith("entidade_sem_suporte:Observat") for p in self.problems(art, d)))
+        extra = Path(tempfile.mkdtemp()) / "lista.json"
+        extra.write_text(json.dumps({"instituicoes": ["Observatório Fictício da Educação", "Presidência da República"]}), encoding="utf-8")
+        self.assertEqual(self.verify.verify(art, d, dict(self.cfg, lista_instituicoes=str(extra)))["problemas"], [])
+
 
 class RV(unittest.TestCase):
     def setUp(self):
@@ -1090,6 +1146,70 @@ class RV(unittest.TestCase):
         self.reverify()
         self.assertEqual(self.names("published"), [])
         self.assertFalse(self.log.exists())
+
+
+class RS(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.state, self.data = t / "state", t / "data"
+        self.state.mkdir()
+        self.data.mkdir()
+        self.log = t / "stub.log"
+        self.env = dict(os.environ, ESTADO_ABERTO_STATE=str(self.state), ESTADO_ABERTO_DATA=str(self.data), CLAUDE_BIN=str(STUB), AI_STUB_LOG=str(self.log),
+                        AI_STUB_STATE=str(t), AI_ENV_FILE=str(t / "ai.env"), AI_ENABLED="1", AI_ALLOW_FILE="1", AI_NO_LEDGER_SCRIPT="1", PORT="1")
+        self.ai = self.state / "ai"
+        con = sqlite3.connect(self.data / "diario.db")
+        con.executescript(SCHEMA)
+        for i in (1, 2):
+            con.execute("INSERT INTO eventos(id,hash,edicao_data) VALUES(?,?,?)", (i, f"h{i}", D))
+        con.commit()
+        con.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def put(self, name, sub, hash_, ids, votacao=None):
+        art = json.loads((FX / name / "rascunho.json").read_text(encoding="utf-8"))
+        art["evidence_hash"], art["evento_ids"] = hash_, ids
+        if votacao:
+            art["blocos"] = dict(art["blocos"], votacao=votacao)
+        b = self.ai / "bundles" / hash_
+        b.mkdir(parents=True)
+        for f in ("facts.json", "fontes.json", "texto.txt"):
+            (b / f).write_bytes((FX / name / f).read_bytes())
+        (b / "blocos.json").write_text(json.dumps(art["blocos"]), encoding="utf-8")
+        e = art["explicacao"]
+        doc = dict(art, explicacao={"do_que_trata": e["do_que_trata"], "o_que_muda": e["o_que_muda"], "evidencias": e["evidencias"]}, modelo="sonnet", revisor="opus",
+                   estado="publicado" if sub == "published" else "rejeitado", criado_em="2026-11-06T11:00:00+00:00" if sub == "published" else "2026-11-06T13:00:00+00:00",
+                   verificacao={"verificador": {"ok": sub == "published", "problemas": []}, "revisor": {"veredicto": "ok" if sub == "published" else "nao_executado", "alegacoes_sem_suporte": []}})
+        (self.ai / sub / D).mkdir(parents=True, exist_ok=True)
+        (self.ai / sub / D / f"{hash_}.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    def sh(self, *a):
+        return subprocess.run([sys.executable, *a], env=self.env, capture_output=True, text=True, cwd=ROOT)
+
+    def test_reverified_article_with_votes_supersedes_older_one(self):
+        self.put("decreto_lei_213", "published", "a" * 64, [2])
+        r = self.sh(str(IMPORT), "--date", D)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        con = sqlite3.connect(self.data / "diario.db")
+        self.assertEqual(con.execute("SELECT estado, revisao FROM artigos_ia").fetchall(), [("publicado", 0)])
+        votacao = {"data": "2026-10-09", "resultado": "Aprovado", "por_partido": [{"partido": "PSD", "voto": "favor"}]}
+        self.put("lei_65", "rejected", "b" * 64, [2], votacao)
+        r = self.sh(str(RUN), "--reverify", D)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("publicados=1", r.stdout)
+        r = self.sh(str(IMPORT), "--date", D)
+        self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1])["falhas"], 0, r.stdout)
+        rows = con.execute("SELECT evidence_hash, estado, revisao, blocos FROM artigos_ia ORDER BY id").fetchall()
+        self.assertEqual([(x[0][0], x[1]) for x in rows], [("a", "substituido"), ("b", "publicado")])
+        self.assertEqual(rows[0][2], 1)
+        self.assertEqual(rows[1][2], 1)
+        self.assertEqual(json.loads(rows[1][3])["votacao"]["resultado"], "Aprovado")
+        self.assertEqual(con.execute("SELECT ia_artigo_id FROM eventos WHERE id=2").fetchone()[0], con.execute("SELECT id FROM artigos_ia WHERE estado='publicado'").fetchone()[0])
+        r = self.sh(str(IMPORT), "--date", D)
+        self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1]), {"novos_ou_alterados": 0, "inalterados": 2, "falhas": 0})
 
 
 if __name__ == "__main__":

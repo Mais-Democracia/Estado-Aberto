@@ -4,6 +4,7 @@ import json
 import os
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -28,7 +29,12 @@ def enc(k, v):
 
 def dec(k, v):
     if k in JSON_FIELDS:
-        return None if v is None else j(json.loads(v))
+        if v is None:
+            return None
+        try:
+            return j(json.loads(v))
+        except ValueError:
+            return v
     return v
 
 
@@ -70,10 +76,10 @@ def supersede(con, aid, ids_key):
     inherited = 0
     for r in con.execute("SELECT id, revisao, evento_ids FROM artigos_ia WHERE estado='publicado' AND id<>?", (aid,)).fetchall():
         if same_events(r[2], ids_key):
-            con.execute("UPDATE artigos_ia SET estado='substituido', revisao=revisao+1 WHERE id=?", (r[0],))
-            inherited = max(inherited, r[1] + 1)
+            con.execute("UPDATE artigos_ia SET estado='substituido', revisao=COALESCE(revisao, 0)+1 WHERE id=?", (r[0],))
+            inherited = max(inherited, (r[1] or 0) + 1)
     if inherited:
-        con.execute("UPDATE artigos_ia SET revisao=MAX(revisao, ?) WHERE id=?", (inherited, aid))
+        con.execute("UPDATE artigos_ia SET revisao=MAX(COALESCE(revisao, 0), ?) WHERE id=?", (inherited, aid))
 
 
 def import_doc(con, doc, cfg, bundles, killed=None):
@@ -104,7 +110,7 @@ def import_doc(con, doc, cfg, bundles, killed=None):
         aid = row[0]
         if same:
             return aid, state, False
-        sets = ", ".join(f"{k}=?" for k in FIELDS) + ", evidence_hash=?, revisao=revisao+1"
+        sets = ", ".join(f"{k}=?" for k in FIELDS) + ", evidence_hash=?, revisao=COALESCE(revisao, 0)+1"
         con.execute(f"UPDATE artigos_ia SET {sets} WHERE id=?", [vals[k] for k in FIELDS] + [ev, aid])
         changed = True
     else:
@@ -128,11 +134,20 @@ def fail_closed(con, doc, reason):
         with con:
             ids = [r[0] for r in con.execute("SELECT id FROM artigos_ia WHERE evidence_hash=? AND estado<>'rejeitado'", (doc.get("evidence_hash"),))]
             for i in ids:
-                con.execute("UPDATE artigos_ia SET estado='rejeitado', revisao=revisao+1 WHERE id=?", (i,))
+                con.execute("UPDATE artigos_ia SET estado='rejeitado', revisao=COALESCE(revisao, 0)+1 WHERE id=?", (i,))
                 con.execute("UPDATE eventos SET ia_artigo_id=NULL WHERE ia_artigo_id=?", (i,))
         return bool(ids)
     except sqlite3.Error:
         return False
+
+
+def fail(con, f, doc, sub, n, failed, e):
+    print(f"ignorado {f.name}: {type(e).__name__}: {str(e)[:120]}")
+    n["falhas"] += 1
+    failed.append(f"{sub}/{f.parent.name}/{f.name}")
+    if isinstance(doc, dict) and sub == "published" and fail_closed(con, doc, type(e).__name__):
+        n["novos_ou_alterados"] += 1
+    return None
 
 
 def touch(db, con):
@@ -168,25 +183,34 @@ def main(argv=None):
     with con:
         migrations.ensure_artigos_ia(con)
     n = {"novos_ou_alterados": 0, "inalterados": 0, "falhas": 0}
+    failed = []
     killed = ai / "killed"
     for d in dates:
         for sub in ("published", "rejected"):
             for f in sorted((ai / sub / d).glob("*.json")):
                 doc = None
-                try:
-                    doc = json.loads(f.read_text(encoding="utf-8"))
-                    with con:
-                        _, _, changed = import_doc(con, doc, cfg, ai / "bundles", killed)
-                except Exception as e:
-                    print(f"ignorado {f.name}: {type(e).__name__}")
-                    n["falhas"] += 1
-                    if isinstance(doc, dict) and sub == "published":
-                        if fail_closed(con, doc, type(e).__name__):
-                            n["novos_ou_alterados"] += 1
+                for attempt in range(3):
+                    try:
+                        doc = json.loads(f.read_text(encoding="utf-8"))
+                        with con:
+                            _, _, changed = import_doc(con, doc, cfg, ai / "bundles", killed)
+                        break
+                    except sqlite3.OperationalError as e:
+                        if attempt < 2 and "locked" in str(e):
+                            time.sleep(3)
+                            continue
+                        changed = fail(con, f, doc, sub, n, failed, e)
+                        break
+                    except Exception as e:
+                        changed = fail(con, f, doc, sub, n, failed, e)
+                        break
+                if changed is None:
                     continue
                 n["novos_ou_alterados" if changed else "inalterados"] += 1
     if n["novos_ou_alterados"]:
         touch(db, con)
+    if failed:
+        n["ficheiros_falhados"] = failed
     print(json.dumps(n))
     return 0
 
