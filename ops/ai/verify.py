@@ -36,6 +36,7 @@ DIR = re.compile(r"\ba\s+favor\b|\bcontra\b|\babst(?:eve|iveram|endo)[- ]se\b|\b
 
 
 ALLOW_FILE = Path(__file__).resolve().parent / "instituicoes_publicas.json"
+PLACES_FILE = Path(__file__).resolve().parent / "lugares.json"
 LINKW = {"de", "do", "da", "dos", "das", "e", "sobre", "o", "a", "os", "as", "para", "em", "no", "na", "nos", "nas", "ao", "aos", "por", "com"}
 VOTE_LIST = re.compile(r"(?P<dir>a\s+favor|contra|absten[cç][aã]o\s+d[aeo]s?|abstiveram-se|absteve-se)\s+(?P<lst>[A-ZÀ-Ý][\w-]*(?:\s*,\s*[A-ZÀ-Ý][\w-]*|\s+e\s+[A-ZÀ-Ý][\w-]*)*)")
 
@@ -100,11 +101,19 @@ def load_allow(cfg):
             rx.append(re.compile(fold(str(x)), re.I))
         except re.error:
             continue
+    places = set()
+    for pf in (PLACES_FILE, cfg.get("lista_lugares")):
+        try:
+            data = json.loads(Path(pf).read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            continue
+        places |= {skey(x) for x in data.get("lugares", []) + data.get("municipios", [])}
+    places |= {skey(x) for x in cfg.get("lugares", [])}
     names = list(raw.get("instituicoes", [])) + list(cfg.get("instituicoes_publicas", []))
     termos = {stem_n(w) for t in raw.get("termos_juridicos", []) for w in toks(t).split()}
     pref = {stem_n(w) for t in cfg.get("prefixos_instituicao", []) for w in toks(t).split()}
     return {"exact": {skey(x) for x in names}, "rx": rx, "termos": termos, "inst_words": termos | pref,
-            "siglas": {fold(x) for x in raw.get("siglas", [])}, "comuns": {fold(x) for x in raw.get("palavras_comuns", [])}}
+            "lugares": places, "siglas": {fold(x) for x in raw.get("siglas", [])}, "comuns": {fold(x) for x in raw.get("palavras_comuns", [])}}
 
 
 def subseq(a, b):
@@ -155,6 +164,11 @@ def inst_ok(name, ev, al):
         if re.search(r"(?<![\w-])" + ini + r"(?![\w-])", ev["struct"] + "\n" + ev["texto"]):
             return True
     return False
+
+
+def place_ok(name, ev, al):
+    k = skey(name)
+    return bool(k) and k in al["lugares"] and f" {k} " in ev["sk"]
 
 
 def text_votes(text):
@@ -656,6 +670,8 @@ def _verify(art, bdir, cfg):
         if any(pk in d for d in dkeys) or any(pk in p for p in phrases):
             continue
         if inst_ok(" ".join(words), ev, al):
+            continue
+        if place_ok(" ".join(words), ev, al):
             continue
         if len(core) == 1 and len(words) == 1:
             w = core[0]
