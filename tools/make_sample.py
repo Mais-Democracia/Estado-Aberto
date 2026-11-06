@@ -347,8 +347,9 @@ def build_votacoes(con, g):
             d = g.date(400, 0.5)
             con.execute("INSERT INTO votos (id,bid,ord,data,fase,orgao,reuniao,resultado,unanime,favor,contra,abstencao,ausencia,detalhe,source_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (vid, i, o, d, fase, "Plenário", "Reunião Plenária n.º 1", R.choice(RESULTS), 0, ", ".join(f), ", ".join(c), ", ".join(a), "", None, "https://exemplo.invalid/v"))
-            for p in f: con.execute("INSERT INTO voto_partido VALUES (?,?,?,?,?,?)", (vid, p, "favor", "partido", p, R.randint(5, 80)))
-            for p in c: con.execute("INSERT INTO voto_partido VALUES (?,?,?,?,?,?)", (vid, p, "contra", "partido", p, R.randint(5, 40)))
+            for p in f: con.execute("INSERT INTO voto_partido VALUES (?,?,?,?,?,?)", (vid, p, "favor", "gp", p, R.randint(5, 80)))
+            for p in c: con.execute("INSERT INTO voto_partido VALUES (?,?,?,?,?,?)", (vid, p, "contra", "gp", p, R.randint(5, 40)))
+            for p in a: con.execute("INSERT INTO voto_partido VALUES (?,?,?,?,?,?)", (vid, p, "abstencao", "gp", p, R.randint(5, 40)))
         con.execute("INSERT INTO autores VALUES (?,?,?,?)", (i, R.randint(1, 60), g.person(), R.choice(PCODES)))
         con.execute("INSERT INTO relatores VALUES (?,?,?,?,?,?,?)", (i, 0, "Comissão Exemplo", R.randint(1, 60), g.person(), R.choice(PCODES), None))
         con.execute("INSERT INTO listagem VALUES (?,?,?,?,?,?,?,?)", ("XVII", 1, i, "Projeto de Lei", i, 1, R.choice(PCODES), f"Altera o regime sintético n.º {i}"))
