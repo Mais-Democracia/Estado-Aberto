@@ -16,14 +16,15 @@
    "est_minutes": 1,
    "est_peak_mb": 50,
    "est_disk_mb": 1,
-   "schedule": "daily",
+   "schedule": "6h",
    "enabled": true,
    "fresh_days": 0,
    "raw": [],
    "keep_raw": false,
    "flaky": false,
    "licence": "none: local schema upgrade, no external data",
-   "notes": "Idempotent in-place schema upgrades (added columns and tables) for databases built by earlier releases."
+   "notes": "Idempotent in-place schema upgrades (added columns and tables) for databases built by earlier releases.",
+   "fresh_hours": 5
   },
   {
    "name": "agenda",
@@ -36,14 +37,15 @@
    "est_minutes": 1,
    "est_peak_mb": 80,
    "est_disk_mb": 10,
-   "schedule": "daily",
+   "schedule": "6h",
    "enabled": true,
    "fresh_days": 1,
    "raw": [],
    "keep_raw": false,
    "flaky": false,
    "licence": "docs/SOURCES.md: Parliament agenda",
-   "notes": "Parliament calendar JSON and law steps."
+   "notes": "Parliament calendar JSON and law steps.",
+   "fresh_hours": 5
   },
   {
    "name": "government",
@@ -56,14 +58,15 @@
    "est_minutes": 1,
    "est_peak_mb": 80,
    "est_disk_mb": 5,
-   "schedule": "daily",
+   "schedule": "6h",
    "enabled": true,
    "fresh_days": 1,
    "raw": [],
    "keep_raw": false,
    "flaky": false,
    "licence": "docs/SOURCES.md: Government / ministers",
-   "notes": "President, ministers, parties from Wikipedia and Wikidata."
+   "notes": "President, ministers, parties from Wikipedia and Wikidata.",
+   "fresh_hours": 5
   },
   {
    "name": "news",
@@ -76,14 +79,144 @@
    "est_minutes": 2,
    "est_peak_mb": 80,
    "est_disk_mb": 15,
-   "schedule": "daily",
+   "schedule": "6h",
    "enabled": true,
    "fresh_days": 1,
    "raw": [],
    "keep_raw": false,
    "flaky": false,
    "licence": "docs/SOURCES.md: Presidency news",
-   "notes": "Presidency news items."
+   "notes": "Presidency news items.",
+   "fresh_hours": 5
+  },
+  {
+   "name": "dre_recent",
+   "script": "jobs/dre.py",
+   "depends": [],
+   "produces": [
+    "dre.db"
+   ],
+   "network": true,
+   "est_minutes": 5,
+   "est_peak_mb": 150,
+   "est_disk_mb": 20,
+   "schedule": "6h",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Diario da Republica",
+   "notes": "Diario da Republica: re-fetches the last 5 days of serie I acts and resolves their details and amended targets.",
+   "args": [
+    "--since",
+    "5"
+   ],
+   "after": [
+    "dre"
+   ],
+   "needs": [
+    "dre.db"
+   ],
+   "fresh_hours": 5
+  },
+  {
+   "name": "votacoes_recent",
+   "script": "jobs/votacoes.py",
+   "depends": [],
+   "produces": [
+    "votacoes.db"
+   ],
+   "network": true,
+   "est_minutes": 10,
+   "est_peak_mb": 150,
+   "est_disk_mb": 30,
+   "schedule": "6h",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Votacoes",
+   "notes": "Parliament initiatives: current legislature listing; refetches new and recently active initiatives (last 14 days).",
+   "args": [
+    "--since",
+    "14"
+   ],
+   "after": [
+    "votacoes"
+   ],
+   "needs": [
+    "votacoes.db"
+   ],
+   "fresh_hours": 5
+  },
+  {
+   "name": "presidencia_recent",
+   "script": "jobs/presidencia.py",
+   "depends": [
+    "dre_recent",
+    "votacoes_recent"
+   ],
+   "produces": [
+    "presidencia.db"
+   ],
+   "network": true,
+   "est_minutes": 5,
+   "est_peak_mb": 150,
+   "est_disk_mb": 10,
+   "schedule": "6h",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Atos do Presidente",
+   "notes": "Presidency communiques of the last 7 days; derived tables are rebuilt from the stored communiques.",
+   "args": [
+    "--since",
+    "7"
+   ],
+   "after": [
+    "presidencia"
+   ],
+   "needs": [
+    "presidencia.db",
+    "dre.db",
+    "votacoes.db"
+   ],
+   "fresh_hours": 5
+  },
+  {
+   "name": "contracts_recent",
+   "script": "contracts.py",
+   "depends": [],
+   "produces": [
+    "politica.db"
+   ],
+   "network": true,
+   "est_minutes": 8,
+   "est_peak_mb": 150,
+   "est_disk_mb": 80,
+   "schedule": "6h",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": false,
+   "licence": "docs/SOURCES.md: Public contracts",
+   "notes": "Portal BASE contracts published in the last 14 days, upserted from the current-year file (skipped when the source is unchanged).",
+   "args": [
+    "--since",
+    "14"
+   ],
+   "after": [
+    "contracts"
+   ],
+   "needs": [
+    "politica.db"
+   ],
+   "fresh_hours": 5
   },
   {
    "name": "contracts",
@@ -400,8 +533,8 @@
     "responsaveis.db"
    ],
    "network": true,
-   "est_minutes": 55,
-   "est_peak_mb": 300,
+   "est_minutes": 15,
+   "est_peak_mb": 250,
    "est_disk_mb": 40,
    "schedule": "daily",
    "enabled": true,
@@ -412,7 +545,39 @@
    "keep_raw": true,
    "flaky": true,
    "licence": "docs/SOURCES.md: Quem decide",
-   "notes": "One 3000-request batch per run (RESP_MAX_REQ) until every holder is read; also runs the nomeacoes phases of responsaveis_nomeacoes.py."
+   "notes": "One 3000-request batch per run (RESP_MAX_REQ) until every holder is read; also runs the nomeacoes phases of responsaveis_nomeacoes.py. Daily run is incremental (--since 14: mandate list refreshed, at most 600 ET requests, no CRESAP crawl); responsaveis_full does the full rebuild weekly.",
+   "args": [
+    "--since",
+    "14"
+   ]
+  },
+  {
+   "name": "responsaveis_full",
+   "script": "jobs/responsaveis.py",
+   "depends": [
+    "responsaveis"
+   ],
+   "produces": [
+    "responsaveis.db"
+   ],
+   "network": true,
+   "est_minutes": 55,
+   "est_peak_mb": 300,
+   "est_disk_mb": 40,
+   "schedule": "weekly",
+   "enabled": true,
+   "fresh_days": 7,
+   "raw": [
+    "responsaveis"
+   ],
+   "keep_raw": true,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Quem decide",
+   "notes": "Full responsaveis rebuild (all holders, CRESAP).",
+   "args": [],
+   "after": [],
+   "needs": [],
+   "fresh_hours": 0
   },
   {
    "name": "fundos",
@@ -539,6 +704,38 @@
    "notes": "Plenary transcript PDFs from parlamento.pt, cache-first and resumable; falls back to the cached index when the site is down. INTERV_MAX_REQ caps requests per run."
   },
   {
+   "name": "intervencoes_recent",
+   "script": "jobs/intervencoes.py",
+   "depends": [],
+   "produces": [
+    "intervencoes.db"
+   ],
+   "network": true,
+   "est_minutes": 8,
+   "est_peak_mb": 250,
+   "est_disk_mb": 50,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Votacoes",
+   "notes": "Plenary DAR PDFs of the last 7 days.",
+   "args": [
+    "--since",
+    "7"
+   ],
+   "after": [
+    "intervencoes"
+   ],
+   "needs": [
+    "intervencoes.db",
+    "votacoes.db"
+   ],
+   "fresh_hours": 20
+  },
+  {
    "name": "posicoes",
    "script": "jobs/posicoes.py",
    "depends": [
@@ -638,6 +835,37 @@
    "notes": "INE indicators, courts registry, Tribunal Constitucional and Tribunal de Contas documents. Visto 'resultado' is preserved across re-ingests. JUSTICA_ONLY selects phases."
   },
   {
+   "name": "justica_tc_recent",
+   "script": "jobs/justica.py",
+   "depends": [],
+   "produces": [
+    "justica.db"
+   ],
+   "network": true,
+   "est_minutes": 5,
+   "est_peak_mb": 150,
+   "est_disk_mb": 10,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Justica",
+   "notes": "Tribunal Constitucional acordaos of the current year, details of unread ones.",
+   "args": [
+    "--since",
+    "7"
+   ],
+   "after": [
+    "justica"
+   ],
+   "needs": [
+    "justica.db"
+   ],
+   "fresh_hours": 20
+  },
+  {
    "name": "provedor",
    "script": "jobs/provedor.py",
    "depends": [],
@@ -648,9 +876,9 @@
    "est_minutes": 8,
    "est_peak_mb": 150,
    "est_disk_mb": 50,
-   "schedule": "weekly",
+   "schedule": "daily",
    "enabled": true,
-   "fresh_days": 7,
+   "fresh_days": 1,
    "raw": [
     "provedor"
    ],
@@ -684,6 +912,37 @@
    "flaky": true,
    "licence": "docs/SOURCES.md: Reguladores",
    "notes": "Runs dedupe_board (duplicate mandates) and dedupe_cases on every run."
+  },
+  {
+   "name": "reguladores_recent",
+   "script": "jobs/reguladores.py",
+   "depends": [],
+   "produces": [
+    "reguladores.db"
+   ],
+   "network": true,
+   "est_minutes": 8,
+   "est_peak_mb": 150,
+   "est_disk_mb": 10,
+   "schedule": "daily",
+   "enabled": true,
+   "fresh_days": 1,
+   "raw": [],
+   "keep_raw": false,
+   "flaky": true,
+   "licence": "docs/SOURCES.md: Reguladores",
+   "notes": "Regulator decisions of the last 14 days (AdC, CNPD, ERC, AMT).",
+   "args": [
+    "--since",
+    "14"
+   ],
+   "after": [
+    "reguladores"
+   ],
+   "needs": [
+    "reguladores.db"
+   ],
+   "fresh_hours": 20
   },
   {
    "name": "empresas_locais",
@@ -947,9 +1206,9 @@
    "est_minutes": 15,
    "est_peak_mb": 150,
    "est_disk_mb": 60,
-   "schedule": "weekly",
+   "schedule": "daily",
    "enabled": true,
-   "fresh_days": 7,
+   "fresh_days": 1,
    "raw": [
     "igf"
    ],
@@ -1091,5 +1350,17 @@
    "licence": "none: derived from the local databases, no external data",
    "notes": "Daily ledger (diario.db): one row per event from the local source databases, editions closing at 06:00 Europe/Lisbon, no network. Source databases are read from ESTADO_ABERTO_SOURCE_DATA (default: the data directory)."
   }
- ]
+ ],
+ "after": {
+  "diario": [
+   "migrate",
+   "agenda",
+   "government",
+   "news",
+   "dre_recent",
+   "votacoes_recent",
+   "presidencia_recent",
+   "contracts_recent"
+  ]
+ }
 }

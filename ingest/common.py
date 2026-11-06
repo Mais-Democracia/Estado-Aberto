@@ -1,4 +1,5 @@
 """Shared helpers: database schema + HTTP fetching (stdlib only)."""
+import fcntl
 import hashlib
 import html
 import json
@@ -23,6 +24,9 @@ REFRESH = os.environ.get("ESTADO_ABERTO_REFRESH") == "1" or "--refresh" in sys.a
 CACHE_DIR = DATA_DIR / "cache" / "http"
 RETRY_CODES = {408, 425, 429, 500, 502, 503, 504}
 _last_hit = {}
+LOCK_PRIORITY = {"updater": 0, "ingest": 1, "ai": 2}
+LOCK_WAIT = float(os.environ.get("EA_LOCK_WAIT", "7200"))
+LOCK_POLL = float(os.environ.get("EA_LOCK_POLL", "2"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -206,3 +210,122 @@ def plain(s):
     s = re.sub(r"<[^>]+>", "", s)
     s = html.unescape(s).replace("\xa0", " ")
     return re.sub(r"[ \t]+", " ", re.sub(r"\n\s*\n+", "\n", s)).strip()
+
+
+def state_dir():
+    v = os.environ.get("STATE_DIR")
+    if v:
+        return Path(v)
+    prod = Path("/var/lib/estado-aberto/state")
+    return prod if prod.is_dir() else DATA_DIR / ".state"
+
+
+class LockTimeout(Exception):
+    pass
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+class SharedLock:
+    def __init__(self, role="ingest", wait=None, poll=None, state=None, log=None):
+        if role not in LOCK_PRIORITY:
+            raise ValueError("unknown lock role " + role)
+        self.role = role
+        self.wait = LOCK_WAIT if wait is None else wait
+        self.poll = LOCK_POLL if poll is None else poll
+        self.state = Path(state) if state else state_dir()
+        self.log = log or (lambda m: print(m, flush=True))
+        self.path = self.state / "update.lock"
+        self.fd = None
+        self.inherited = os.environ.get("EA_LOCK_HELD") == "1"
+        self.want = self.state / f"lock.want.{role}.{os.getpid()}"
+
+    def _higher_waiting(self):
+        mine = LOCK_PRIORITY[self.role]
+        for f in self.state.glob("lock.want.*.*"):
+            parts = f.name.split(".")
+            try:
+                role, pid = parts[2], int(parts[3])
+            except (IndexError, ValueError):
+                continue
+            if LOCK_PRIORITY.get(role, 9) >= mine or pid == os.getpid():
+                continue
+            if _alive(pid):
+                return role
+            f.unlink(missing_ok=True)
+        return None
+
+    def holder(self):
+        try:
+            return self.path.read_text("utf-8").strip() or "unknown"
+        except OSError:
+            return "unknown"
+
+    def acquire(self, wait=None):
+        if self.inherited or self.fd is not None:
+            return self
+        wait = self.wait if wait is None else wait
+        self.state.mkdir(parents=True, exist_ok=True)
+        self.want.write_text(str(os.getpid()))
+        deadline = time.monotonic() + wait
+        announced = False
+        try:
+            while True:
+                blocker = self._higher_waiting()
+                if blocker is None:
+                    fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o660)
+                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except OSError:
+                        os.close(fd)
+                    else:
+                        os.ftruncate(fd, 0)
+                        os.write(fd, f"{self.role} {os.getpid()}\n".encode())
+                        self.fd = fd
+                        if announced:
+                            self.log(f"lock: acquired update.lock as {self.role}")
+                        return self
+                if not announced:
+                    why = f"a pending {blocker} run" if blocker else f"held by {self.holder()}"
+                    self.log(f"lock: waiting for update.lock ({why}); giving up after {int(wait)}s")
+                    announced = True
+                if time.monotonic() >= deadline:
+                    self.log(f"lock: gave up after {int(wait)}s waiting for update.lock held by {self.holder()}; this {self.role} run did not start")
+                    raise LockTimeout(self.holder())
+                time.sleep(self.poll)
+        finally:
+            self.want.unlink(missing_ok=True)
+
+    def release(self):
+        if self.fd is not None:
+            try:
+                os.ftruncate(self.fd, 0)
+            except OSError:
+                pass
+            os.close(self.fd)
+            self.fd = None
+
+    def checkpoint(self):
+        if self.inherited or self.fd is None:
+            return False
+        blocker = self._higher_waiting()
+        if blocker is None:
+            return False
+        self.log(f"lock: yielding update.lock to a pending {blocker} run")
+        self.release()
+        self.acquire()
+        return True
+
+    def __enter__(self):
+        return self.acquire()
+
+    def __exit__(self, *exc):
+        self.release()

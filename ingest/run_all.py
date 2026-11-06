@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Manifest-driven runner for every Estado Aberto ingest step (ingest/jobs.json). Stdlib only."""
 import argparse
-import fcntl
 import json
 import os
 import re
@@ -15,8 +14,11 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0, str(HERE))
 MANIFEST = HERE / "jobs.json"
-SCHEDULES = {"daily": {"daily"}, "weekly": {"daily", "weekly"}, "bootstrap": {"daily", "weekly", "bootstrap"}}
+SCHEDULES = {"6h": {"6h"}, "daily": {"6h", "daily"}, "weekly": {"6h", "daily", "weekly"}, "bootstrap": {"6h", "daily", "weekly", "bootstrap"}}
+DATA_LINE = re.compile(r'^\{"ultima_data":\s*(null|"[^"]*")\s*\}\s*$')
+FAILED = ("failed", "timeout", "offline_fail", "refused", "blocked")
 PROFILES = {
     "server": {"nice": 10, "max_mb": 600, "min_free_gb": 5.0, "prune_raw": True, "delay": "1.0", "tolerate_offline": True},
     "dev": {"nice": 0, "max_mb": 600, "min_free_gb": 5.0, "prune_raw": False, "delay": "0.5", "tolerate_offline": False},
@@ -25,16 +27,25 @@ OFFLINE_RE = re.compile(r"Name or service not known|Temporary failure in name re
                         r"Connection refused|timed out|URLError|RemoteDisconnected|offline or request budget|unreachable", re.I)
 
 
-def load_manifest():
-    d = json.loads(MANIFEST.read_text("utf-8"))
+def load_manifest(path=None):
+    path = Path(path) if path else MANIFEST
+    d = json.loads(path.read_text("utf-8"))
     steps = {s["name"]: s for s in d["steps"]}
     for i, s in enumerate(d["steps"]):
         s["_idx"] = i
-        for dep in s["depends"]:
+        s.setdefault("args", [])
+        s.setdefault("after", [])
+        s.setdefault("needs", [])
+        s.setdefault("fresh_hours", 0)
+        for dep in s["depends"] + s["after"]:
             if dep not in steps:
                 sys.exit(f"manifest: {s['name']} depends on unknown step {dep}")
-        if not (HERE / s["script"]).exists():
+        s["_dir"] = path.resolve().parent
+        if not (s["_dir"] / s["script"]).exists():
             sys.exit(f"manifest: missing script {s['script']}")
+    for name, lst in (d.get("after") or {}).items():
+        if name in steps:
+            steps[name]["after"] = sorted(set(steps[name]["after"]) | {x for x in lst if x in steps and x != name})
     return steps
 
 
@@ -53,7 +64,7 @@ def toposort(steps, names):
     names = set(names)
     done, order = set(), []
     while len(order) < len(names):
-        ready = sorted((n for n in names - done if all(d in done or d not in names for d in steps[n]["depends"])),
+        ready = sorted((n for n in names - done if all(d in done or d not in names for d in steps[n]["depends"] + steps[n]["after"])),
                        key=lambda n: steps[n]["_idx"])
         if not ready:
             sys.exit("dependency cycle among: " + ", ".join(sorted(names - done)))
@@ -97,8 +108,9 @@ def is_fresh(step, st, data):
     r = st["steps"].get(step["name"])
     if not r or r.get("status") != "ok":
         return False
-    age = (time.time() - r.get("finished_ts", 0)) / 86400
-    if age > step["fresh_days"] * 0.8:
+    age_h = (time.time() - r.get("finished_ts", 0)) / 3600
+    limit_h = step["fresh_hours"] if step.get("fresh_hours") else step["fresh_days"] * 24 * 0.8
+    if age_h > limit_h:
         return False
     return all((data / p).exists() for p in step["produces"])
 
@@ -108,7 +120,7 @@ def run_step(step, data, env, timeout_s, logdir):
     log = logdir / f"{step['name']}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
     t0 = time.time()
     with open(log, "wb") as fh:
-        p = subprocess.Popen([sys.executable, "-u", str(HERE / step["script"])], cwd=HERE, env=env,
+        p = subprocess.Popen([sys.executable, "-u", str(step.get("_dir", HERE) / step["script"]), *step.get("args", [])], cwd=step.get("_dir", HERE), env=env,
                              stdout=fh, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, start_new_session=True)
         status, rss = None, 0
         while True:
@@ -131,6 +143,18 @@ def run_step(step, data, env, timeout_s, logdir):
                 break
             time.sleep(0.5)
     return rc, status, rss, time.time() - t0, log
+
+
+def last_data_date(log):
+    try:
+        lines = log.read_text("utf-8", "replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        m = DATA_LINE.match(line.strip())
+        if m:
+            return None if m.group(1) == "null" else m.group(1).strip('"')
+    return None
 
 
 def tail(log, n=6):
@@ -159,7 +183,11 @@ def parse():
     ap.add_argument("--only", help="comma-separated steps; their dependencies are added")
     ap.add_argument("--skip", help="comma-separated steps to leave out")
     ap.add_argument("--no-deps", action="store_true", help="do not add dependencies of --only")
-    ap.add_argument("--schedule", choices=sorted(SCHEDULES), help="daily | weekly (includes daily) | bootstrap (everything but manual)")
+    ap.add_argument("--schedule", choices=sorted(SCHEDULES), help="6h | daily (includes 6h) | weekly (includes daily) | bootstrap (everything but manual)")
+    ap.add_argument("--manifest", help="manifest file (default ingest/jobs.json)")
+    ap.add_argument("--force", action="store_true", help="never skip a step as fresh")
+    ap.add_argument("--lock-wait", type=float, default=None, help="seconds to wait for $STATE_DIR/update.lock (default 7200)")
+    ap.add_argument("--lock-role", choices=["updater", "ingest", "ai"], default="ingest")
     ap.add_argument("--profile", choices=sorted(PROFILES), default=None)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--resume", action="store_true", help="skip steps whose outputs are fresh in .ingest_state.json")
@@ -176,7 +204,7 @@ def parse():
 
 def main():
     a = parse()
-    steps = load_manifest()
+    steps = load_manifest(a.manifest)
     prof = PROFILES[a.profile or "dev"]
     max_mb = a.max_mb if a.max_mb is not None else prof["max_mb"]
     min_free = a.min_free_gb if a.min_free_gb is not None else prof["min_free_gb"]
@@ -229,12 +257,14 @@ def main():
 
     statef = data / ".ingest_state.json"
     st = load_state(statef) if statef.exists() else {"steps": {}}
+    st.setdefault("steps", {})
+    use_fresh = not a.force and (a.resume or bool(a.schedule and not only))
 
     if a.dry_run:
         rows = []
         for n in order:
             s = steps[n]
-            fresh = a.resume and is_fresh(s, st, data)
+            fresh = use_fresh and is_fresh(s, st, data)
             missing = [d for d in s["depends"] if d not in sel and not all((data / p).exists() for p in steps[d]["produces"])]
             note = "fresh, would skip" if fresh else ("missing prerequisite: " + ",".join(missing) if missing else "")
             rows.append([n, s["schedule"], ",".join(s["depends"]) or "-", s["est_minutes"], s["est_peak_mb"], s["est_disk_mb"], note])
@@ -242,11 +272,13 @@ def main():
         return 0
 
     data.mkdir(parents=True, exist_ok=True)
-    lock = open(data / ".ingest.lock", "w")
+    os.environ["ESTADO_ABERTO_DATA"] = str(data)
+    from common import LockTimeout, SharedLock
+    lock = SharedLock(a.lock_role, wait=a.lock_wait)
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        sys.exit("another ingest is running on this data dir (data/.ingest.lock)")
+        lock.acquire()
+    except LockTimeout:
+        return 75
     if prof["nice"]:
         os.nice(prof["nice"])
 
@@ -254,13 +286,18 @@ def main():
     for pos, n in enumerate(order, 1):
         s = steps[n]
         res = results[n] = {"status": None}
-        bad_dep = [d for d in s["depends"] if results.get(d, {}).get("status") in ("failed", "timeout", "offline_fail", "refused", "blocked")]
+        bad_dep = [d for d in s["depends"] if results.get(d, {}).get("status") in FAILED]
         missing = [d for d in s["depends"] if d not in sel and not all((data / p).exists() for p in steps[d]["produces"])]
+        lacking = [p for p in s["needs"] if not (data / p).exists()]
+        if lock.checkpoint():
+            print("lock: resumed after yielding", flush=True)
         if bad_dep:
             res["status"], res["msg"] = "blocked", "dependency failed: " + ",".join(bad_dep)
         elif missing:
             res["status"], res["msg"] = "blocked", "missing prerequisite (run --only " + ",".join(missing) + ")"
-        elif a.resume and is_fresh(s, st, data):
+        elif lacking:
+            res["status"], res["msg"] = "skipped", "missing " + ",".join(lacking) + " (bootstrap first)"
+        elif use_fresh and is_fresh(s, st, data):
             res["status"], res["msg"] = "fresh", "outputs fresh, skipped"
         if res["status"]:
             print(f"[{res['status']}] {n}: {res['msg']}", flush=True)
@@ -304,7 +341,18 @@ def main():
                 shutil.rmtree(data / "raw" / r, ignore_errors=True)
             res["pruned"] = True
         print(f"[{res['status']}] {n} {fmt_s(secs)} rss {rss:.0f} MB disk {res['disk_delta_mb']:+.0f} MB {res.get('msg', '')}", flush=True)
-        st["steps"][n] = {k: v for k, v in res.items() if k != "msg"} | {"status": "ok" if res["status"] == "ok" else res["status"]}
+        prev = st["steps"].get(n, {})
+        rec = {k: v for k, v in res.items() if k != "msg"} | {"status": res["status"]}
+        for k in ("last_ok", "last_data_date"):
+            if prev.get(k):
+                rec[k] = prev[k]
+        if res["status"] == "ok":
+            rec["last_ok"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            ud = last_data_date(log)
+            if ud:
+                rec["last_data_date"] = ud
+        st["steps"][n] = rec
+        st["updated"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         save_state(statef, st)
 
     rows = []
@@ -314,7 +362,8 @@ def main():
                      f"{r['disk_delta_mb']:+.0f}" if "disk_delta_mb" in r else "-", r.get("msg", "")[:90]])
     print()
     print_table(rows, ["step", "status", "time", "rssMB", "diskMB", "message"])
-    bad = [n for n in order if results[n]["status"] in ("failed", "timeout", "offline_fail", "refused", "blocked")]
+    lock.release()
+    bad = [n for n in order if results[n]["status"] in FAILED]
     off = [n for n in order if results[n]["status"] == "offline"]
     if off:
         print("\noffline (tolerated): " + ", ".join(off) + " - rerun with --resume when the source is back")
