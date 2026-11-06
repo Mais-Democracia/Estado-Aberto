@@ -1522,5 +1522,17 @@ class LoadAllow(unittest.TestCase):
         verify.load_allow({})
 
 
+class VoteClaimsExcept(unittest.TestCase):
+    def test_parties_after_excepto_are_not_claims(self):
+        import verify
+        claims = verify.vote_claims("A 9 de outubro de 2026, na votação final global, foi aprovada por unanimidade, com todos os grupos a favor, exceto o PAN, que esteve ausente.")
+        self.assertEqual(claims, [])
+
+    def test_parties_before_excepto_still_count(self):
+        import verify
+        claims = verify.vote_claims("O PSD votou contra, exceto o PAN.")
+        self.assertEqual([(p, d) for p, d, _ in claims], [("PSD", "contra")])
+
+
 if __name__ == "__main__":
     unittest.main()

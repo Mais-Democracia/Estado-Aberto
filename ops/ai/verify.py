@@ -541,6 +541,9 @@ def blocos_com_dados(blocos):
     return bool(v.get("por_partido") or v.get("resultado") or b.get("votacoes_anteriores") or b.get("intervencoes"))
 
 
+EXCETO = re.compile(r"\b(?:exce(?:t|p)o|exce[cç][aã]o|salvo)\b", re.I)
+
+
 def vote_claims(blob):
     claims = []
     for sent in re.split(r"(?<=[.!?])\s+|\n", blob):
@@ -554,8 +557,11 @@ def vote_claims(blob):
             for m in re.finditer(r"(?<![\w-])" + re.escape(p) + r"(?![\w-])", sent):
                 ev.append((m.start(), "par", p))
         ev.sort()
+        ex = EXCETO.search(sent)
         for i, (pos, kind, val) in enumerate(ev):
             if kind != "par":
+                continue
+            if ex and pos > ex.start():
                 continue
             after = next((v for _, k, v in ev[i + 1:] if k == "dir"), None)
             before = next((v for _, k, v in reversed(ev[:i]) if k == "dir"), None)

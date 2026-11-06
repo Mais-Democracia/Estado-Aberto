@@ -5,6 +5,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- The AI verifier no longer reads parties named after "exceto" as having voted in the direction of the preceding clause.
+
 ## [0.3.13] - 2026-11-06
 
 ### Changed
