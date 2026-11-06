@@ -17,7 +17,10 @@ ROOT = HERE.parent
 sys.path.insert(0, str(HERE))
 MANIFEST = HERE / "jobs.json"
 SCHEDULES = {"6h": {"6h"}, "daily": {"6h", "daily"}, "weekly": {"6h", "daily", "weekly"}, "bootstrap": {"6h", "daily", "weekly", "bootstrap"}}
-DATA_LINE = re.compile(r'^\{"ultima_data":\s*(null|"[^"]*")\s*\}\s*$')
+DATA_LINE = re.compile(r'^\{"ultima_data":\s*(null|"[^"]*")(?:,\s*"parcial":\s*(true|false))?\s*\}\s*$')
+FINAL_STEP = "diario"
+LOCK_UNAVAILABLE = 77
+ALERT_UNITS = {"6h": "estado-aberto-refresh.service", "daily": "estado-aberto-daily.service", "weekly": "estado-aberto-weekly.service"}
 FAILED = ("failed", "timeout", "offline_fail", "refused", "blocked")
 PROFILES = {
     "server": {"nice": 10, "max_mb": 600, "min_free_gb": 5.0, "prune_raw": True, "delay": "1.0", "tolerate_offline": True},
@@ -145,16 +148,20 @@ def run_step(step, data, env, timeout_s, logdir):
     return rc, status, rss, time.time() - t0, log
 
 
-def last_data_date(log):
+def data_report(log):
     try:
         lines = log.read_text("utf-8", "replace").splitlines()
     except OSError:
-        return None
+        return None, False
     for line in reversed(lines):
         m = DATA_LINE.match(line.strip())
         if m:
-            return None if m.group(1) == "null" else m.group(1).strip('"')
-    return None
+            return (None if m.group(1) == "null" else m.group(1).strip('"')), m.group(2) == "true"
+    return None, False
+
+
+def last_data_date(log):
+    return data_report(log)[0]
 
 
 def tail(log, n=6):
@@ -273,12 +280,15 @@ def main():
 
     data.mkdir(parents=True, exist_ok=True)
     os.environ["ESTADO_ABERTO_DATA"] = str(data)
-    from common import LockTimeout, SharedLock
+    from common import LockTimeout, LockUnavailable, SharedLock, append_alert
     lock = SharedLock(a.lock_role, wait=a.lock_wait)
     try:
         lock.acquire()
     except LockTimeout:
         return 75
+    except LockUnavailable as e:
+        print(f"[{datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}] {e}", flush=True)
+        return LOCK_UNAVAILABLE
     if prof["nice"]:
         os.nice(prof["nice"])
 
@@ -312,7 +322,8 @@ def main():
             continue
         if s["est_peak_mb"] > max_mb:
             print(f"WARN {n}: est_peak_mb {s['est_peak_mb']} > {max_mb}", flush=True)
-        timeout_s = max(600, s["est_minutes"] * 3 * 60 + 600) * a.timeout_scale
+        base_s = s["timeout_minutes"] * 60 if s.get("timeout_minutes") else max(600, s["est_minutes"] * 3 * 60 + 600)
+        timeout_s = base_s * a.timeout_scale
         print(f"[run {pos}/{len(order)}] {n} (est {s['est_minutes']} min, {s['est_peak_mb']} MB)", flush=True)
         before = free_mb(data)
         started = time.time()
@@ -324,6 +335,8 @@ def main():
             res["status"], res["msg"] = "timeout", f"killed after {fmt_s(timeout_s)}"
         elif rc == 0:
             res["status"], res["msg"] = "ok", ""
+            if data_report(log)[1]:
+                res["status"], res["msg"] = "partial", "deadline or source trouble; what was fetched is saved"
             if rss > max_mb:
                 print(f"WARN {n}: peak RSS {rss:.0f} MB exceeded --max-mb {max_mb}", flush=True)
         else:
@@ -336,7 +349,7 @@ def main():
                 res["status"], res["msg"] = "failed", f"rc={rc}"
             for line in tail(log, 5):
                 print("    |", line[:200])
-        if res["status"] == "ok" and prune and not s["keep_raw"] and n not in keep_raw:
+        if res["status"] in ("ok", "partial") and prune and not s["keep_raw"] and n not in keep_raw:
             for r in s["raw"]:
                 shutil.rmtree(data / "raw" / r, ignore_errors=True)
             res["pruned"] = True
@@ -346,8 +359,9 @@ def main():
         for k in ("last_ok", "last_data_date"):
             if prev.get(k):
                 rec[k] = prev[k]
-        if res["status"] == "ok":
-            rec["last_ok"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        if res["status"] in ("ok", "partial"):
+            if res["status"] == "ok":
+                rec["last_ok"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             ud = last_data_date(log)
             if ud:
                 rec["last_data_date"] = ud
@@ -364,13 +378,25 @@ def main():
     print_table(rows, ["step", "status", "time", "rssMB", "diskMB", "message"])
     lock.release()
     bad = [n for n in order if results[n]["status"] in FAILED]
+    part = [n for n in order if results[n]["status"] == "partial"]
     off = [n for n in order if results[n]["status"] == "offline"]
     if off:
         print("\noffline (tolerated): " + ", ".join(off) + " - rerun with --resume when the source is back")
+    if part:
+        print("\nPARTIAL: " + ", ".join(part))
     if bad:
         print("\nFAILED: " + ", ".join(bad))
-        return 1
-    return 0
+    if FINAL_STEP in results:
+        landed = results[FINAL_STEP]["status"] in ("ok", "partial", "fresh")
+        worked = any(results[n]["status"] in ("ok", "partial", "fresh") for n in order)
+        if not (landed and worked):
+            return 1
+        if bad or part:
+            lines = [f"{FINAL_STEP} ran; steps needing attention:"]
+            lines += [f"{n}: {results[n]['status']} {results[n].get('msg', '')}".rstrip() for n in bad + part]
+            append_alert(ALERT_UNITS.get(a.schedule, "estado-aberto-ingest.service"), lines)
+        return 0
+    return 1 if bad else 0
 
 
 if __name__ == "__main__":

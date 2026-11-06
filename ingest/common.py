@@ -2,10 +2,12 @@
 import fcntl
 import hashlib
 import html
+import http.client
 import json
 import os
 import re
 import sqlite3
+import stat
 import sys
 import time
 import urllib.error
@@ -27,6 +29,9 @@ _last_hit = {}
 LOCK_PRIORITY = {"updater": 0, "ingest": 1, "ai": 2}
 LOCK_WAIT = float(os.environ.get("EA_LOCK_WAIT", "7200"))
 LOCK_POLL = float(os.environ.get("EA_LOCK_POLL", "2"))
+LOCK_UNAVAILABLE = 77
+CONNECT_TIMEOUT = float(os.environ.get("ESTADO_ABERTO_CONNECT_TIMEOUT", "10"))
+READ_TIMEOUT = float(os.environ.get("ESTADO_ABERTO_READ_TIMEOUT", "30"))
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -176,14 +181,53 @@ def polite(url):
     _last_hit[host] = time.time()
 
 
-def request(url, headers=None, timeout=60, data=None, tries=None):
+def _timed_connect(conn, base):
+    read = conn.timeout
+    conn.timeout = min(CONNECT_TIMEOUT, read) if read else CONNECT_TIMEOUT
+    try:
+        base.connect(conn)
+    finally:
+        conn.timeout = read
+    if read:
+        conn.sock.settimeout(read)
+
+
+class _TimedHTTPSConnection(http.client.HTTPSConnection):
+    def connect(self):
+        _timed_connect(self, http.client.HTTPSConnection)
+
+
+class _TimedHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        _timed_connect(self, http.client.HTTPConnection)
+
+
+class _TimedHTTPSHandler(urllib.request.HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(_TimedHTTPSConnection, req, context=self._context)
+
+
+class _TimedHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, req):
+        return self.do_open(_TimedHTTPConnection, req)
+
+
+def timed_opener(*handlers):
+    return urllib.request.build_opener(_TimedHTTPHandler, _TimedHTTPSHandler, *handlers)
+
+
+_OPENER = timed_opener()
+
+
+def request(url, headers=None, timeout=None, data=None, tries=None):
     tries = tries or TRIES
+    timeout = READ_TIMEOUT if timeout is None else timeout
     err = None
     for i in range(tries):
         polite(url)
         req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, **(headers or {})})
         try:
-            return urllib.request.urlopen(req, timeout=timeout)
+            return _OPENER.open(req, timeout=timeout)
         except urllib.error.HTTPError as e:
             err = e
             if e.code not in RETRY_CODES:
@@ -260,7 +304,31 @@ def state_dir():
     return prod if prod.is_dir() else DATA_DIR / ".state"
 
 
+def append_alert(unit, lines, state=None, cap=50):
+    state = Path(state) if state else state_dir()
+    try:
+        state.mkdir(parents=True, exist_ok=True)
+        with open(state / "alerts.lock", "a") as lk:
+            fcntl.flock(lk, fcntl.LOCK_EX)
+            path = state / "alerts.json"
+            try:
+                d = json.loads(path.read_text("utf-8"))
+                alerts = d["alerts"] if isinstance(d, dict) else []
+            except (OSError, ValueError, KeyError):
+                alerts = []
+            alerts.append({"unit": unit, "time": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime()), "lines": lines})
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps({"version": 1, "alerts": alerts[-cap:]}, indent=2, ensure_ascii=False), "utf-8")
+            tmp.replace(path)
+    except OSError as e:
+        print(f"alert: could not write alerts.json ({e})", flush=True)
+
+
 class LockTimeout(Exception):
+    pass
+
+
+class LockUnavailable(Exception):
     pass
 
 
@@ -303,33 +371,98 @@ class SharedLock:
             f.unlink(missing_ok=True)
         return None
 
+    def _prepare(self):
+        try:
+            existed = self.state.is_dir()
+            self.state.mkdir(parents=True, exist_ok=True)
+            st = self.state.stat()
+            if st.st_uid == os.getuid() and (not existed or not st.st_mode & stat.S_IWGRP or not st.st_mode & stat.S_ISGID):
+                os.chmod(self.state, (st.st_mode & 0o7777) | 0o2070 if existed else 0o2770)
+        except OSError as e:
+            raise LockUnavailable(f"lock: state directory {self.state} is unusable ({e.strerror}); this {self.role} run did not start")
+        try:
+            st = self.path.stat()
+        except FileNotFoundError:
+            return
+        except OSError:
+            return
+        if st.st_uid == os.getuid() and not st.st_mode & stat.S_IWGRP:
+            try:
+                os.chmod(self.path, 0o660)
+            except OSError:
+                pass
+
+    def _open(self):
+        self._prepare()
+        try:
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o660)
+        except OSError as e:
+            raise LockUnavailable(f"lock: cannot open {self.path} for writing ({e.strerror}); {self._describe()}this {self.role} run did not start")
+        try:
+            st = os.fstat(fd)
+            if st.st_uid == os.getuid() and st.st_mode & 0o660 != 0o660:
+                os.fchmod(fd, 0o660)
+        except OSError:
+            pass
+        return fd
+
+    def _describe(self):
+        try:
+            st = self.path.stat()
+            return f"file is owned by uid {st.st_uid} gid {st.st_gid} mode {st.st_mode & 0o7777:04o}, this process is uid {os.getuid()}; "
+        except OSError:
+            return ""
+
     def holder(self):
         try:
-            return self.path.read_text("utf-8").strip() or "unknown"
+            fd = os.open(self.path, os.O_RDONLY)
         except OSError:
             return "unknown"
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            except OSError:
+                pass
+            else:
+                return "nobody (lock is free)"
+            try:
+                rec = self.path.read_text("utf-8").strip()
+            except OSError:
+                return "unknown"
+            pid = rec.rsplit(" ", 1)[-1]
+            if pid.isdigit() and _alive(int(pid)):
+                return rec
+            return "unknown (stale owner record)"
+        finally:
+            os.close(fd)
 
     def acquire(self, wait=None):
         if self.inherited or self.fd is not None:
             return self
         wait = self.wait if wait is None else wait
-        self.state.mkdir(parents=True, exist_ok=True)
-        self.want.write_text(str(os.getpid()))
+        fd = self._open()
+        try:
+            self.want.write_text(str(os.getpid()))
+        except OSError as e:
+            os.close(fd)
+            raise LockUnavailable(f"lock: cannot write {self.want} ({e.strerror}); this {self.role} run did not start")
         deadline = time.monotonic() + wait
         announced = False
         try:
             while True:
                 blocker = self._higher_waiting()
                 if blocker is None:
-                    fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o660)
                     try:
                         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except OSError:
-                        os.close(fd)
+                    except BlockingIOError:
+                        pass
+                    except OSError as e:
+                        raise LockUnavailable(f"lock: flock on {self.path} failed ({e.strerror}); this {self.role} run did not start")
                     else:
                         os.ftruncate(fd, 0)
                         os.write(fd, f"{self.role} {os.getpid()}\n".encode())
                         self.fd = fd
+                        fd = None
                         if announced:
                             self.log(f"lock: acquired update.lock as {self.role}")
                         return self
@@ -338,11 +471,14 @@ class SharedLock:
                     self.log(f"lock: waiting for update.lock ({why}); giving up after {int(wait)}s")
                     announced = True
                 if time.monotonic() >= deadline:
-                    self.log(f"lock: gave up after {int(wait)}s waiting for update.lock held by {self.holder()}; this {self.role} run did not start")
-                    raise LockTimeout(self.holder())
+                    who = f"a pending {blocker} run" if blocker else self.holder()
+                    self.log(f"lock: gave up after {int(wait)}s waiting for update.lock held by {who}; this {self.role} run did not start")
+                    raise LockTimeout(who)
                 time.sleep(self.poll)
         finally:
             self.want.unlink(missing_ok=True)
+            if fd is not None:
+                os.close(fd)
 
     def release(self):
         if self.fd is not None:

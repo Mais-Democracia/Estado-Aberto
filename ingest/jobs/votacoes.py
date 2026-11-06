@@ -35,7 +35,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, READ_TIMEOUT, ROOT, UA, timed_opener  # noqa: E402
 from since import cutoff, report, since_days  # noqa: E402
 import migrations  # noqa: E402
 
@@ -54,6 +54,23 @@ LEGS = [x for x in os.environ.get("VOTACOES_LEGS", "XVII,XVI,XV").split(",") if 
 TYPES = [x for x in os.environ.get("VOTACOES_TYPES", "P,J,S,R,D,A,I,C,G,U,F").split(",") if x]
 CURRENT_LEG = "XVII"
 SINCE = since_days()
+
+
+def deadline_seconds(argv=None):
+    a = sys.argv[1:] if argv is None else list(argv)
+    v = os.environ.get("VOTACOES_DEADLINE_S")
+    for i, x in enumerate(a):
+        if x == "--deadline" and i + 1 < len(a):
+            v = a[i + 1]
+        elif x.startswith("--deadline="):
+            v = x.split("=", 1)[1]
+    if v in (None, ""):
+        return 480.0 if SINCE else 0.0
+    return max(0.0, float(v))
+
+
+DEADLINE_S = deadline_seconds()
+TRIES = max(1, int(os.environ.get("VOTACOES_TRIES", "3")))
 if SINCE:
     LEGS = [CURRENT_LEG]
     REFRESH_H = min(REFRESH_H, 5.0)
@@ -181,11 +198,17 @@ class Budget(Exception):
 
 
 class Client:
-    def __init__(self):
-        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    def __init__(self, deadline_s=None):
+        self.op = timed_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.last = 0.0
         self.n = 0
+        self.errors = 0
         self.lock = threading.Lock()
+        d = DEADLINE_S if deadline_s is None else deadline_s
+        self.deadline = time.monotonic() + d if d else None
+
+    def remaining(self):
+        return None if self.deadline is None else self.deadline - time.monotonic()
 
     def _space(self):
         """>= SLEEP seconds between the START of two requests to the host, across all worker threads"""
@@ -196,13 +219,17 @@ class Client:
             self.last = time.time()
             self.n += 1
 
-    def fetch(self, url, data=None, tries=4, timeout=90):
+    def fetch(self, url, data=None, tries=None, timeout=None):
         if OFFLINE:
             raise Budget("offline")
         if self.n >= MAX_REQ:
             raise Budget("request budget reached")
+        tries = TRIES if tries is None else tries
+        timeout = READ_TIMEOUT if timeout is None else timeout
         err = None
         for i in range(tries):
+            if self.remaining() is not None and self.remaining() <= 0:
+                raise Budget("deadline reached")
             self._space()
             try:
                 req = urllib.request.Request(url, data=data, headers={"User-Agent": UA, "Accept-Language": "pt-PT,pt;q=0.9",
@@ -217,7 +244,10 @@ class Client:
                 return t
             except Exception as e:  # the site tarpits some requests; retry with backoff
                 err = e
-                time.sleep(4 * (i + 1))
+                if i + 1 < tries:
+                    rem = self.remaining()
+                    time.sleep(4 * (i + 1) if rem is None else max(0.0, min(4 * (i + 1), rem)))
+        self.errors += 1
         raise RuntimeError(f"fetch failed {url}: {err}")
 
 
@@ -286,6 +316,7 @@ def crawl_listing(client, con, leg, code):
     fresh = t is None
     if fresh:
         t0 = client.fetch(LIST_URL)
+        print(f"listing {leg} {code}: page 1 form", flush=True)
         P = form_prefix(t0)
         d = hidden_fields(t0)
         d.update({P + "ddlLeg": leg, P + "ddlSL": "", P + "ddlTipoIniciativa": code, P + "txtNumIniciativa": "",
@@ -317,6 +348,7 @@ def crawl_listing(client, con, leg, code):
             fresh = True  # later cached pages may belong to an older listing: refetch the chain
         t = tp
         _, r = parse_listing(t)
+        print(f"listing {leg} {code}: page {page} ({len(allrows) + len(r)}/{total}, {client.n} requests)", flush=True)
         if not r:
             break
         last = r
@@ -645,6 +677,7 @@ def main():
     migrations.ensure_votacoes(con)
     client = Client()
     stopped = None
+    print(f"votacoes: deadline {int(DEADLINE_S)}s, connect/read timeouts, {TRIES} tries per request", flush=True)
     # 1. listings
     for leg in LEGS:
         for code in TYPES:
@@ -726,7 +759,7 @@ def main():
     meta = {"updated_at": now(), "requests": client.n, "stopped": stopped or "", "legs": ",".join(LEGS),
             "listed": con.execute("SELECT COUNT(*) FROM listagem").fetchone()[0],
             "stored": con.execute("SELECT COUNT(*) FROM iniciativas").fetchone()[0], "dre_linked": nd,
-            "source": LIST_URL}
+            "source": LIST_URL, "fetch_errors": client.errors}
     if SINCE:
         meta.pop("legs")
     for lg in ([] if SINCE else LEGS):
@@ -738,7 +771,7 @@ def main():
     con.commit()
     print(f"votacoes: {meta}", flush=True)
     if SINCE:
-        report(con.execute("SELECT MAX(data_ultima) FROM iniciativas").fetchone()[0])
+        report(con.execute("SELECT MAX(data_ultima) FROM iniciativas").fetchone()[0], parcial=bool(stopped) or client.errors > 0)
 
 
 if __name__ == "__main__":

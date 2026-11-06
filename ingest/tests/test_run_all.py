@@ -13,7 +13,7 @@ HERE = Path(__file__).resolve().parent
 INGEST = HERE.parent
 ROOT = INGEST.parent
 sys.path.insert(0, str(INGEST))
-from common import LockTimeout, SharedLock  # noqa: E402
+from common import LockTimeout, LockUnavailable, SharedLock  # noqa: E402
 
 RUN_ALL = INGEST / "run_all.py"
 ALERT = ROOT / "ops" / "updater" / "alert.sh"
@@ -24,6 +24,11 @@ if os.path.basename(sys.argv[0]) == "boom.py":
     sys.exit(3)
 if os.path.basename(sys.argv[0]) == "dated.py":
     print(json.dumps({"ultima_data": "2026-05-04"}))
+if os.path.basename(sys.argv[0]) == "part.py":
+    print(json.dumps({"ultima_data": "2026-05-04", "parcial": True}))
+if os.path.basename(sys.argv[0]) == "slow.py":
+    import time
+    time.sleep(60)
 """
 
 
@@ -171,8 +176,14 @@ class Ordering(Env):
     def test_failed_after_step_does_not_block_the_last_one(self):
         self.manifest([step("boom", "6h"), step("diario", "6h")], after={"diario": ["boom"]})
         r = self.run_all("--schedule", "6h")
-        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.returncode, 0, r.stdout)
         self.assertEqual(self.ran(), ["boom", "diario"])
+
+    def test_after_ordering_does_not_block_when_the_earlier_step_fails(self):
+        self.manifest([step("boom", "6h"), step("later", "6h", after=["boom"])])
+        r = self.run_all("--schedule", "6h")
+        self.assertIn("[ok] later", r.stdout)
+        self.assertEqual(self.ran(), ["boom", "later"])
 
     def test_failed_dependency_blocks(self):
         self.manifest([step("boom", "6h"), step("child", "6h", depends=["boom"])])
@@ -217,7 +228,170 @@ class IngestState(Env):
         self.assertEqual(st["last_data_date"], "2026-05-04")
 
 
+class Partial(Env):
+    def alerts(self):
+        return json.loads((self.state / "alerts.json").read_text())["alerts"]
+
+    def test_partial_step_is_reported_and_does_not_block_dependents(self):
+        self.manifest([step("part", "6h", produces=["p.db"]), step("child", "6h", depends=["part"])])
+        r = self.run_all("--schedule", "6h")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("[partial] part", r.stdout)
+        self.assertIn("[ok] child", r.stdout)
+        self.assertIn("PARTIAL: part", r.stdout)
+        self.assertEqual(self.ran(), ["part", "child"])
+
+    def test_partial_records_data_date_but_not_last_ok_and_is_not_fresh(self):
+        self.manifest([step("part", "6h", fresh_hours=5, produces=["p.db"])])
+        (self.data / "p.db").write_text("x")
+        self.run_all("--schedule", "6h")
+        st = json.loads((self.data / ".ingest_state.json").read_text())["steps"]["part"]
+        self.assertEqual(st["status"], "partial")
+        self.assertEqual(st["last_data_date"], "2026-05-04")
+        self.assertNotIn("last_ok", st)
+        self.run_all("--schedule", "6h")
+        self.assertEqual(self.ran(), ["part", "part"])
+
+    def test_optional_failure_with_diario_ok_exits_zero_and_writes_alert(self):
+        self.manifest([step("boom", "6h"), step("part", "6h"), step("diario", "6h")], after={"diario": ["boom", "part"]})
+        r = self.run_all("--schedule", "6h")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        a = self.alerts()
+        self.assertEqual(len(a), 1)
+        self.assertEqual(a[0]["unit"], "estado-aberto-refresh.service")
+        text = "\n".join(a[0]["lines"])
+        self.assertIn("boom: failed", text)
+        self.assertIn("part: partial", text)
+
+    def test_clean_run_writes_no_alert(self):
+        self.manifest([step("a", "6h"), step("diario", "6h")], after={"diario": ["a"]})
+        self.assertEqual(self.run_all("--schedule", "6h").returncode, 0)
+        self.assertFalse((self.state / "alerts.json").exists())
+
+    def test_diario_failure_exits_nonzero(self):
+        self.manifest([step("a", "6h"), step("diario", "6h", script="boom.py")], after={"diario": ["a"]})
+        self.assertEqual(self.run_all("--schedule", "6h").returncode, 1)
+
+    def test_diario_blocked_by_failed_dependency_exits_nonzero(self):
+        self.manifest([step("boom", "6h"), step("diario", "6h", depends=["boom"])])
+        self.assertEqual(self.run_all("--schedule", "6h").returncode, 1)
+
+    def test_failure_without_diario_still_exits_nonzero(self):
+        self.manifest([step("boom", "6h"), step("a", "6h")])
+        self.assertEqual(self.run_all("--schedule", "6h").returncode, 1)
+
+    def test_hung_step_is_killed_at_its_manifest_timeout(self):
+        self.manifest([step("slow", "6h", script="slow.py", timeout_minutes=1), step("diario", "6h")], after={"diario": ["slow"]})
+        t0 = time.time()
+        r = self.run_all("--schedule", "6h", "--timeout-scale", "0.03", timeout=60)
+        self.assertLess(time.time() - t0, 30)
+        self.assertIn("[timeout] slow", r.stdout)
+        self.assertEqual(r.returncode, 0)
+
+
+VOTACOES_SNIPPET = """
+import os, socket, sys, threading, time, json
+sys.path.insert(0, os.path.join(sys.argv[1], "jobs"))
+sys.path.insert(0, sys.argv[1])
+srv = socket.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(16)
+conns = []
+threading.Thread(target=lambda: [conns.append(srv.accept()) for _ in iter(int, 1)], daemon=True).start()
+sys.argv = ["votacoes.py"] + sys.argv[2:]
+import votacoes
+votacoes.LIST_URL = "http://127.0.0.1:%d/x" % srv.getsockname()[1]
+t0 = time.time()
+votacoes.main()
+print("elapsed", round(time.time() - t0, 1))
+"""
+
+
+class VotacoesDeadline(Env):
+    def run_snippet(self, *args, **env):
+        e = dict(self.env, VOTACOES_SLEEP="0", ESTADO_ABERTO_READ_TIMEOUT="0.5", ESTADO_ABERTO_CONNECT_TIMEOUT="0.5", **env)
+        return subprocess.run([sys.executable, "-c", VOTACOES_SNIPPET, str(INGEST), *args], env=e, capture_output=True, text=True, timeout=60, cwd=self.t)
+
+    def test_stalling_server_ends_in_partial_success_at_the_deadline(self):
+        t0 = time.time()
+        r = self.run_snippet("--since", "14", "--deadline", "3")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertLess(time.time() - t0, 30)
+        last = [ln for ln in r.stdout.splitlines() if ln.startswith('{"ultima_data"')][-1]
+        self.assertEqual(json.loads(last), {"ultima_data": None, "parcial": True})
+        self.assertIn("votacoes: {", r.stdout)
+
+    def test_deadline_defaults_to_eight_minutes_for_since_and_is_configurable(self):
+        base = ("import os,sys; sys.path.insert(0, %r); sys.path.insert(0, %r); sys.argv=['votacoes.py']+%%r; import votacoes; print(votacoes.DEADLINE_S)"
+                % (str(INGEST / "jobs"), str(INGEST)))
+
+        def deadline(argv, **env):
+            e = {k: v for k, v in self.env.items() if k != "VOTACOES_DEADLINE_S"}
+            e.update(env)
+            return subprocess.run([sys.executable, "-c", base % argv], env=e, capture_output=True, text=True, cwd=self.t).stdout.strip()
+        self.assertEqual(deadline(["--since", "14"]), "480.0")
+        self.assertEqual(deadline(["--since", "14", "--deadline", "90"]), "90.0")
+        self.assertEqual(deadline(["--since", "14"], VOTACOES_DEADLINE_S="120"), "120.0")
+        self.assertEqual(deadline([]), "0.0")
+
+
 class Locking(Env):
+    def test_unopenable_lock_file_fails_fast_with_distinct_exit(self):
+        self.manifest([step("a", "6h")])
+        (self.state / "update.lock").mkdir()
+        t0 = time.time()
+        r = self.run_all("--schedule", "6h", "--lock-wait", "1500")
+        self.assertEqual(r.returncode, 77, r.stdout + r.stderr)
+        self.assertLess(time.time() - t0, 10)
+        self.assertIn("cannot open", r.stdout)
+        self.assertNotIn("waiting for", r.stdout)
+        self.assertEqual(self.ran(), [])
+
+    def test_unopenable_lock_raises_without_waiting(self):
+        (self.state / "update.lock").mkdir()
+        t0 = time.time()
+        with self.assertRaises(LockUnavailable):
+            SharedLock("ai", wait=1500, state=self.state, log=lambda m: None).acquire()
+        self.assertLess(time.time() - t0, 5)
+
+    @unittest.skipIf(os.getuid() == 0, "root ignores directory permissions")
+    def test_read_only_state_dir_raises_without_waiting(self):
+        ro = self.t / "ro"
+        ro.mkdir()
+        ro.chmod(0o555)
+        t0 = time.time()
+        with self.assertRaises(LockUnavailable):
+            SharedLock("ai", wait=1500, state=ro, log=lambda m: None).acquire()
+        self.assertLess(time.time() - t0, 5)
+        ro.chmod(0o755)
+
+    def test_new_state_dir_and_lock_file_are_group_writable(self):
+        st = self.t / "fresh" / "state"
+        SharedLock("ingest", wait=1, state=st, log=lambda m: None).acquire().release()
+        self.assertEqual(oct((st / "update.lock").stat().st_mode & 0o7777), "0o660")
+        self.assertEqual(oct(st.stat().st_mode & 0o7777), "0o2770")
+
+    def test_existing_owned_lock_file_without_group_write_is_repaired(self):
+        f = self.state / "update.lock"
+        f.write_text("ingest 1\n")
+        f.chmod(0o644)
+        SharedLock("ai", wait=1, state=self.state, log=lambda m: None).acquire().release()
+        self.assertEqual(oct(f.stat().st_mode & 0o7777), "0o660")
+
+    def test_holder_of_a_free_lock_is_never_named(self):
+        (self.state / "update.lock").write_text("ingest 999999\n")
+        self.assertIn("nobody", SharedLock("ai", state=self.state, log=lambda m: None).holder())
+
+    def test_holder_of_a_held_lock_is_its_recorded_owner(self):
+        a = SharedLock("ingest", wait=1, state=self.state, log=lambda m: None).acquire()
+        self.assertEqual(SharedLock("ai", state=self.state, log=lambda m: None).holder(), f"ingest {os.getpid()}")
+        a.release()
+
+    def test_stale_owner_record_on_a_held_lock_is_ignored(self):
+        a = SharedLock("ingest", wait=1, state=self.state, log=lambda m: None).acquire()
+        os.pwrite(a.fd, b"ingest 999999\n", 0)
+        os.ftruncate(a.fd, len(b"ingest 999999\n"))
+        self.assertIn("stale", SharedLock("ai", state=self.state, log=lambda m: None).holder())
+        a.release()
+
     def test_contention_times_out_with_clear_log(self):
         self.manifest([step("a", "6h")])
         with SharedLock("ingest", wait=1, state=self.state, log=lambda m: None):

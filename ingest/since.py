@@ -23,5 +23,8 @@ def cutoff(days):
     return (date.today() - timedelta(days=days)).isoformat()
 
 
-def report(ultima_data):
-    print(json.dumps({"ultima_data": ultima_data}), flush=True)
+def report(ultima_data, parcial=False):
+    out = {"ultima_data": ultima_data}
+    if parcial:
+        out["parcial"] = True
+    print(json.dumps(out), flush=True)

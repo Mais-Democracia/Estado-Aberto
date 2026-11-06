@@ -98,6 +98,7 @@
    ],
    "network": true,
    "est_minutes": 5,
+   "timeout_minutes": 10,
    "est_peak_mb": 150,
    "est_disk_mb": 20,
    "schedule": "6h",
@@ -129,6 +130,7 @@
    ],
    "network": true,
    "est_minutes": 10,
+   "timeout_minutes": 20,
    "est_peak_mb": 150,
    "est_disk_mb": 30,
    "schedule": "6h",
@@ -154,15 +156,13 @@
   {
    "name": "presidencia_recent",
    "script": "jobs/presidencia.py",
-   "depends": [
-    "dre_recent",
-    "votacoes_recent"
-   ],
+   "depends": [],
    "produces": [
     "presidencia.db"
    ],
    "network": true,
    "est_minutes": 5,
+   "timeout_minutes": 10,
    "est_peak_mb": 150,
    "est_disk_mb": 10,
    "schedule": "6h",
@@ -178,7 +178,9 @@
     "7"
    ],
    "after": [
-    "presidencia"
+    "dre_recent",
+    "presidencia",
+    "votacoes_recent"
    ],
    "needs": [
     "presidencia.db",
@@ -196,6 +198,7 @@
    ],
    "network": true,
    "est_minutes": 8,
+   "timeout_minutes": 16,
    "est_peak_mb": 150,
    "est_disk_mb": 80,
    "schedule": "6h",
@@ -712,6 +715,7 @@
    ],
    "network": true,
    "est_minutes": 8,
+   "timeout_minutes": 16,
    "est_peak_mb": 250,
    "est_disk_mb": 50,
    "schedule": "daily",
@@ -843,6 +847,7 @@
    ],
    "network": true,
    "est_minutes": 5,
+   "timeout_minutes": 10,
    "est_peak_mb": 150,
    "est_disk_mb": 10,
    "schedule": "daily",
@@ -922,6 +927,7 @@
    ],
    "network": true,
    "est_minutes": 8,
+   "timeout_minutes": 16,
    "est_peak_mb": 150,
    "est_disk_mb": 10,
    "schedule": "daily",
