@@ -93,7 +93,7 @@ export default function (ctx) {
   let mxAt = 0, mxVal = null;
   const MX = () => { if (!mxVal || Date.now() - mxAt > 600000) { mxVal = maxes(); mxAt = Date.now(); } return mxVal; };
   const defaultDate = () => { const m = MX(); return [m.pub, m.vote, m.tc, m.pres, m.dre, m.reg, m.nom].filter(Boolean).sort().pop(); };
-  const MIN_DATE = "2026-11-06";
+  const MIN_DATE = process.env.ESTADO_ABERTO_DIARIO_FLOOR || "2026-11-06";
   const clampDate = (s) => {
     const t = todayStr();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(s || "") || isNaN(DT(s))) return t;
