@@ -107,13 +107,15 @@ Portal.bars = bars;
 
 /* ---------- follows ---------- */
 let followState = [];
-const visitorId = () => { let v = localStorage.getItem("ea:vid"); if (!v) { v = crypto.randomUUID(); localStorage.setItem("ea:vid", v); } return v; };
-async function refreshFollows() { try { followState = (await api("follows?v=" + visitorId())).follows; } catch { followState = []; } $("#followcount").textContent = followState.length; }
+const visitorId = () => EAConsent.visitorId();
+async function refreshFollows() { followState = []; const v = visitorId(); if (v) { try { followState = (await api("follows?v=" + v)).follows; } catch { followState = []; } } $("#followcount").textContent = followState.length; }
+document.addEventListener("ea:consent", async () => { await refreshFollows(); syncFollows(); if (location.hash.startsWith("#/painel")) route(); });
 const isFollowing = (kind, ref) => followState.some((f) => f.kind === kind && String(f.ref) === String(ref));
 Portal.followButton = (kind, ref, label) => `<button class="btn ${isFollowing(kind, ref) ? "on" : ""}" data-follow="${kind}" data-ref="${esc(ref)}" data-label="${esc(label)}">${isFollowing(kind, ref) ? "A seguir ✓" : "+ Seguir"}</button>`;
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("[data-follow]"); if (!b) return;
   const kind = b.dataset.follow, ref = b.dataset.ref;
+  if (!visitorId()) { EAConsent.ask(); return; }
   if (isFollowing(kind, ref)) await fetch(`/api/follows?v=${visitorId()}&kind=${kind}&ref=${encodeURIComponent(ref)}`, { method: "DELETE" });
   else await fetch("/api/follows", { method: "POST", body: JSON.stringify({ v: visitorId(), kind, ref, label: b.dataset.label }) });
   await refreshFollows();
@@ -364,6 +366,7 @@ Portal.page("contrato", async (id) => {
 });
 
 Portal.page("painel", async () => {
+  if (!visitorId()) { EAConsent.ask(); $app.innerHTML = '<section class="panel"><h2>A minha lista</h2><p class="note">Para guardar a sua lista é preciso aceitar o armazenamento no navegador (aviso no fundo da página).</p></section>'; return; }
   const d = await api("feed?v=" + visitorId());
   $app.innerHTML = `
     <div class="crumbs"><a href="#/">Início</a> / A minha lista</div>

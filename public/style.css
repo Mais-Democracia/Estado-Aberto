@@ -264,3 +264,9 @@ body:has(#app > .sk) .foot { visibility: hidden; }
   ::view-transition-group(masthead) { animation: none; }
 }
 .ed .band, .ed .band2, .ed .colophon { content-visibility: auto; contain-intrinsic-size: auto 520px; }
+
+#ea-consent { position: fixed; left: .75rem; right: .75rem; bottom: .75rem; z-index: 1000; max-width: 46rem; margin: 0 auto; padding: .9rem 1rem; background: var(--card, #fffdf7); color: var(--ink, #14120e); border: 1px solid var(--line, #d9d0b8); box-shadow: 0 4px 24px rgba(0,0,0,.18); font-size: .85rem; line-height: 1.45; }
+#ea-consent p { margin: 0 0 .7rem; }
+.ea-consent-b { display: flex; gap: .5rem; justify-content: flex-end; }
+.ea-consent-b button { appearance: none; cursor: pointer; padding: .45rem .9rem; font: inherit; border: 1px solid var(--ink, #14120e); background: transparent; color: inherit; }
+.ea-consent-b button[data-c="yes"] { background: var(--ink, #14120e); color: var(--paper, #faf7f0); }
