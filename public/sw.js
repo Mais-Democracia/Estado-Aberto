@@ -1,5 +1,5 @@
 "use strict";
-const VERSION = "0.3.10";
+const VERSION = "0.3.11";
 const CACHE = "ea-" + VERSION;
 const SHELL = ["/", "/offline.html", "/style.css", "/edicao.css", "/routes.js", "/app.js", "/consent.js", "/portal.js", "/edicao.js", "/boot.js", "/fonts/fraunces-latin-600-normal.woff2", "/fonts/Lora-Regular.woff2"];
 const API_SKIP = /^\/api\/(follows|feed|search)(\/|$)/;

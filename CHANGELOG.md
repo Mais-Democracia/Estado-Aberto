@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.11] - 2026-11-06
+
 ### Fixed
 - "Ver a lei" on AI articles about decrees without an initiative now opens the act page.
 - Failures while building the law evidence are logged instead of silently dropping votes and debate.

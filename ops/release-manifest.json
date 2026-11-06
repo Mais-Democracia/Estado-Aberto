@@ -1,6 +1,6 @@
 {
-  "version": "0.3.10",
-  "git_sha": "13aeb6b1717a71c4c52474a6230248c86ac4cbb5",
+  "version": "0.3.11",
+  "git_sha": "b4b03b89fce8a285748bd1da82042487986792b8",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- \"A minha lista\" asks for consent before storing a random visitor id in the browser (local storage, no tracking cookies), explains what it is for, and works only if accepted."
+  "notes": "### Fixed\n- \"Ver a lei\" on AI articles about decrees without an initiative now opens the act page.\n- Failures while building the law evidence are logged instead of silently dropping votes and debate.\n\n### Changed\n- AI articles open with what the law does before the vote and debate, and \"O que muda\" no longer repeats \"segundo o texto da lei\" in every item."
 }
