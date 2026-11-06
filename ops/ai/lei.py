@@ -1,13 +1,10 @@
-import html
 import json
 import os
 import re
 import sqlite3
 import sys
-import urllib.parse
 from pathlib import Path
 
-import fetch_pdf
 from lib import ROOT, data_dir, open_ro, wrap
 
 sys.path.insert(0, str(ROOT / "ingest"))
@@ -24,12 +21,8 @@ MIN_WORDS = 60
 EXCERTO_MAX = 280
 MAX_EARLIER = 8
 MAX_ANEXOS = 30
-ANEXO_ORDEM = (("texto_final", "Texto Final"), ("texto_substituicao", "Texto de Substituição"), ("texto_inicial", "Texto Inicial"))
-MAX_ANEXO_TRIES = 4
-PAGE_TIMEOUT_S = 12
 SALUDO = re.compile(r"^(?:Sr|Sra|Srs|Sras|Sr\.as|Exm|Ex\.|Caros?|Caras?|Muito\s+(?:bom|boa|obrigad)|Presidente|Ministr|Secret|Deputad|Vice|Boa)", re.I)
 ABREV = {"sr", "sra", "srs", "sras", "dr", "dra", "exm", "exma", "prof", "art", "n", "al", "cf", "pp", "p", "ex"}
-PDF_LINK = re.compile(r"""href=["']([^"']*webutils/docs/doc\.pdf\?[^"']*)["']""", re.I)
 
 
 def pk(c):
@@ -341,24 +334,6 @@ def _build_lei(row):
     return facts, blocos
 
 
-def pdf_link(page_url, cfg, workdir):
-    tmp = workdir / "pagina.tmp"
-    slow = dict(cfg, pdf=dict(cfg["pdf"], timeout_s=min(PAGE_TIMEOUT_S, cfg["pdf"]["timeout_s"])))
-    try:
-        if not fetch_pdf.download(page_url, slow, tmp):
-            return None
-        raw = tmp.read_bytes()[:2_000_000].decode("utf-8", "replace")
-    except Exception:
-        return None
-    finally:
-        tmp.unlink(missing_ok=True)
-    for m in PDF_LINK.finditer(raw):
-        u = urllib.parse.urljoin(page_url, html.unescape(m.group(1)))
-        if fetch_pdf.host_allowed(urllib.parse.urlparse(u).hostname, cfg["allowed_hosts"]):
-            return u
-    return None
-
-
 def fetch_law_text(facts, cfg, workdir):
     try:
         return _fetch_law_text(facts, cfg, workdir)
@@ -373,34 +348,7 @@ def _fetch_law_text(facts, cfg, workdir):
         t = (one(db("dre"), "SELECT text FROM acts WHERE id=?", (dre["id"],)) or {}).get("text") or ""
         if t.strip():
             return re.sub(r"\n{3,}", "\n\n", t)[:cap], "dre.db", dre.get("url") or dre.get("pdf_url")
-    ini = facts.get("iniciativa") or {}
-    if dre.get("pdf_url"):
-        t = fetch_pdf.fetch_text(dre["pdf_url"], cfg, workdir)
-        if t.strip():
-            return t[:cap], "dre", dre["pdf_url"]
-    tries = 0
-    for tipo, label in ANEXO_ORDEM:
-        for a in annex_urls(ini.get("bid"), tipo):
-            if tries >= MAX_ANEXO_TRIES:
-                break
-            tries += 1
-            t = fetch_pdf.fetch_text(a["url"], cfg, workdir)
-            if t.strip():
-                return t[:cap], f"anexo do Parlamento: {a['nome'] or label}", a["url"]
-    if ini.get("url"):
-        target = pdf_link(ini["url"], cfg, workdir)
-        if target:
-            t = fetch_pdf.fetch_text(target, cfg, workdir)
-            if t.strip():
-                return t[:cap], "parlamento", target
     return "", None, None
-
-
-def annex_urls(bid, tipo):
-    if not bid:
-        return []
-    rows = q(db("votacoes"), "SELECT nome, url FROM iniciativa_anexos WHERE bid=? AND tipo=? ORDER BY rowid DESC", (bid, tipo))
-    return [r for r in rows if "doc.pdf" in (r["url"] or "")]
 
 
 def apply_text(bdir, ctx_cfg):

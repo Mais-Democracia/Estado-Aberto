@@ -118,26 +118,6 @@ class Lei(unittest.TestCase):
         self.assertFalse(gen["unanimidade_expandida"])
         self.assertEqual(len(gen["por_partido"]), 4)
 
-    def test_annex_text_preferred_and_named(self):
-        doc = self.src / "annex" / "doc.pdf"
-        doc.parent.mkdir()
-        doc.write_text("Artigo primeiro do texto final aprovado.", encoding="utf-8")
-        con = sqlite3.connect(self.src / "votacoes.db")
-        con.execute("INSERT INTO iniciativa_anexos VALUES(1,'Texto Final','texto_final',?)", (doc.as_uri(),))
-        con.commit()
-        con.close()
-        facts, _ = self.build()
-        self.assertEqual([a["tipo"] for a in facts["anexos"]], ["texto_inicial", "texto_final"])
-        import lib
-        os.environ["AI_ALLOW_FILE"] = "1"
-        try:
-            txt, origem, url = self.lei.fetch_law_text(facts, lib.load_config(), self.src)
-        finally:
-            os.environ.pop("AI_ALLOW_FILE", None)
-        self.assertIn("texto final aprovado", txt)
-        self.assertIn("Texto Final", origem)
-        self.assertEqual(url, doc.as_uri())
-
 
 class Honestidade(unittest.TestCase):
     def setUp(self):

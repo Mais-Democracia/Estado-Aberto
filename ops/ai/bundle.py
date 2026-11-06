@@ -6,7 +6,6 @@ import sys
 import urllib.parse
 import urllib.request
 
-import fetch_pdf
 import lei as L
 from lib import ROOT, canon, data_dir, open_ro, sanitize, sha, wrap
 
@@ -182,12 +181,4 @@ def add_text(ctx, b):
             return L.apply_text(d, ctx.cfg)
         except Exception:
             return False
-    for r in b["rows"]:
-        url = r.get("source_url") or ""
-        if not url.lower().split("?")[0].endswith((".pdf", ".txt")):
-            continue
-        txt = fetch_pdf.fetch_text(url, ctx.cfg, d)
-        if txt.strip():
-            t.write_text(wrap(txt), encoding="utf-8")
-            return True
     return False
