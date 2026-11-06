@@ -1,6 +1,6 @@
 {
-  "version": "0.3.7",
-  "git_sha": "1904eefa05b97b9cfcaa9d102252b216aca17dc0",
+  "version": "0.3.8",
+  "git_sha": "06336d51893c8d1f9b9e07cd1626283fd7360c64",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Added\n- Unanimous plenary votes are expanded to all parliamentary groups in favour (absentees kept), with totals computed from seats and a unanimity flag; the article page shows it.\n- Earlier votes of an initiative (committee, generalidade, avocacao) are shown as a timeline and given to the AI, so articles explain how positions evolved.\n- Initiative texts are fetched from the parliament annexes (`Texto Final`, `Texto de Substituicao`, `Texto Inicial`); annex links are stored in `iniciativa_anexos` and backfilled with `ingest/jobs/votacoes.py --anexos`.\n- The article page shows the author type (citizens, Government, deputies).\n\n### Changed\n- Articles never claim missing data when it is present: the AI prompts require using votes, speeches and phases, and the verifier rejects \"no data\" phrasing when they exist."
+  "notes": "### Changed\n- AI bundles are built only from the site data; no external pages or documents are fetched while drafting."
 }
