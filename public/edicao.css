@@ -53,7 +53,7 @@ body.is-ed .masthead { position: static; box-shadow: none; background: transpare
 .follow-link { border-radius: 0; border-color: var(--ed-rule); font-family: var(--sans); font-size: .76rem; }
 .panel, .card, .kpi { background: var(--card); border-radius: 2px; border-color: var(--ed-hair); box-shadow: none; }
 .foot { background: var(--navy); border-top: 3px double var(--ed-hair); }
-.foot a { color: var(--ed-goldbg); }
+.foot a { color: var(--ed-goldbg); } [data-theme="dark"] .foot a { color: var(--ed-gold); }
 
 .ed { max-width: 1320px; margin: 0 auto; font-family: var(--text); color: var(--ed-ink); }
 .ed button { font-family: var(--sans); }
