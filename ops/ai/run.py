@@ -484,7 +484,7 @@ def reverify(ctx):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(epilog="Publish cached rejected drafts of a date: run.py --reverify DATE, then start estado-aberto-ai-import.service (systemctl start estado-aberto-ai-import.service) to import the result into the ledger. Exit 75: lock busy; 77: lock unusable.")
     ap.add_argument("--date")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--stage", choices=ORDER + ["all"], default="all")
@@ -504,7 +504,7 @@ def main(argv=None):
         if ctx.stopped():
             print("IA parada (ficheiro STOP)")
             return 0
-    from common import LockTimeout, SharedLock
+    from common import LockTimeout, LockUnavailable, SharedLock
     try:
         with SharedLock("ai", wait=a.wait, state=lib.state_root()):
             if a.kill:
@@ -517,6 +517,9 @@ def main(argv=None):
     except LockTimeout:
         print("bloqueio ocupado")
         return 75
+    except LockUnavailable as e:
+        print(f"{e}", file=sys.stderr, flush=True)
+        return 77
 
 
 if __name__ == "__main__":
