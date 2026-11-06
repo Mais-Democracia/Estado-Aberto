@@ -5,6 +5,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Daily edition ledger (`diario.db`) built from the local databases, with numbered editions from 2026-11-06.
+- 6-hourly refresh timers, plus daily and weekly timers, with an ordered shared lock and failure alerts.
+- AI digest pipeline (disabled by default, timer never enabled by the installer unless `--enable-ai-timer` is given).
+- New front page with an AI column and a full-list view.
+
 ## [0.1.6] - 2026-11-05
 
 ### Added
