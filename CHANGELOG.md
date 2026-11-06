@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-11-06
+
 ### Changed
 - AI verifier checks names in tiers: person names stay strict, while institutions, acronyms (also by their expansion in the evidence), legal acts and tax names are accepted when found in the evidence or in the maintainable list `ops/ai/instituicoes_publicas.json`.
 - Vote claims fall back to the votes written in the evidence text when no vote table exists.

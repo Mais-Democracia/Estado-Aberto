@@ -1,6 +1,6 @@
 {
-  "version": "0.3.3",
-  "git_sha": "7a16c02601b0149cf9bcdb1d9caacf672bfb69fa",
+  "version": "0.3.4",
+  "git_sha": "471899abf0f9a0330aaacfa358d29c5397aef9f9",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- Laws published in the DRE are linked to their parliamentary initiative by incremental steps (`dre_recent`, `votacoes_recent`), by law number, exact title or citation.\n- AI articles for laws include the final vote by party and the plenary debate, also when the link pass has not run yet.\n- Superseded AI articles are hidden and kept for audit."
+  "notes": "### Changed\n- AI verifier checks names in tiers: person names stay strict, while institutions, acronyms (also by their expansion in the evidence), legal acts and tax names are accepted when found in the evidence or in the maintainable list `ops/ai/instituicoes_publicas.json`.\n- Vote claims fall back to the votes written in the evidence text when no vote table exists.\n- The AI importer retries a locked ledger, tolerates a missing revision number and names the files it could not import."
 }
