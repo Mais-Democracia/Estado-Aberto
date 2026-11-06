@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-06
+
 ### Added
 - Daily edition ledger (`diario.db`) built from the local databases, with numbered editions from 2026-11-06.
 - 6-hourly refresh timers, plus daily and weekly timers, with an ordered shared lock and failure alerts.

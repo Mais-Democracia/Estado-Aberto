@@ -1,6 +1,6 @@
 {
-  "version": "0.1.6",
-  "git_sha": "5e18330173d26424b84bad4c102e7c3de8f257d2",
+  "version": "0.2.0",
+  "git_sha": "df78239a9248d16a93b4dbb0ec864134358b5bd2",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -14,11 +14,9 @@
     }
   ],
   "ingest": {
-    "run_on_update": [
-      "migrate"
-    ],
+    "run_on_update": [],
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Added\n- `migrate` ingest step (`ingest/migrations.py`) that upgrades existing databases in place, offline and idempotently, and runs first on every update.\n- `tools/check_schema_compat.mjs`, which builds empty databases from a production schema dump and sweeps every route for missing tables or columns.\n\n### Fixed\n- Routes breaking on databases built before `entities.population_source` and the responsaveis `nomeacoes` and `cresap_results` tables existed: the Institui\u00e7\u00f5es directory and the responsaveis pages now answer with partial data and a \"dados em atualiza\u00e7\u00e3o\" note.\n- Empty tables no longer produce a 500 on the budget overview and the housing ranking.\n- The Estado em n\u00fameros ingest job could not import the shared helpers when run by the manifest."
+  "notes": "### Added\n- Daily edition ledger (`diario.db`) built from the local databases, with numbered editions from 2026-11-06.\n- 6-hourly refresh timers, plus daily and weekly timers, with an ordered shared lock and failure alerts.\n- AI digest pipeline (disabled by default, timer never enabled by the installer unless `--enable-ai-timer` is given).\n- New front page with an AI column and a full-list view."
 }
