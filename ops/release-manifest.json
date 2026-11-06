@@ -1,6 +1,6 @@
 {
-  "version": "0.3.6",
-  "git_sha": "80d1ba9f22954dad7fc71b8775e2340fee7cbfb5",
+  "version": "0.3.7",
+  "git_sha": "1904eefa05b97b9cfcaa9d102252b216aca17dc0",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Fixed\n- Laws whose title changed in Parliament are linked to their initiative by guarded fuzzy matching (similarity, shared legal citations, unambiguous best candidate), so the AI bundle carries the vote and debate.\n- The AI verifier no longer requires declaring place names that appear verbatim in the evidence; only person names must be declared."
+  "notes": "### Added\n- Unanimous plenary votes are expanded to all parliamentary groups in favour (absentees kept), with totals computed from seats and a unanimity flag; the article page shows it.\n- Earlier votes of an initiative (committee, generalidade, avocacao) are shown as a timeline and given to the AI, so articles explain how positions evolved.\n- Initiative texts are fetched from the parliament annexes (`Texto Final`, `Texto de Substituicao`, `Texto Inicial`); annex links are stored in `iniciativa_anexos` and backfilled with `ingest/jobs/votacoes.py --anexos`.\n- The article page shows the author type (citizens, Government, deputies).\n\n### Changed\n- Articles never claim missing data when it is present: the AI prompts require using votes, speeches and phases, and the verifier rejects \"no data\" phrasing when they exist."
 }

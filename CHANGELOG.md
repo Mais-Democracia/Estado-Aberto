@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.7] - 2026-11-06
+
 ### Added
 - Unanimous plenary votes are expanded to all parliamentary groups in favour (absentees kept), with totals computed from seats and a unanimity flag; the article page shows it.
 - Earlier votes of an initiative (committee, generalidade, avocacao) are shown as a timeline and given to the AI, so articles explain how positions evolved.
