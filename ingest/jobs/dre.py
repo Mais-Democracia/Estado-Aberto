@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import time
 import unicodedata
 import urllib.error
@@ -29,7 +30,11 @@ import urllib.request
 from datetime import date, datetime, timedelta
 from difflib import SequenceMatcher
 
-from common import DATA_DIR, ROOT, UA
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common import DATA_DIR, ROOT, UA  # noqa: E402
+from since import cutoff, report, since_days  # noqa: E402
 
 NAME = "dre"
 DB = DATA_DIR / f"{NAME}.db"
@@ -40,6 +45,10 @@ SLEEP = float(os.environ.get("DRE_SLEEP", "1.0"))
 START = os.environ.get("DRE_START", "2024-01-01")
 DETAIL_MAX = int(os.environ.get("DRE_DETAIL_MAX", "4000"))
 TARGET_MAX = int(os.environ.get("DRE_TARGET_MAX", "800"))
+SINCE = since_days()
+if SINCE:
+    DETAIL_MAX = min(DETAIL_MAX, 300)
+    TARGET_MAX = min(TARGET_MAX, 150)
 
 # screen -> (bundle, [(action, viewName)])  — viewName must be a *screen* (blocks fail "No role validation found")
 ACTIONS = {
@@ -230,14 +239,14 @@ def signatures(text):
 # ---------------------------------------------------------------- phases
 def phase_days(con):
     today = date.today()
-    d0 = date.fromisoformat(START)
+    d0 = today - timedelta(days=SINCE) if SINCE else date.fromisoformat(START)
     have = {r[0]: r[1] for r in con.execute("SELECT date, fetched_at FROM days")}
     todo = []
     d = today
     while d >= d0:
         k = d.isoformat()
         # re-fetch the last 10 days (supplements appear late); older days once
-        if k not in have or (today - d).days <= 10 and (have[k] or "") < (d + timedelta(days=11)).isoformat():
+        if SINCE or k not in have or (today - d).days <= 10 and (have[k] or "") < (d + timedelta(days=11)).isoformat():
             todo.append(k)
         d -= timedelta(days=1)
     log(f"days to fetch: {len(todo)} (window {START}..{today})")
@@ -360,8 +369,10 @@ def fetch_consolidated(con, row):
 
 def phase_details(con):
     order = " ".join(f"WHEN '{t}' THEN {i}" for i, t in enumerate(DETAIL_TYPES))
-    rows = con.execute(f"""SELECT * FROM acts WHERE in_window = 1 AND detail_at IS NULL AND kind IN ({",".join("?" * len(DETAIL_TYPES))})
-                           ORDER BY CASE kind {order} END, date DESC LIMIT ?""", (*DETAIL_TYPES, DETAIL_MAX)).fetchall()
+    recent = " AND date >= ?" if SINCE else ""
+    rows = con.execute(f"""SELECT * FROM acts WHERE in_window = 1 AND detail_at IS NULL AND kind IN ({",".join("?" * len(DETAIL_TYPES))}){recent}
+                           ORDER BY CASE kind {order} END, date DESC LIMIT ?""",
+                       (*DETAIL_TYPES, *([cutoff(SINCE)] if SINCE else []), DETAIL_MAX)).fetchall()
     log(f"details to fetch: {len(rows)}")
     for i, r in enumerate(rows):
         try:
@@ -378,13 +389,14 @@ def phase_details(con):
 def phase_targets(con):
     """Acts that are amended/revoked/republished by something in the window (often older laws): fetch detail,
     consolidated id and the official amendment timeline. Also refresh in-window acts that have a consolidated version."""
-    rows = con.execute("""
+    recent = " AND s.date >= ?" if SINCE else ""
+    rows = con.execute(f"""
       SELECT a.*, COUNT(l.src_id) refs, MAX(s.date) last_ref FROM acts a
       JOIN links l ON l.dst_id = a.id AND l.relation IN ('altera','republica','revoga','regulamenta','prorroga','suspende','retifica','refere','declara_inconstitucional')
       JOIN acts s ON s.id = l.src_id
-      WHERE a.url LIKE '%/dr/detalhe/%' AND (a.cons_at IS NULL OR a.cons_at < s.date OR a.detail_at IS NULL)
+      WHERE a.url LIKE '%/dr/detalhe/%' AND (a.cons_at IS NULL OR a.cons_at < s.date OR a.detail_at IS NULL){recent}
       GROUP BY a.id ORDER BY (a.kind IN ('Lei','Decreto-Lei','Lei Orgânica') OR a.kind IS NULL) DESC, refs DESC, last_ref DESC LIMIT ?""",
-                       (TARGET_MAX,)).fetchall()
+                       ([cutoff(SINCE)] if SINCE else []) + [TARGET_MAX]).fetchall()
     log(f"amended targets to resolve: {len(rows)}")
     for i, r in enumerate(rows):
         try:
@@ -401,8 +413,9 @@ def phase_targets(con):
         if i % 20 == 0:
             con.commit(); log(f"  target {i + 1}/{len(rows)} {r['title']}")
     # in-window primary acts that have a consolidated version but no timeline yet
-    rows = con.execute("""SELECT * FROM acts WHERE in_window = 1 AND frag_id IS NOT NULL AND has_consolidated = 1 AND cons_at IS NULL
-                          ORDER BY date DESC LIMIT ?""", (TARGET_MAX,)).fetchall()
+    recent = " AND date >= ?" if SINCE else ""
+    rows = con.execute(f"""SELECT * FROM acts WHERE in_window = 1 AND frag_id IS NOT NULL AND has_consolidated = 1 AND cons_at IS NULL{recent}
+                          ORDER BY date DESC LIMIT ?""", ([cutoff(SINCE)] if SINCE else []) + [TARGET_MAX]).fetchall()
     log(f"in-window consolidated acts: {len(rows)}")
     for i, r in enumerate(rows):
         try:
@@ -438,7 +451,7 @@ def phase_initiatives(con):
     """Link acts to parliament initiatives in data/politica.db (read-only): explicit citation in the act text,
     or near-identical title for AR laws."""
     pdb = DATA_DIR / "politica.db"
-    if not pdb.exists():
+    if SINCE or not pdb.exists():
         return
     try:
         p = sqlite3.connect(f"file:{pdb}?mode=ro", uri=True)
@@ -509,9 +522,12 @@ def main():
     for k, v in {**stats, "updated": datetime.now().isoformat(timespec="seconds"), "window_start": START, "module_version": _ver.get("module")}.items():
         con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (k, str(v)))
     con.commit()
+    ultima = con.execute("SELECT MAX(date) FROM acts WHERE in_window = 1").fetchone()[0]
     con.execute("PRAGMA journal_mode=DELETE")  # read-only openers (node:sqlite readOnly) can't create the WAL -shm file
     con.close()
     log("done", stats)
+    if SINCE:
+        report(ultima)
 
 
 if __name__ == "__main__":

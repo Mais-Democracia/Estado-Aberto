@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import DATA_DIR, ROOT  # noqa: E402
+from since import cutoff, report, since_days  # noqa: E402
 
 NAME = "reguladores"
 DB = DATA_DIR / f"{NAME}.db"
@@ -29,6 +30,12 @@ DELAY = 1.2
 _last = {}
 _robots = {}
 _nreq = [0]
+SINCE = since_days()
+
+
+def years_back():
+    y = date.today().year
+    return [y, y - 1] if SINCE and date.today().month == 1 else [y]
 
 # ---------------------------------------------------------------- organismos
 # (slug, short, nome, grupo, site, lei de criação/estatutos, missão, padrões de nome para mandatos/DRE, nome no registo)
@@ -161,11 +168,11 @@ def robots_ok(url):
         return False
     return rp.can_fetch("*", url)
 
-def get(url, binary=False, ctype=None, retries=2):
+def get(url, binary=False, ctype=None, retries=2, fresh=False):
     """Pedido cortês com cache gzip. Devolve texto (ou bytes) ou None."""
     RAW.mkdir(parents=True, exist_ok=True)
     f = RAW / (hashlib.sha1(url.encode()).hexdigest()[:20] + (".bin.gz" if binary else ".html.gz"))
-    if f.exists():
+    if f.exists() and not fresh:
         d = gzip.open(f).read()
         return d if binary else d.decode("utf-8", "replace")
     if _nreq[0] >= MAX_REQ:
@@ -378,12 +385,13 @@ def adc_kind(title):
     return None
 
 def crawl_adc(c):
-    c.execute("DELETE FROM decisions WHERE body='adc'")
+    if not SINCE:
+        c.execute("DELETE FROM decisions WHERE body='adc'")
     n = 0
     p = 0
     empty = 0
     while p < 400 and _nreq[0] < MAX_REQ:
-        h = get(f"{ADC}/pt/noticias-comunicados-e-intervencoes?page={p}")
+        h = get(f"{ADC}/pt/noticias-comunicados-e-intervencoes?page={p}", fresh=bool(SINCE))
         if h is None:
             break
         items = re.findall(r'<a href="(/pt/artigos/[^"]+|/pt/[^"]+)">\s*<div class="content-wrapper">.*?<time datetime="([^"]*)".*?class="title">\s*(.*?)\s*</div>', h, re.S)
@@ -400,6 +408,8 @@ def crawl_adc(c):
                 continue
             d = dt[:10]
             url = ADC + href
+            if SINCE and d < cutoff(SINCE):
+                continue
             ref = None
             m = re.search(r"(Ccent/\d{4}/\d+)", title)
             if m: ref = m.group(1)
@@ -425,6 +435,8 @@ def crawl_adc(c):
                       ("adc:" + href, "adc", kind, ref, d, int(d[:4]), title, subject, amount, note, url, url))
             n += 1
         c.commit()
+        if SINCE and items and max(x[1][:10] for x in items) < cutoff(SINCE):
+            break
         p += 1
     return n
 
@@ -433,11 +445,11 @@ CNPD = "https://www.cnpd.pt"
 
 def crawl_cnpd(c):
     n = 0
-    for year in range(2026, 2005, -1):
+    for year in (years_back() if SINCE else range(2026, 2005, -1)):
         pg = 1
-        while pg < 30 and _nreq[0] < MAX_REQ:
+        while pg < (3 if SINCE else 30) and _nreq[0] < MAX_REQ:
             u = f"{CNPD}/decisoes/historico-de-decisoes/?year={year}" + (f"&pgd={pg}" if pg > 1 else "")
-            h = get(u)
+            h = get(u, fresh=bool(SINCE))
             if h is None:
                 break
             cards = re.findall(r'<a href="(/umbraco/surface/cnpdDecision/download/\d+)"[^>]*>\s*<div class="c-card-header-medium">(.*?)</div>\s*<div class="c-card-header">(.*?)</div>\s*(?:<div class="c-card-text">(.*?)</div>)?', h, re.S)
@@ -473,13 +485,13 @@ ERC = "https://www.erc.pt/pt/deliberacoes/deliberacoes-erc/"
 
 def crawl_erc(c, y0=2014):
     n = 0
-    for year in range(date.today().year, y0 - 1, -1):
-        for pg in range(1, 80):
+    for year in (years_back() if SINCE else range(date.today().year, y0 - 1, -1)):
+        for pg in range(1, 4 if SINCE else 80):
             if _nreq[0] >= MAX_REQ:
                 return n
             q = f"?pg={pg}&s=1&date_from=01/01/{year}&date_to=31/12/{year}&palavrasChave=" if pg > 1 else f"?s=1&date_from=01/01/{year}&date_to=31/12/{year}&palavrasChave="
             u = ERC + q
-            h = get(u)
+            h = get(u, fresh=bool(SINCE))
             if not h:
                 break
             items = re.findall(r'<h1 class="item__title">\s*(ERC/(\d{4})/(\d+))\s*\(([^)]*)\)\s*</h1>(.*?)(?=<h1 class="item__title">|<!-- Pagination -->)', h, re.S)
@@ -506,7 +518,7 @@ def crawl_erc(c, y0=2014):
 # ---------------------------------------------------------------- AMT
 def crawl_amt(c):
     u = "https://www.amt-autoridade.pt/decis%C3%B5es/"
-    h = get(u)
+    h = get(u, fresh=bool(SINCE))
     if not h:
         return 0
     n = 0
@@ -514,6 +526,8 @@ def crawl_amt(c):
         title = html.unescape(re.sub(r"<[^>]+>", "", title)).strip()
         dm = re.match(r"(\d{2})/(\d{2})/(\d{4})", dd)
         d = f"{dm.group(3)}-{dm.group(2)}-{dm.group(1)}"
+        if SINCE and c.execute("SELECT 1 FROM decisions WHERE id = ?", ("amt:" + href,)).fetchone():
+            continue
         pdf = get("https://www.amt-autoridade.pt" + href, binary=True)
         amount = note = None
         if pdf:
@@ -638,7 +652,10 @@ def main():
     c.execute("INSERT OR REPLACE INTO meta VALUES ('updated', ?)", (date.today().isoformat(),))
     c.execute("INSERT OR REPLACE INTO meta VALUES ('matched', ?)", (f"{nm}/{len(B)}",))
     c.commit()
+    ultima = c.execute("SELECT MAX(date) FROM decisions WHERE date <= date('now')").fetchone()[0]
     c.close()
+    if SINCE:
+        report(ultima)
 
 if __name__ == "__main__":
     main()

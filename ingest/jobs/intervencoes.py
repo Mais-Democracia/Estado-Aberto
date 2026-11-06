@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import DATA_DIR, ROOT, UA  # noqa: E402
+from since import report, since_days  # noqa: E402
 
 NAME = "intervencoes"
 DB = DATA_DIR / f"{NAME}.db"
@@ -23,6 +24,9 @@ SLEEP = float(os.environ.get("INTERV_SLEEP", "1.5"))
 MAX_REQ = int(os.environ.get("INTERV_MAX_REQ", "400"))
 OFFLINE = os.environ.get("INTERV_OFFLINE") == "1"
 LEGS = [x for x in os.environ.get("INTERV_LEGS", "XVII,XVI").split(",") if x]
+SINCE = since_days()
+if SINCE:
+    LEGS = LEGS[:1]
 LEG_VALUE = {"XVII": "XVIILEG", "XVI": "XVILEG", "XV": "XVLEG", "XIV": "XIVLEG", "XIII": "XIIILEG"}
 ROMAN = {"XVII": 17, "XVI": 16, "XV": 15, "XIV": 14, "XIII": 13, "XII": 12, "XI": 11, "X": 10}
 PARTIES = {"PSD", "PS", "CH", "IL", "L", "PCP", "BE", "CDS-PP", "PAN", "JPP", "PEV", "Ninsc", "N insc", "PPD/PSD", "CDS", "PPD/PSD.CDS-PP", "PSD/CDS-PP"}
@@ -432,6 +436,8 @@ def main():
             print("discover failed", stopped)
             continue
         print(leg, len(docs), "plenary transcripts listed")
+        if SINCE:
+            docs = sorted(docs, key=lambda d: (d[1], d[2]), reverse=True)[:SINCE * 3 // 7 + 2]
         for _, sess, num, url in docs:
             key = f"{leg}-{sess}-{num:03d}"
             if con.execute("SELECT 1 FROM reunioes WHERE key = ?", (key,)).fetchone() and not os.environ.get("INTERV_REPARSE"):
@@ -455,6 +461,8 @@ def main():
     con.execute("INSERT OR REPLACE INTO meta VALUES ('legs', ?)", (",".join(LEGS),))
     con.commit()
     print("new speeches", total)
+    if SINCE:
+        report(con.execute("SELECT MAX(data) FROM reunioes").fetchone()[0])
 
 
 if __name__ == "__main__":

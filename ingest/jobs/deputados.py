@@ -33,6 +33,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from since import since_days  # noqa: E402
 from common import DATA_DIR, ROOT, UA  # noqa: E402
 
 NAME = "deputados"
@@ -44,6 +45,9 @@ LEG = "XVII"
 SEATS = 230
 SLEEP = float(os.environ.get("DEPUTADOS_SLEEP", "1.2"))
 REFRESH_H = float(os.environ.get("DEPUTADOS_REFRESH_H", "20"))
+SINCE = since_days()
+if SINCE:
+    REFRESH_H = 1.0
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS deputados (
@@ -450,6 +454,9 @@ def main():
     clients = [Client() for _ in range(workers)]
     done = 0
     todo = rows[:limit]
+    if SINCE:
+        slot = time.localtime().tm_yday % SINCE
+        todo = [r for r in todo if r[0] % SINCE == slot or not (RAW / f"bio_{r[0]}.html.gz").exists()]
 
     def work(i_row):
         i, row = i_row

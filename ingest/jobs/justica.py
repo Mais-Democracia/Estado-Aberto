@@ -28,8 +28,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import DATA_DIR, ROOT  # noqa: E402
+from since import report, since_days  # noqa: E402
 
 NAME = "justica"
+SINCE = since_days()
 DB = DATA_DIR / f"{NAME}.db"
 RAW = DATA_DIR / "raw" / NAME
 BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
@@ -352,11 +354,15 @@ def tc_detail(url_html, especie_tipo):
 
 def ingest_tc(con):
     urls = tc_listing_urls()
+    if SINCE:
+        yr, mo = int(time.strftime("%Y")), int(time.strftime("%m"))
+        yrs = {str(yr)} | ({str(yr - 1)} if mo == 1 else set())
+        urls = [u for u in urls if u.rsplit("/", 1)[-1] in ("", "index.html") or u.rsplit("/", 1)[-1][:4] in yrs]
     print("  TC listing pages:", len(urls))
     n = 0
     for u in urls:
         name = u.rsplit("/", 1)[-1] or "index.html"
-        h = fetch(u, f"tc/l/{name}", max_age=(2 * 86400 if name.startswith(("2025", "2026")) or name == "index.html" else None))
+        h = fetch(u, f"tc/l/{name}", max_age=3600 if SINCE else (2 * 86400 if name.startswith(("2025", "2026")) or name == "index.html" else None))
         if not h:
             continue
         for m in TC_ROW.finditer(h):
@@ -374,6 +380,8 @@ def ingest_tc(con):
     # full text only for abstract control, referendum, omission, conflicts (few per year); concrete appeals / reclamações are bulk
     deep = ("Fiscalização preventiva", "Fiscalização sucessiva abstrata", "Inconstitucionalidade por omissão", "Referendo", "Conflito")
     cap = int(os.environ.get("JUSTICA_TC_DETAIL_MAX", "2500"))
+    if SINCE:
+        cap = min(cap, 100)
     rows = con.execute(f"SELECT id, url, tipo FROM tc_acordaos WHERE tipo IN ({','.join('?' * len(deep))}) AND resultado IS NULL ORDER BY year DESC, num DESC LIMIT ?", (*deep, cap)).fetchall()
     print("  TC details to read:", len(rows))
     for i, (aid, url, tipo) in enumerate(rows):
@@ -594,7 +602,7 @@ def visto_outcomes(con):
 # --------------------------------------------------------------------------- main
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    only = set((os.environ.get("JUSTICA_ONLY") or "registry,ine,tc,tcontas").split(","))
+    only = {"tc"} if SINCE else set((os.environ.get("JUSTICA_ONLY") or "registry,ine,tc,tcontas").split(","))
     con = sqlite3.connect(DB)
     con.executescript(SCHEMA)
     if "registry" in only:
@@ -624,6 +632,8 @@ def main():
     con.commit()
     for t in ("orgaos", "tribunais", "mj_bodies", "stats_series", "tc_acordaos", "tcontas_docs"):
         print(" ", t, con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
+    if SINCE:
+        report(con.execute("SELECT MAX(data) FROM tc_acordaos WHERE data <= date('now')").fetchone()[0])
     con.close()
 
 

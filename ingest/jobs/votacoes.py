@@ -36,6 +36,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import DATA_DIR, ROOT, UA  # noqa: E402
+from since import cutoff, report, since_days  # noqa: E402
 import migrations  # noqa: E402
 
 NAME = "votacoes"
@@ -52,6 +53,11 @@ OFFLINE = os.environ.get("VOTACOES_OFFLINE") == "1"
 LEGS = [x for x in os.environ.get("VOTACOES_LEGS", "XVII,XVI,XV").split(",") if x]
 TYPES = [x for x in os.environ.get("VOTACOES_TYPES", "P,J,S,R,D,A,I,C,G,U,F").split(",") if x]
 CURRENT_LEG = "XVII"
+SINCE = since_days()
+if SINCE:
+    LEGS = [CURRENT_LEG]
+    REFRESH_H = min(REFRESH_H, 5.0)
+    MAX_REQ = min(MAX_REQ, int(os.environ.get("VOTACOES_SINCE_MAX_REQ", "400")))
 # end dates as listed on the AR initiatives search page (Legislatura XVI [2024-03-26 a 2025-06-02] ...)
 LEG_END = {"XVI": "2025-06-02", "XV": "2024-03-25", "XIV": "2022-03-28", "XIII": "2019-10-24", "XII": "2015-10-22", "XI": "2011-06-19", "X": "2009-10-14"}
 # seats per parliamentary group at the start of each legislature. XVII: AR composition 2026; XVI/XV: data/eleicoes.db
@@ -273,6 +279,8 @@ def parse_listing(t):
 def crawl_listing(client, con, leg, code):
     """All pages of one legislature x type. Cached per page; current legislature refreshed every REFRESH_H/3 hours."""
     max_age = None if leg != CURRENT_LEG else max(REFRESH_H / 3, 6)
+    if SINCE:
+        max_age = 1.0
     base = f"list_{leg}_{code}"
     t = cache_get(base + "_p1", max_age)
     fresh = t is None
@@ -286,8 +294,13 @@ def crawl_listing(client, con, leg, code):
         cache_put(base + "_p1", t)
     total, rows = parse_listing(t)
     allrows = {r[0]: r for r in rows}
+    known = {x[0] for x in con.execute("SELECT bid FROM listagem WHERE leg = ? AND tipo_code = ?", (leg, code))} if SINCE else set()
+    newest_first = bool(SINCE) and len(rows) > 1 and rows[0][0] > rows[-1][0]
+    last = rows
     page = 2
     while len(allrows) < total and page <= 400:
+        if newest_first and all(x[0] in known for x in last):
+            break
         tp = cache_get(f"{base}_p{page}", max_age) if not fresh else None
         if tp is None:
             m = re.search(r"__doPostBack\(&#39;([^&]*dpgResults[^&]*)&#39;,&#39;&#39;\)\">%d</a>" % page, t)
@@ -306,6 +319,7 @@ def crawl_listing(client, con, leg, code):
         _, r = parse_listing(t)
         if not r:
             break
+        last = r
         for x in r:
             allrows[x[0]] = x
         page += 1
@@ -649,6 +663,10 @@ def main():
     lorder = {l: i for i, l in enumerate(LEGS)}
     lst = con.execute("SELECT bid, tipo, numero, sessao, autoria, titulo, leg, tipo_code FROM listagem").fetchall()
     lst.sort(key=lambda r: (lorder.get(r[6], 99), order.get(r[7], 99), -r[0]))
+    if SINCE:
+        cut = cutoff(SINCE)
+        stat = {r[0]: (r[1], r[2] or "") for r in con.execute("SELECT bid, final, data_ultima FROM iniciativas")}
+        lst = [r for r in lst if r[6] == CURRENT_LEG and (r[0] not in stat or (not stat[r[0]][0] and stat[r[0]][1] >= cut))]
     done = {r[0]: (r[1], r[2]) for r in con.execute("SELECT bid, final, fetched_at FROM iniciativas")}
     n_ok = n_fail = 0
     todo = []
@@ -709,7 +727,9 @@ def main():
             "listed": con.execute("SELECT COUNT(*) FROM listagem").fetchone()[0],
             "stored": con.execute("SELECT COUNT(*) FROM iniciativas").fetchone()[0], "dre_linked": nd,
             "source": LIST_URL}
-    for lg in LEGS:
+    if SINCE:
+        meta.pop("legs")
+    for lg in ([] if SINCE else LEGS):
         st = seats_for(lg)
         if st:
             meta["seats_" + lg] = json.dumps(st)
@@ -717,6 +737,8 @@ def main():
         con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (k, str(v)))
     con.commit()
     print(f"votacoes: {meta}", flush=True)
+    if SINCE:
+        report(con.execute("SELECT MAX(data_ultima) FROM iniciativas").fetchone()[0])
 
 
 if __name__ == "__main__":

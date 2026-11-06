@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import DATA_DIR, ROOT, UA  # noqa: E402
+from since import cutoff, report, since_days  # noqa: E402
 
 NAME = "presidencia"
 DB = DATA_DIR / f"{NAME}.db"
@@ -36,6 +37,7 @@ LIST_URL = BASE + "/umbraco/Surface/PartialViewSurface/RequestFilterList"
 MIN_GAP = 1.2
 NO_FETCH = bool(os.environ.get("PRESID_NO_FETCH"))
 _last = {}
+SINCE = since_days()
 
 PRESIDENTES = [  # (start, end, name)
     ("1958-08-09", "1974-04-25", "Américo Thomaz"), ("1974-04-25", "1974-09-30", "António de Spínola"),
@@ -180,16 +182,22 @@ def fetch_presidencia(cur):
     for p in range(0, 40):
         payload = urllib.parse.urlencode({"culture": "pt-PT", "mode": "213213", "data": json.dumps(
             {"type": "filter-news", "filter": "3", "page": p, "other": 1, "dateFilters": [], "theme": "", "MaxPerPage": 9, "tag": ""})}).encode()
-        h = http(LIST_URL, data=payload, cache=f"list/p{p}.html")
+        h = http(LIST_URL, data=payload, cache=None if SINCE else f"list/p{p}.html")
         if not h or "article-title" not in h:
             break
         pages.append(h)
+        if SINCE:
+            ds = [pt_date(m.group(1)) for m in re.finditer(r'class="date">([^<]*)', h)]
+            if ds and all(d and d < cutoff(SINCE) for d in ds):
+                break
     items = []
     for h in pages:
         for m in re.finditer(r'<a href="([^"]+)" class="article-title"\s*>\s*(.*?)\s*</a>.*?class="date">([^<]*)', h, re.S):
             title = html.unescape(re.sub(r"<[^>]+>", " ", m.group(2)))
             items.append((BASE + m.group(1), re.sub(r"\s+", " ", title).strip(), pt_date(m.group(3))))
     n = 0
+    if SINCE:
+        items = [x for x in items if not x[2] or x[2] >= cutoff(SINCE)]
     for url, title, d in items:
         slug = urllib.parse.urlsplit(url).path.strip("/").replace("/", "_")
         h = http(url, cache=f"art/{slug}.html")
@@ -621,7 +629,7 @@ def main():
     con.execute("PRAGMA busy_timeout=60000")
     con.executescript(SCHEMA)
     cur = con.cursor()
-    for t in ("atos", "vetos", "tc_pedidos", "comunicados"):
+    for t in ("atos", "vetos", "tc_pedidos") + (() if SINCE else ("comunicados",)):
         cur.execute(f"DELETE FROM {t}")
     con.commit()
     n_news = fetch_presidencia(cur)
@@ -636,7 +644,10 @@ def main():
     finish(con, cur)
     for t in ("atos", "vetos", "tc_pedidos", "comunicados"):
         print(t, cur.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0])
+    ultima = cur.execute("SELECT MAX(data) FROM comunicados").fetchone()[0]
     con.close()
+    if SINCE:
+        report(ultima)
 
 
 if __name__ == "__main__":

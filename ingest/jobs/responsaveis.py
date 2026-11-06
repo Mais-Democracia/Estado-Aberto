@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import DATA_DIR, ROOT, UA  # noqa: E402
+from since import since_days  # noqa: E402
 import migrations  # noqa: E402
 
 NAME = "responsaveis"
@@ -46,7 +47,12 @@ DB = DATA_DIR / f"{NAME}.db"
 RAW = DATA_DIR / "raw" / NAME
 SLEEP = float(os.environ.get("RESP_SLEEP", "1.0"))
 MAX_REQ = int(os.environ.get("RESP_MAX_REQ", "3000"))
+SINCE = since_days()
+if SINCE:
+    MAX_REQ = min(MAX_REQ, 600)
 LIST_REFRESH_H = float(os.environ.get("RESP_LIST_REFRESH_H", "48"))
+if SINCE:
+    LIST_REFRESH_H = min(LIST_REFRESH_H, 20.0)
 HOLDER_REFRESH_D = float(os.environ.get("RESP_HOLDER_REFRESH_D", "14"))
 ET_API = "https://api.entidadetransparencia.pt/publicquery"
 ET_SITE = "https://entidadetransparencia.pt"
@@ -516,14 +522,14 @@ def main():
     if not os.environ.get("RESP_SKIP_ET"):
         phase_mandates(con)
         phase_declarations(con)
-    if not os.environ.get("RESP_SKIP_CRESAP"):
+    if not (os.environ.get("RESP_SKIP_CRESAP") or SINCE):
         phase_cresap(con)
     phase_appointments(con)
     phase_match_and_links(con)
     import responsaveis_nomeacoes as rn
     migrations.ensure_responsaveis(con)
     rn.phase_dre(con, DATA_DIR, log)
-    if not os.environ.get("RESP_SKIP_CRESAP"):
+    if not (os.environ.get("RESP_SKIP_CRESAP") or SINCE):
         rn.phase_cresap_results(con, DATA_DIR, log, SLEEP)
     stats = {k: con.execute(q).fetchone()[0] for k, q in {
         "mandates": "SELECT COUNT(*) FROM mandates", "holders_total": "SELECT COUNT(DISTINCT holder_id) FROM mandates",

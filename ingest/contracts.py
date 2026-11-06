@@ -1,6 +1,7 @@
 """Portal BASE (IMPIC) public contracts 2012-present -> contracts / contract_parties.
 Streams each yearly JSON from its zip (files are hundreds of MB); never loads a whole year in memory.
-Usage: python contracts.py [year ...]   (default: all years in data/raw/manifest.json)"""
+Usage: python contracts.py [year ...]   (default: all years in data/raw/manifest.json)
+       python contracts.py --since DAYS    (upsert only contracts published in the last DAYS days)"""
 import codecs
 import html
 import json
@@ -11,8 +12,10 @@ import zipfile
 from pathlib import Path
 
 from common import DATA_DIR, db, ROOT, set_meta, UA
+from since import cutoff, report, since_days
 
 RAW = DATA_DIR / "raw" / "contracts"
+SINCE = since_days()
 DS = "66d72d488ca4b7cb2de28712"   # dados.gov.pt dataset: Contratos Públicos - Portal Base - Contratos de 2012 a 2026
 
 
@@ -65,6 +68,27 @@ def first(v):
     return v[0] if isinstance(v, list) and v else (v if isinstance(v, str) else None)
 
 
+def put_contract(con, c, year, cid):
+    buyers = [split_party(x) for x in (c.get("adjudicante") or [])]
+    sellers = [split_party(x) for x in (c.get("adjudicatarios") or [])]
+    bidders = [split_party(x) for x in (c.get("concorrentes") or [])]
+    cpv = first(c.get("cpv")) or ""
+    con.execute("INSERT OR REPLACE INTO contracts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+        cid, c.get("Ano") or year, iso(c.get("dataCelebracaoContrato")), iso(c.get("dataPublicacao")), iso(c.get("dataDecisaoAdjudicacao")),
+        html.unescape(c.get("objectoContrato") or ""), "; ".join(c.get("tipoContrato") or []), c.get("tipoprocedimento"),
+        c.get("precoContratual"), c.get("precoBaseProcedimento"), c.get("PrecoTotalEfetivo"),
+        cpv, cpv.split(" - ")[0] if cpv else None, "; ".join(c.get("localExecucao") or []), c.get("prazoExecucao"),
+        len(bidders) if c.get("concorrentes") else None,
+        c.get("DescrAcordoQuadro") or c.get("numAcordoQuadro") or None, c.get("ProcedimentoCentralizado"),
+        c.get("fundamentAjusteDireto") or None, c.get("fundamentacao"), c.get("TipoCriterioAdjudicacao"),
+        c.get("nAnuncio") or None, c.get("linkPecasProc") or None,
+        buyers[0][0] if buyers else None, buyers[0][1] if buyers else None,
+        sellers[0][0] if sellers else None, sellers[0][1] if sellers else None, len(sellers)))
+    for role, lst in (("buyer", buyers), ("seller", sellers), ("bidder", bidders)):
+        for nif, name in lst:
+            con.execute("INSERT INTO contract_parties VALUES (?,?,?,?)", (cid, nif, name, role))
+
+
 def load_year(con, year, url):
     RAW.mkdir(parents=True, exist_ok=True)
     zp = RAW / f"contratos{year}.zip"
@@ -87,24 +111,7 @@ def load_year(con, year, url):
             if cid in seen:   # repeated ids exist in the source: last record wins
                 con.execute("DELETE FROM contract_parties WHERE contract_id=?", (cid,))
             seen.add(cid)
-            buyers = [split_party(x) for x in (c.get("adjudicante") or [])]
-            sellers = [split_party(x) for x in (c.get("adjudicatarios") or [])]
-            bidders = [split_party(x) for x in (c.get("concorrentes") or [])]
-            cpv = first(c.get("cpv")) or ""
-            con.execute("INSERT OR REPLACE INTO contracts VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
-                cid, c.get("Ano") or year, iso(c.get("dataCelebracaoContrato")), iso(c.get("dataPublicacao")), iso(c.get("dataDecisaoAdjudicacao")),
-                html.unescape(c.get("objectoContrato") or ""), "; ".join(c.get("tipoContrato") or []), c.get("tipoprocedimento"),
-                c.get("precoContratual"), c.get("precoBaseProcedimento"), c.get("PrecoTotalEfetivo"),
-                cpv, cpv.split(" - ")[0] if cpv else None, "; ".join(c.get("localExecucao") or []), c.get("prazoExecucao"),
-                len(bidders) if c.get("concorrentes") else None,
-                c.get("DescrAcordoQuadro") or c.get("numAcordoQuadro") or None, c.get("ProcedimentoCentralizado"),
-                c.get("fundamentAjusteDireto") or None, c.get("fundamentacao"), c.get("TipoCriterioAdjudicacao"),
-                c.get("nAnuncio") or None, c.get("linkPecasProc") or None,
-                buyers[0][0] if buyers else None, buyers[0][1] if buyers else None,
-                sellers[0][0] if sellers else None, sellers[0][1] if sellers else None, len(sellers)))
-            for role, lst in (("buyer", buyers), ("seller", sellers), ("bidder", bidders)):
-                for nif, name in lst:
-                    con.execute("INSERT INTO contract_parties VALUES (?,?,?,?)", (cid, nif, name, role))
+            put_contract(con, c, year, cid)
             n += 1
             if n % 50000 == 0:
                 con.commit(); print(f"[{year}] {n}", flush=True)
@@ -113,15 +120,62 @@ def load_year(con, year, url):
     return n
 
 
+def load_recent(con, year, url, days, modified):
+    key = f"contracts_recent_mod_{year}"
+    prev = con.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+    if modified and prev and prev[0] == modified:
+        print(f"[{year}] source unchanged since {modified}", flush=True)
+        return 0
+    RAW.mkdir(parents=True, exist_ok=True)
+    zp = RAW / f"contratos{year}.recent.zip"
+    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    n = 0
+    cut = cutoff(days)
+    try:
+        with urllib.request.urlopen(req, timeout=300) as r, open(zp, "wb") as out:
+            while True:
+                b = r.read(1 << 20)
+                if not b:
+                    break
+                out.write(b)
+        with zipfile.ZipFile(zp) as z, z.open(z.namelist()[0]) as fh:
+            for c in iter_json_array(fh):
+                pub = iso(c.get("dataPublicacao")) or iso(c.get("dataCelebracaoContrato"))
+                if not pub or pub < cut:
+                    continue
+                cid = str(c.get("idcontrato"))
+                con.execute("DELETE FROM contract_parties WHERE contract_id=?", (cid,))
+                put_contract(con, c, year, cid)
+                n += 1
+                if n % 5000 == 0:
+                    con.commit()
+    finally:
+        zp.unlink(missing_ok=True)
+    set_meta(con, key, modified or "")
+    con.commit()
+    print(f"[{year}] upserted {n} contracts published since {cut}", flush=True)
+    return n
+
+
 def main():
-    manifest = {}
+    manifest, modified = {}, {}
     d = json.load(urllib.request.urlopen(urllib.request.Request(f"https://dados.gov.pt/api/1/datasets/{DS}/", headers={"User-Agent": UA}), timeout=60))
     for r in d["resources"]:
         m = re.fullmatch(r"contratos(\d{4})\.zip", r["title"])
         if m:
             manifest[int(m.group(1))] = r["url"]
-    years = [int(y) for y in sys.argv[1:]] or sorted(manifest)
+            modified[int(m.group(1))] = r.get("last_modified") or ""
     con = db()
+    if SINCE:
+        from datetime import date, datetime
+        for y in range(int(cutoff(SINCE)[:4]), date.today().year + 1):
+            if y in manifest:
+                load_recent(con, y, manifest[y], SINCE, modified[y])
+        set_meta(con, "contracts_recent_at", datetime.now().isoformat(timespec="seconds"))
+        con.commit()
+        report(con.execute("SELECT MAX(published) FROM contracts").fetchone()[0])
+        return
+    years = [int(y) for y in sys.argv[1:]] or sorted(manifest)
     for y in years:
         load_year(con, y, manifest[y])
     from datetime import datetime
