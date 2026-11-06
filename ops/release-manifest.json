@@ -1,6 +1,6 @@
 {
-  "version": "0.3.13",
-  "git_sha": "99aa1bbef709033ac845d59a0a67983e92ea5499",
+  "version": "0.3.14",
+  "git_sha": "1f3c7fc122b9951fbfe72999b02a2b2ce5e15265",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- AI volume and spend caps removed (daily and monthly budget, article count, shortlist, triage and selection sizes); the verifier, the reviewer and the per-call guards stay."
+  "notes": "### Fixed\n- The AI verifier no longer reads parties named after \"exceto\" as having voted in the direction of the preceding clause."
 }
