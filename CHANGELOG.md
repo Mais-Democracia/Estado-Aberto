@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.13] - 2026-11-06
+
 ### Changed
 - AI volume and spend caps removed (daily and monthly budget, article count, shortlist, triage and selection sizes); the verifier, the reviewer and the per-call guards stay.
 

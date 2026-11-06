@@ -1,6 +1,6 @@
 {
-  "version": "0.3.12",
-  "git_sha": "27ccd3870ece0d2c58b354cf9c130ffdf78572c3",
+  "version": "0.3.13",
+  "git_sha": "99aa1bbef709033ac845d59a0a67983e92ea5499",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Added\n- Daily President of the Republic summary story covering all of the day's acts, with its own writing prompt.\n\n### Fixed\n- Presidency stories no longer pull unrelated events by the generic office name and carry the act's own facts.\n- The AI verifier now fails loudly if its public institutions list is missing."
+  "notes": "### Changed\n- AI volume and spend caps removed (daily and monthly budget, article count, shortlist, triage and selection sizes); the verifier, the reviewer and the per-call guards stay."
 }
