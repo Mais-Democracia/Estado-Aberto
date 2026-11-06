@@ -14,26 +14,48 @@ python3 ingest/run_all.py --list
 python3 ingest/run_all.py --dry-run --schedule weekly
 python3 ingest/run_all.py --only justica    # justica plus the steps it depends on
 python3 ingest/run_all.py --only justica --no-deps
-./daily.sh                                  # schedule daily
-./update.sh                                 # schedule weekly (includes daily)
+python3 ingest/run_all.py --schedule 6h     # the light steps behind the daily edition
+./daily.sh                                  # schedule daily (includes 6h)
+./update.sh                                 # schedule weekly (includes daily and 6h)
 ```
 
-Schedules: `daily` steps are light; `weekly` runs daily and weekly steps; `bootstrap` runs everything except `manual`, including slow-changing sources (elections, education, budget, housing) that need a refresh only when upstream publishes. Run `--schedule bootstrap --resume` monthly to refresh them.
+Schedules: `6h` steps are the light ones that run every six hours (`migrate`, `agenda`, `government`, `news`, the `*_recent` incremental steps, `diario`); `daily` runs 6h and daily steps; `weekly` runs 6h, daily and weekly steps; `bootstrap` runs everything except `manual`, including slow-changing sources (elections, education, budget, housing) that need a refresh only when upstream publishes. Run `--schedule bootstrap --resume` monthly to refresh them.
 
-Cron on the server:
+On the server the systemd timers in `ops/systemd` run the schedules (see `docs/OPERATIONS.md`); cron is only for hosts without systemd:
 
 ```
-15 6 * * *  /srv/estado-aberto/daily.sh  >> /srv/estado-aberto/data/daily.log 2>&1
-30 3 * * 0  /srv/estado-aberto/update.sh >> /srv/estado-aberto/data/update.log 2>&1
+10 0,6,12,18 * * *  /srv/estado-aberto/ingest/run_all.py --schedule 6h --profile server
+30 2 * * *          /srv/estado-aberto/daily.sh  >> /srv/estado-aberto/data/daily.log 2>&1
+0 1 * * 0           /srv/estado-aberto/update.sh >> /srv/estado-aberto/data/update.log 2>&1
 ```
+
+## Incremental steps
+
+A manifest step can reuse a job script with `args`. The `*_recent` steps run the same script as the full step with `--since DAYS`: they re-fetch only the last DAYS days and upsert, keep the rest of the database, and leave the full behaviour untouched when `--since` is absent.
+
+| Step | Script | Window | What it refreshes |
+|---|---|---|---|
+| `dre_recent` | `jobs/dre.py` | 5 days | série I acts, their details and amended targets (no initiative re-linking) |
+| `votacoes_recent` | `jobs/votacoes.py` | 14 days | current legislature: new initiatives and recently active ones |
+| `presidencia_recent` | `jobs/presidencia.py` | 7 days | President's communiqués; derived tables rebuilt from the stored communiqués |
+| `contracts_recent` | `contracts.py` | 14 days | contracts published in the window, from the current-year file; skipped while the source file is unchanged |
+| `intervencoes_recent` | `jobs/intervencoes.py` | 7 days | the newest plenary DAR PDFs not yet parsed |
+| `justica_tc_recent` | `jobs/justica.py` | current year | Tribunal Constitucional acórdãos only |
+| `reguladores_recent` | `jobs/reguladores.py` | 14 days | AdC, CNPD, ERC and AMT decisions |
+| `responsaveis` (daily) | `jobs/responsaveis.py` | 14 days | mandate list, at most 600 requests, no CRESAP crawl; `responsaveis_full` rebuilds weekly |
+
+`deputados.py --since N` refreshes the pages of one Nth of the deputies per run (rotating by day). A recent step with `needs` listing an output that does not exist yet is `skipped` (not a failure): bootstrap first.
+
+Manifest fields added for scheduling: `schedule: "6h"`, `fresh_hours` (a step whose outputs are younger is skipped when `--resume` or `--schedule` is used; `--force` disables), `args` (extra argv for the script), `needs` (files in the data dir that must exist), `after` (ordering only: run after these steps when both are selected; never pulls steps in or blocks). The top-level `after` object maps a step to steps it must follow without editing its entry; it keeps `diario` last in the 6h set.
 
 ## Runner behaviour
 
 - Steps run strictly one at a time in dependency order (`ingest/jobs.json`). A failed step blocks only its dependents; independent steps continue. Exit status is non-zero if any step failed, was refused by the disk guard or was blocked.
-- `--resume` skips a step whose state in `data/.ingest_state.json` is `ok`, younger than 80 percent of its `fresh_days`, and whose outputs still exist.
+- `--resume` (and any `--schedule` run without `--only`) skips a step whose state in `data/.ingest_state.json` is `ok`, younger than its `fresh_hours` (or 80 percent of its `fresh_days`), and whose outputs still exist. `--force` runs everything.
 - Per step the state records status, seconds, peak RSS (MB) and free-disk delta (MB). Logs go to `data/logs/<step>-<timestamp>.log`.
 - Timeouts: 3 times the estimate plus 10 minutes (scale with `--timeout-scale`).
-- A concurrent run on the same data directory is refused (`data/.ingest.lock`).
+- All ingest runners, the updater and the AI job share `$STATE_DIR/update.lock` (waiters ordered updater, ingest, AI; default wait 2 h, then exit 75 with a log line). A step in progress is never interrupted; between steps the runner yields to a waiting updater. See `docs/OPERATIONS.md`.
+- After each step the state records `last_ok` and, for jobs that print `{"ultima_data":"YYYY-MM-DD"}`, `last_data_date`.
 - `--max-mb` (default 600) warns when a step's `est_peak_mb` or measured RSS exceeds it. `--min-free-gb` (default 5) refuses a step when free disk minus the step's estimated new disk use would fall below it.
 - `--profile server`: `nice 10`, sequential, 1 s polite delay per host, raw caches pruned after each successful step (except steps marked `keep_raw`, or listed in `--keep-raw a,b`), unreachable sources tolerated. `--profile dev`: no nice, 0.5 s delay, caches kept.
 - A step that fails with a network error is reported as `offline` with a message; for sources flagged flaky, or with `--tolerate-offline`, it does not fail the run. Rerun with `--resume` later.
@@ -119,6 +141,6 @@ Use `--profile server`. Only `orcamento` (700 MB), `educacao` (600 MB) and `risc
 ## Adding a step
 
 1. Write `ingest/jobs/<name>.py` with a `NAME`, `DB = DATA_DIR / f"{NAME}.db"` and `RAW = DATA_DIR / "raw" / NAME` (import `DATA_DIR`, `UA`, `get`, `download` from `common`), a `main()` and an `if __name__ == "__main__"` guard. Exit non-zero on failure. Stream large downloads and commit in bounded batches.
-2. Add an entry to `ingest/jobs.json`: `name`, `script`, `depends` (including `stats` when it reads `politica.db`), `produces`, `network`, `est_minutes`, `est_peak_mb`, `est_disk_mb`, `schedule`, `enabled`, `fresh_days`, `raw`, `keep_raw`, `flaky`, `licence`, `notes`. Measure estimates from `data/.ingest_state.json` after a run into a temporary data dir.
+2. Add an entry to `ingest/jobs.json`: `name`, `script`, `depends` (including `stats` when it reads `politica.db`), `produces`, `network`, `est_minutes`, `est_peak_mb`, `est_disk_mb`, `schedule` (`6h`, `daily`, `weekly`, `bootstrap`, `manual`), `enabled`, `fresh_days`, `raw`, `keep_raw`, `flaky`, `licence`, `notes`; optionally `fresh_hours`, `args`, `needs`, `after`. Measure estimates from `data/.ingest_state.json` after a run into a temporary data dir.
 3. Add the source row to `docs/SOURCES.md` with its licence.
 4. Check: `python3 ingest/run_all.py --list`, `--dry-run --only <name>`, then a small real run with `ESTADO_ABERTO_DATA=$(mktemp -d)`.
