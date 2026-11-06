@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Unanimous plenary votes are expanded to all parliamentary groups in favour (absentees kept), with totals computed from seats and a unanimity flag; the article page shows it.
+- Earlier votes of an initiative (committee, generalidade, avocacao) are shown as a timeline and given to the AI, so articles explain how positions evolved.
+- Initiative texts are fetched from the parliament annexes (`Texto Final`, `Texto de Substituicao`, `Texto Inicial`); annex links are stored in `iniciativa_anexos` and backfilled with `ingest/jobs/votacoes.py --anexos`.
+- The article page shows the author type (citizens, Government, deputies).
+
+### Changed
+- Articles never claim missing data when it is present: the AI prompts require using votes, speeches and phases, and the verifier rejects "no data" phrasing when they exist.
+
 ## [0.3.6] - 2026-11-06
 
 ### Fixed

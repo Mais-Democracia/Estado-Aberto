@@ -509,22 +509,24 @@ export default function (ctx) {
   };
   const head = (D) => ({ data: D, numero: days(MIN_DATE, D) + 1, extenso: pdate(D), diaSemana: DIA[DT(D).getUTCDay()], reporta: add(D, -1), reporta_extenso: pdate(add(D, -1)), min: MIN_DATE, max: todayStr(), defaultData: todayStr(), navegacao: navOf(D) });
 
-  const VOTOS = new Set(["favor", "contra", "abstencao", "ausente"]);
+  const VOTOS = new Set(["favor", "contra", "abstencao", "ausente", "ausencia"]);
   const safeRota = (r) => (/^#\/[\w\-./%?=&|]+$/.test(S(r)) ? S(r) : "");
   const blocosOf = (v) => {
     const b = J(v, null);
     if (!b || typeof b !== "object") return null;
     const l = b.lei && typeof b.lei === "object" ? b.lei : null, vt = b.votacao && typeof b.votacao === "object" ? b.votacao : null;
     const num = (x) => (Number.isFinite(Number(x)) && x !== null && x !== "" ? Math.max(0, Math.round(Number(x))) : null);
-    const lei = l ? { titulo: S(l.titulo), tipo: S(l.tipo), numero: S(l.numero), legislatura: S(l.legislatura), autor: S(l.autor), rota: safeRota(l.rota), texto_url: safeUrl(l.texto_url) } : null;
-    const votacao = vt ? {
-      data: day10(vt.data), resultado: S(vt.resultado),
-      por_partido: listOf(vt.por_partido).filter((p) => p && p.partido && VOTOS.has(p.voto)).map((p) => ({ partido: S(p.partido), voto: p.voto, lugares: num(p.lugares) })),
-      totais: { favor: num(vt.totais && vt.totais.favor) || 0, contra: num(vt.totais && vt.totais.contra) || 0, abstencao: num(vt.totais && vt.totais.abstencao) || 0 },
-    } : null;
+    const lei = l ? { titulo: S(l.titulo), tipo: S(l.tipo), numero: S(l.numero), legislatura: S(l.legislatura), autor: S(l.autor), origem: S(l.origem), rota: safeRota(l.rota), texto_url: safeUrl(l.texto_url) } : null;
+    const voteOf = (x) => ({
+      data: day10(x.data), fase: S(x.fase), orgao: S(x.orgao), resultado: S(x.resultado), unanime: x.unanime === true,
+      por_partido: listOf(x.por_partido).filter((p) => p && p.partido && VOTOS.has(p.voto)).map((p) => ({ partido: S(p.partido), voto: p.voto === "ausencia" ? "ausente" : p.voto, lugares: num(p.lugares) })),
+      totais: { favor: num(x.totais && x.totais.favor) || 0, contra: num(x.totais && x.totais.contra) || 0, abstencao: num(x.totais && x.totais.abstencao) || 0 },
+    });
+    const votacao = vt ? voteOf(vt) : null;
+    const anteriores = listOf(b.votacoes_anteriores).filter((x) => x && typeof x === "object").slice(-10).map(voteOf);
     const intervencoes = listOf(b.intervencoes).filter((x) => x && S(x.excerto)).slice(0, 6).map((x) => ({ id: S(x.id), deputado: S(x.deputado), partido: S(x.partido), data: day10(x.data), excerto: cut(S(x.excerto), 280), rota: safeRota(x.rota) }));
     if (!lei && !votacao && !intervencoes.length) return null;
-    return { lei, votacao, intervencoes };
+    return { lei, votacao, votacoes_anteriores: anteriores, intervencoes };
   };
   const explicacaoOf = (v) => {
     const x = J(v, null);

@@ -374,9 +374,12 @@ def print_law(r, facts, blocos, txt, b):
     v = blocos.get("votacao")
     if v:
         parts = ", ".join(f"{p['partido']} {p['voto']}" + (f" ({p['lugares']})" if p.get("lugares") is not None else "") for p in v["por_partido"])
-        print(f"  votacao {v['data']} {v['resultado']}: {parts} | totais {v['totais']}")
+        print(f"  votacao {v['data']} {v['resultado']}{' (unanime)' if v.get('unanime') else ''}: {parts} | totais {v['totais']}")
+        for a in blocos.get("votacoes_anteriores") or []:
+            print(f"  anterior {a['data']} {a['fase']} ({a['orgao']}) {a['resultado']}: " + ", ".join(f"{p['partido']} {p['voto']}" for p in a["por_partido"]))
     else:
-        print("  votacao: sem dados")
+        print("  votacao: nenhuma registada")
+    print(f"  anexos: {len(facts.get('anexos') or [])}")
     iv = facts.get("intervencoes") or []
     by = {}
     for x in iv:

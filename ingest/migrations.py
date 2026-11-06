@@ -7,8 +7,14 @@ POLITICA_COLUMNS = {"entities": [("population_source", "TEXT")]}
 VOTACOES_COLUMNS = {
     "fases": [("diploma_bid", "INTEGER")],
     "votos": [("inconsistente", "INTEGER")],
-    "iniciativas": [("leg_fim", "TEXT"), ("transitou", "INTEGER DEFAULT 0")],
+    "iniciativas": [("leg_fim", "TEXT"), ("transitou", "INTEGER DEFAULT 0"), ("anexos_at", "TEXT")],
 }
+ANEXOS_DDL = """
+CREATE TABLE IF NOT EXISTS iniciativa_anexos (
+  bid INTEGER NOT NULL, nome TEXT, tipo TEXT, url TEXT NOT NULL, UNIQUE (bid, nome, url)
+);
+CREATE INDEX IF NOT EXISTS ia_bid ON iniciativa_anexos(bid);
+"""
 RESPONSAVEIS_COLUMNS = {"links": [("is_public", "INTEGER DEFAULT 0")]}
 RESPONSAVEIS_DDL = """
 CREATE TABLE IF NOT EXISTS nomeacoes (
@@ -43,6 +49,7 @@ def ensure_politica(con):
 
 
 def ensure_votacoes(con):
+    con.executescript(ANEXOS_DDL)
     return add_columns(con, VOTACOES_COLUMNS)
 
 

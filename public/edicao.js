@@ -221,11 +221,31 @@
   };
   const voteTable = (v) => {
     const mx = Math.max(...v.por_partido.map((p) => p.lugares || 0), 1), t = v.totais;
+    const una = v.unanime ? `<p class="vt-una"><span class="vchip vs-favor">✓ Aprovado por unanimidade</span> ${esc(unanimTxt(v))}</p>` : "";
     const seg = (k, n) => (n ? `<i class="vs-${VOTO[k][2]}" style="flex-grow:${n}" title="${VOTO[k][0]}: ${nf0.format(n)}"><span>${VOTO[k][1]} ${nf0.format(n)}</span></i>` : "");
-    return `<div class="vtab"><div class="vt-tot" role="img" aria-label="Totais: ${t.favor} a favor, ${t.contra} contra, ${t.abstencao} abstenções">${seg("favor", t.favor)}${seg("contra", t.contra)}${seg("abstencao", t.abstencao)}</div>
-      <p class="vt-res">${v.resultado ? `<b>${esc(v.resultado)}</b>` : ""}${v.data ? ` · votação de ${pd(v.data)}` : ""} · ${nf0.format(t.favor)} a favor, ${nf0.format(t.contra)} contra, ${nf0.format(t.abstencao)} abstenções</p>
-      <table class="vt-t"><thead><tr><th>Partido</th><th>Voto</th><th>Lugares</th></tr></thead><tbody>${v.por_partido.map((p) => `<tr><th scope="row">${esc(p.partido)}</th><td><span class="vchip vs-${VOTO[p.voto][2]}"><span aria-hidden="true">${VOTO[p.voto][1]}</span> ${VOTO[p.voto][0]}</span></td><td class="vt-b"><i class="vs-${VOTO[p.voto][2]}" style="width:${Math.max(3, ((p.lugares || 0) / mx) * 100).toFixed(1)}%"></i><span>${p.lugares != null ? nf0.format(p.lugares) : "—"}</span></td></tr>`).join("")}</tbody></table></div>`;
+    return `<div class="vtab">${una}<div class="vt-tot" role="img" aria-label="Totais: ${t.favor} a favor, ${t.contra} contra, ${t.abstencao} abstenções">${seg("favor", t.favor)}${seg("contra", t.contra)}${seg("abstencao", t.abstencao)}</div>
+      <p class="vt-res">${v.resultado && !v.unanime ? `<b>${esc(v.resultado)}</b>` : ""}${v.fase ? ` · ${esc(v.fase)}` : ""}${v.data ? ` · votação de ${pd(v.data)}` : ""}${t.favor + t.contra + t.abstencao ? ` · ${nf0.format(t.favor)} a favor, ${nf0.format(t.contra)} contra, ${nf0.format(t.abstencao)} abstenções` : ""}</p>
+      ${v.por_partido.length ? `<table class="vt-t"><thead><tr><th>Partido</th><th>Voto</th><th>Lugares</th></tr></thead><tbody>${v.por_partido.map((p) => `<tr><th scope="row">${esc(p.partido)}</th><td><span class="vchip vs-${VOTO[p.voto][2]}"><span aria-hidden="true">${VOTO[p.voto][1]}</span> ${VOTO[p.voto][0]}</span></td><td class="vt-b"><i class="vs-${VOTO[p.voto][2]}" style="width:${Math.max(3, ((p.lugares || 0) / mx) * 100).toFixed(1)}%"></i><span>${p.lugares != null ? nf0.format(p.lugares) : "—"}</span></td></tr>`).join("")}</tbody></table>` : ""}</div>`;
   };
+  const autorTxt = (l) => {
+    if (!l) return "";
+    const o = String(l.origem || ""), a = String(l.autor || "");
+    if (/cidad/i.test(o) || /cidad/i.test(a)) return "Iniciativa de cidadãos";
+    if (/governo/i.test(o) || /governo/i.test(a)) return "Proposta do Governo";
+    if (/regional|ALR/i.test(o)) return "Iniciativa de uma Assembleia Legislativa Regional";
+    return a ? "Apresentada por " + a : "";
+  };
+  const unanimTxt = (v) => {
+    const aus = v.por_partido.filter((p) => p.voto === "ausente").map((p) => p.partido);
+    return `Todos os grupos parlamentares votaram a favor${aus.length ? `, exceto ${aus.join(", ")} (${aus.length > 1 ? "ausentes" : "ausente"})` : ""}.`;
+  };
+  const SENSOS_ORD = ["favor", "contra", "abstencao", "ausente"];
+  const earlierBlock = (list) => `<ol class="vt-tl">${list.map((v) => {
+    const grp = SENSOS_ORD.map((k) => ({ k, ps: v.por_partido.filter((p) => p.voto === k).map((p) => p.partido) })).filter((g) => g.ps.length);
+    const body = grp.length ? `<div class="vt-gr">${grp.map((g) => `<span class="vg"><i class="vs-${VOTO[g.k][2]}" aria-hidden="true">${VOTO[g.k][1]}</i><b>${VOTO[g.k][0]}</b> ${g.ps.map(esc).join(", ")}</span>`).join("")}</div>` : (v.unanime ? "<p>Aprovado por unanimidade.</p>" : "");
+    const t = v.totais, tot = t.favor + t.contra + t.abstencao ? `<small>${nf0.format(t.favor)} a favor · ${nf0.format(t.contra)} contra · ${nf0.format(t.abstencao)} abstenções</small>` : "";
+    return `<li><div class="vt-h">${v.data ? `<time datetime="${esc(v.data)}">${pd(v.data)}</time>` : ""}<b>${esc(v.fase || "Votação")}</b>${v.orgao ? `<span class="vt-o">${esc(v.orgao)}</span>` : ""}${v.resultado ? `<span class="vt-r">${esc(v.resultado)}</span>` : ""}</div>${body}${tot}</li>`;
+  }).join("")}</ol>`;
   const leiBtn = (b) => (b && b.lei && b.lei.rota ? `<a class="btn-lei" href="${esc(b.lei.rota)}">Ver a lei</a>` : "");
   const iaCard = (d, a) => `<article class="ia-card" id="ia-${a.id}"><div class="ia-top"><span class="kick">${esc(a.secao_titulo)}</span><span class="ia-badge" title="Revisto por ${esc(a.revisor || "—")}">Gerado por IA · ${esc(a.modelo)} · verificado</span></div>
       <h2 class="ia-h"><a href="${esc(a.rota_detalhe)}">${esc(a.titulo)}</a></h2>
@@ -327,7 +347,9 @@
     const e = a.explicacao, b = a.blocos || {}, out = [];
     if (e && e.do_que_trata) out.push(`<section class="xb"><h2>Do que trata</h2><p>${esc(e.do_que_trata)}</p></section>`);
     if (e && e.o_que_muda.length) out.push(`<section class="xb"><h2>O que muda</h2><ul class="xb-ul">${e.o_que_muda.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></section>`);
-    if (b.votacao && b.votacao.por_partido.length) out.push(`<section class="xb"><h2>Como votaram os partidos</h2>${voteTable(b.votacao)}</section>`);
+    if (b.lei && autorTxt(b.lei)) out.push(`<section class="xb"><h2>Quem apresentou</h2><p>${esc(autorTxt(b.lei))}${b.lei.tipo && b.lei.numero ? ` · ${esc(b.lei.tipo)} ${esc(b.lei.numero)}${b.lei.legislatura ? "/" + esc(b.lei.legislatura) : ""}` : ""}</p></section>`);
+    if (b.votacao && (b.votacao.por_partido.length || b.votacao.unanime)) out.push(`<section class="xb"><h2>Como votaram os partidos</h2>${voteTable(b.votacao)}</section>`);
+    if (b.votacoes_anteriores && b.votacoes_anteriores.length) out.push(`<section class="xb"><h2>Votações anteriores</h2>${earlierBlock(b.votacoes_anteriores)}</section>`);
     if (b.intervencoes && b.intervencoes.length) out.push(`<section class="xb"><h2>O que disseram os deputados</h2><div class="quotes">${b.intervencoes.map((q) => `<figure class="qc"><blockquote>«${esc(q.excerto)}»</blockquote><figcaption><b>${esc(q.deputado)}</b>${q.partido ? ` (${esc(q.partido)})` : ""}${q.data ? ` · ${pd(q.data)}` : ""}${q.rota ? ` <a href="${esc(q.rota)}">ver a intervenção completa</a>` : ""}</figcaption></figure>`).join("")}</div></section>`);
     return out.join("");
   };
@@ -354,7 +376,7 @@
     $app.innerHTML = `<div class="ed"><div class="progress" id="prog"></div>
       <div class="art-wrap"><div class="art-nav"><a href="${edHash(a.data)}">‹ Voltar à edição de ${pd(a.data)}</a><div><button class="btn-ed" id="fs-" aria-label="Diminuir letra">A−</button><button class="btn-ed" id="fs+" aria-label="Aumentar letra">A+</button></div></div>
       <header class="art-head"><span class="kick">${esc(a.secao_titulo)}</span><h1>${esc(a.titulo)}</h1><p class="dek">${esc(a.lead)}</p>
-        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div>${leiBtn(a.blocos) ? `<p class="lei-cta">${leiBtn(a.blocos)}${a.blocos.lei.titulo ? `<span>${esc(cutTxt(a.blocos.lei.titulo, 110))}</span>` : ""}</p>` : ""}</header>
+        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div>${leiBtn(a.blocos) ? `<p class="lei-cta">${leiBtn(a.blocos)}${autorTxt(a.blocos.lei) ? `<b class="autor-t">${esc(autorTxt(a.blocos.lei))}</b>` : ""}${a.blocos.lei.titulo ? `<span>${esc(cutTxt(a.blocos.lei.titulo, 110))}</span>` : ""}</p>` : ""}</header>
       <div class="art-grid"><aside class="ficha"><h4>Ficha</h4><dl><dt>Modelo</dt><dd>${esc(a.modelo)}</dd><dt>Revisão</dt><dd>${esc(a.revisor || "—")}</dd>${conf ? `<dt>Confiança</dt><dd>${conf}</dd>` : ""}<dt>Estado</dt><dd>Verificado e publicado</dd>${a.entidades.length ? `<dt>Entidades</dt><dd>${a.entidades.map(esc).join(", ")}</dd>` : ""}</dl>${nums.length ? `<h4>Números citados</h4><ul class="nc">${nums.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</aside>
       <div class="art-body">${explBlocks(a)}${a.pontos_chave.length ? `<div class="flags ia-key"><b>Pontos-chave</b><ul>${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
         ${a.paragraphs.map((p, k) => `<p class="${k === 0 ? "first" : ""}">${esc(p)}</p>`).join("")}

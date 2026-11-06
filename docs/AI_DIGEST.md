@@ -32,6 +32,14 @@ Events that come from Parliament (`votacoes`, `intervencoes`, `iniciativas`, `vo
 
 `blocos` is built by code, never by a model, saved as `blocos.json` in the bundle and copied into the article: `lei {titulo,tipo,numero,legislatura,autor,rota,texto_url}`, `votacao {data,resultado,por_partido[{partido,voto,lugares}],totais{favor,contra,abstencao}}`, `intervencoes[{id,deputado,partido,data,excerto,rota}]` (at most 6, `excerto` a verbatim substring of at most 280 characters after the salutation). `rota` is `#/votacoes/<bid>`. Both columns live in `artigos_ia` (`blocos`, `explicacao`, added by `migrations.ensure_artigos_ia`; `diario_ia.py` also ensures them).
 
+## Parliament evidence (0.3.7)
+
+- Unanimous plenary votes (`unanime=1`, no contra or abstention rows) are expanded to every parliamentary group with seats as `favor`, except groups recorded as absent or split; totals are the seat sums (e.g. 229 with one absent seat out of 230). `blocos.votacao.unanime` and `facts.lei.votacoes[].unanimidade_expandida` flag it.
+- `blocos.votacoes_anteriores` lists the earlier votes of the initiative (committee, generalidade, avocacao; at most 8) with date, phase, body, result and party senses. The verifier accepts a vote claim that contradicts the main vote only when the sentence names the phase or date of an earlier vote that matches it.
+- Initiative text order: DRE text, DRE PDF, then parliament annexes `Texto Final`, `Texto de Substituicao`, `Texto Inicial` (PDF, host `app.parlamento.pt`, robots respected, at most 4 attempts), then the `DetalheIniciativa` page as last resort with a 12 s timeout. `texto_origem` names the document.
+- Annex links are not in the open-data listing: they are on each initiative detail page (`webutils/docs/doc.pdf?path=...` links for the initial text, phase attachments and committee documents). `ingest/jobs/votacoes.py` stores them in `iniciativa_anexos(bid, nome, tipo, url)` for every new or updated initiative; `python3 ingest/jobs/votacoes.py --anexos [--since DAYS]` backfills from the cached detail pages and fetches only the uncached ones (deadline and `parcial` semantics as in the incremental mode).
+- Honesty check: the verifier rejects (`alega_falta_de_dados_existentes`) phrases such as "nao ha dados", "sem dados", "nao existem votacoes", "nao ha registo de votacao", "dados disponiveis nao incluem" and "nao foi possivel apurar" when votes, speeches or phases exist in the bundle.
+
 ## Verifier
 
 `ops/ai/verify.py` is code, not a model. It checks:

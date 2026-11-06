@@ -460,6 +460,64 @@ def parse_detail(t):
     return d
 
 
+ANCHOR = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.S | re.I)
+DOC_HREF = re.compile(r'href="([^"]*webutils/docs/doc\.(?:pdf|docx)\?[^"]*)"', re.I)
+DOC_ID = re.compile(r'id="([^"]*?)(_hplDocumentoPDF|_hplDocumentoDOC|_hlDocumentos)"', re.I)
+
+
+def anexo_tipo(nome):
+    n = norm(nome)
+    if "texto final" in n:
+        return "texto_final"
+    if re.search(r"texto (de )?substitui|texto substitutivo", n):
+        return "texto_substituicao"
+    if "texto inicial" in n:
+        return "texto_inicial"
+    if "nota tecnica" in n:
+        return "nota_tecnica"
+    return "outro"
+
+
+def parse_anexos(t):
+    """-> [(nome, tipo, url)] from the detail page: the initial text, every phase attachment and every committee document."""
+    groups = {}
+    for m in ANCHOR.finditer(t):
+        attrs = m.group(1)
+        i, h = DOC_ID.search(attrs), DOC_HREF.search(attrs)
+        if not i or not h:
+            continue
+        url = html.unescape(h.group(1))
+        prefix, kind = i.group(1), i.group(2).lower()
+        if kind == "_hlDocumentos".lower():
+            nome, tipo = clean(m.group(2)), None
+            key = (prefix, "doc")
+        else:
+            tm = re.search(r'id="%s_lblDocumentoTitulo"[^>]*>(.*?)</' % re.escape(prefix), t, re.S)
+            nome = clean(tm.group(1)) if tm else ""
+            tipo = "texto_inicial" if prefix.endswith("ucLinkDocumento") else None
+            if tipo:
+                nome = "Texto Inicial"
+            key = (prefix, "link")
+        cur = groups.get(key)
+        if cur is None or (url.find("doc.pdf") >= 0 and cur[2].find("doc.pdf") < 0):
+            groups[key] = (nome, tipo or anexo_tipo(nome), url)
+    out, seen = [], set()
+    for nome, tipo, url in groups.values():
+        if nome and (nome, url) not in seen:
+            seen.add((nome, url))
+            out.append((nome, tipo, url))
+    return out
+
+
+def store_anexos(con, bid, t):
+    con.execute("DELETE FROM iniciativa_anexos WHERE bid=?", (bid,))
+    rows = parse_anexos(t)
+    for nome, tipo, url in rows:
+        con.execute("INSERT OR IGNORE INTO iniciativa_anexos (bid, nome, tipo, url) VALUES (?,?,?,?)", (bid, nome, tipo, url))
+    con.execute("UPDATE iniciativas SET anexos_at = ? WHERE bid = ?", (now(), bid))
+    return len(rows)
+
+
 # ---------------------------------------------------------------- derived status
 def norm(s):
     s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode().lower()
@@ -688,6 +746,41 @@ def link_dre(con):
 
 
 # ---------------------------------------------------------------- main
+def backfill_anexos(con, client):
+    """Attachment links live on the detail page (the listing has none): re-parse the cached pages and fetch only the uncached ones."""
+    where, args = "anexos_at IS NULL", []
+    if SINCE:
+        where += " AND COALESCE(data_ultima, '') >= ?"
+        args.append(cutoff(SINCE))
+    bids = [r[0] for r in con.execute(f"SELECT bid FROM iniciativas WHERE {where} ORDER BY bid DESC", args)]
+    n = fetched = 0
+    stopped = None
+    for bid in bids:
+        t = cache_get(f"ini_{bid}")
+        if t is None:
+            if OFFLINE:
+                continue
+            try:
+                t = client.fetch(DET_URL + str(bid))
+                if "rptFases" not in t and "lblTitulo" not in t:
+                    raise RuntimeError("no initiative content")
+                cache_put(f"ini_{bid}", t)
+                fetched += 1
+            except Budget as e:
+                stopped = str(e)
+                break
+            except Exception as e:
+                print(f"detail {bid} failed: {e}", flush=True)
+                continue
+        store_anexos(con, bid, t)
+        n += 1
+        if n % 100 == 0:
+            con.commit()
+    con.commit()
+    print(f"anexos: {n} initiatives processed ({fetched} fetched, {len(bids) - n} pending){' stopped: ' + stopped if stopped else ''}", flush=True)
+    return stopped
+
+
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(f"file:{DB}", uri=True, timeout=60)
@@ -696,6 +789,13 @@ def main():
     migrations.ensure_votacoes(con)
     client = Client()
     stopped = None
+    if "--anexos" in sys.argv[1:]:
+        stopped = backfill_anexos(con, client)
+        con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", ("anexos_updated_at", now()))
+        con.commit()
+        if SINCE:
+            report(con.execute("SELECT MAX(data_ultima) FROM iniciativas").fetchone()[0], parcial=bool(stopped) or client.errors > 0)
+        return
     print(f"votacoes: deadline {int(DEADLINE_S)}s, connect/read timeouts, {TRIES} tries per request", flush=True)
     # 1. listings
     for leg in LEGS:
@@ -728,6 +828,7 @@ def main():
         bid, tipo, numero, sessao, autoria, titulo, leg, code = row
         try:
             store(con, bid, (bid, tipo, numero, sessao, autoria, titulo), parse_detail(t), leg, code, fetched)
+            store_anexos(con, bid, t)
             n_ok += 1
         except Exception as e:
             n_fail += 1

@@ -22,6 +22,11 @@ LISTA_CAP = 200
 BLOCO_SPEECHES = 6
 MIN_WORDS = 60
 EXCERTO_MAX = 280
+MAX_EARLIER = 8
+MAX_ANEXOS = 30
+ANEXO_ORDEM = (("texto_final", "Texto Final"), ("texto_substituicao", "Texto de Substituição"), ("texto_inicial", "Texto Inicial"))
+MAX_ANEXO_TRIES = 4
+PAGE_TIMEOUT_S = 12
 SALUDO = re.compile(r"^(?:Sr|Sra|Srs|Sras|Sr\.as|Exm|Ex\.|Caros?|Caras?|Muito\s+(?:bom|boa|obrigad)|Presidente|Ministr|Secret|Deputad|Vice|Boa)", re.I)
 ABREV = {"sr", "sra", "srs", "sras", "dr", "dra", "exm", "exma", "prof", "art", "n", "al", "cf", "pp", "p", "ex"}
 PDF_LINK = re.compile(r"""href=["']([^"']*webutils/docs/doc\.pdf\?[^"']*)["']""", re.I)
@@ -77,7 +82,7 @@ def rota_ini(key, bid):
 
 
 def empty_blocos():
-    return {"lei": None, "votacao": None, "intervencoes": []}
+    return {"lei": None, "votacao": None, "votacoes_anteriores": [], "intervencoes": []}
 
 
 def entity_bid(row):
@@ -157,6 +162,12 @@ def seats(vcon, leg):
     return out
 
 
+def vote_bloco(v):
+    return {"data": v["data"], "fase": v["fase"], "orgao": v["orgao"], "resultado": v["resultado"], "unanime": bool(v["unanime"]),
+            "por_partido": [{"partido": r["partido"], "voto": r["sentido"], "lugares": r["lugares"]} for r in v["por_partido"]],
+            "totais": {"favor": v["totais"]["favor"], "contra": v["totais"]["contra"], "abstencao": v["totais"]["abstencao"]}}
+
+
 def plenary_votes(vcon, bid, seat_map, main_id):
     out = []
     for v in q(vcon, "SELECT * FROM votos WHERE bid=? ORDER BY data, id", (bid,)):
@@ -164,11 +175,18 @@ def plenary_votes(vcon, bid, seat_map, main_id):
         gp = q(vcon, "SELECT partido, sentido FROM voto_partido WHERE voto_id=? AND kind=?", (v["id"], "gp"))
         split = sorted({r["partido"] for r in q(vcon, "SELECT partido FROM voto_partido WHERE voto_id=? AND kind IN (?,?)", (v["id"], "dividido", "parcial"))} - {r["partido"] for r in gp})
         rows = [{"partido": r["partido"], "sentido": r["sentido"], "lugares": seat_map.get(pk(r["partido"]))} for r in gp]
+        expandido = False
+        if plen and v["unanime"] and seat_map and not any(r["sentido"] in ("contra", "abstencao") for r in rows):
+            have = {pk(r["partido"]) for r in rows} | {pk(p) for p in split}
+            for code, n in sorted(seat_map.items(), key=lambda kv: -kv[1]):
+                if n > 0 and code not in have:
+                    rows.append({"partido": code, "sentido": "favor", "lugares": n})
+                    expandido = True
         rows.sort(key=lambda r: (-(r["lugares"] or 0), r["partido"]))
         known = plen and bool(rows) and all(r["lugares"] is not None for r in rows)
         tot = {s: (sum(r["lugares"] for r in rows if r["sentido"] == s) if known else None) for s in SENSOS}
         listas = {s: str(v[s])[:LISTA_CAP] for s in SENSOS if v.get(s)}
-        out.append({"id": v["id"], "data": v["data"], "fase": v["fase"], "orgao": v.get("orgao"), "resultado": v["resultado"], "unanime": v["unanime"],
+        out.append({"id": v["id"], "data": v["data"], "fase": v["fase"], "orgao": v.get("orgao"), "resultado": v["resultado"], "unanime": bool(v["unanime"]), "unanimidade_expandida": expandido,
                     "por_partido": rows, "partidos_divididos": split, "totais": tot, "listas": listas})
     plenary = [v for v in out if v["orgao"] == "Plenário"]
     main = next((v for v in plenary if v["id"] == main_id), None)
@@ -281,6 +299,7 @@ def _build_lei(row):
                                "resultado_final": ini.get("resultado_final"), "data_votacao_final": ini.get("data_votacao_final"),
                                "lei_ref": ini.get("lei_ref"), "dr_ref": ini.get("dr_ref"), "dr_date": ini.get("dr_date"), "rota": rota, "url": ini.get("source_url")}
         facts["fases"] = fases
+        facts["anexos"] = [{"nome": a["nome"], "tipo": a["tipo"]} for a in q(vcon, "SELECT nome, tipo FROM iniciativa_anexos WHERE bid=? ORDER BY rowid", (bid,))][:MAX_ANEXOS]
         votes, main = plenary_votes(vcon, bid, seats(vcon, ini.get("leg")), vote_id)
         facts["votacoes"] = votes[-FACT_VOTES:]
         facts["votacao_principal"] = main["id"] if main else None
@@ -297,11 +316,12 @@ def _build_lei(row):
         facts["intervencoes"] = [{"id": s["id"], "orador": s["orador"], "partido": s["partido"], "cargo": s["cargo"], "tipo": s.get("kind"), "data": s["data"],
                                   "rota": rota, "source_url": s.get("source_url"), "detalhe": (s["texto"] or "")[:SPEECH_CAP]} for s in shown]
         blocos["lei"] = {"titulo": ini.get("titulo"), "tipo": ini.get("tipo"), "numero": ini.get("numero"), "legislatura": ini.get("leg"),
-                         "autor": ini.get("autoria"), "rota": rota, "texto_url": None}
+                         "autor": ini.get("autoria"), "origem": ini.get("origem"), "rota": rota, "texto_url": None}
         if main:
-            blocos["votacao"] = {"data": main["data"], "resultado": main["resultado"],
-                                 "por_partido": [{"partido": r["partido"], "voto": r["sentido"], "lugares": r["lugares"]} for r in main["por_partido"]],
-                                 "totais": {"favor": main["totais"]["favor"], "contra": main["totais"]["contra"], "abstencao": main["totais"]["abstencao"]}}
+            blocos["votacao"] = vote_bloco(main)
+            mi = votes.index(main)
+            earlier = [v for v in votes[:mi] if v["por_partido"] or v["resultado"]]
+            blocos["votacoes_anteriores"] = [vote_bloco(v) for v in earlier[-MAX_EARLIER:]]
         for s, ex in picked:
             blocos["intervencoes"].append({"id": s["id"], "deputado": s["orador"], "partido": s["partido"] or "", "data": s["data"], "excerto": ex, "rota": rota})
     if act:
@@ -323,7 +343,7 @@ def _build_lei(row):
 
 def pdf_link(page_url, cfg, workdir):
     tmp = workdir / "pagina.tmp"
-    slow = dict(cfg, pdf=dict(cfg["pdf"], timeout_s=max(60, cfg["pdf"]["timeout_s"])))
+    slow = dict(cfg, pdf=dict(cfg["pdf"], timeout_s=min(PAGE_TIMEOUT_S, cfg["pdf"]["timeout_s"])))
     try:
         if not fetch_pdf.download(page_url, slow, tmp):
             return None
@@ -353,22 +373,34 @@ def _fetch_law_text(facts, cfg, workdir):
         t = (one(db("dre"), "SELECT text FROM acts WHERE id=?", (dre["id"],)) or {}).get("text") or ""
         if t.strip():
             return re.sub(r"\n{3,}", "\n\n", t)[:cap], "dre.db", dre.get("url") or dre.get("pdf_url")
-    cands = []
-    if dre.get("pdf_url"):
-        cands.append(("dre", dre["pdf_url"]))
     ini = facts.get("iniciativa") or {}
-    if ini.get("url"):
-        cands.append(("parlamento", ini["url"]))
-    for kind, url in cands:
-        target = url
-        if kind == "parlamento":
-            target = pdf_link(url, cfg, workdir)
-            if not target:
-                continue
-        t = fetch_pdf.fetch_text(target, cfg, workdir)
+    if dre.get("pdf_url"):
+        t = fetch_pdf.fetch_text(dre["pdf_url"], cfg, workdir)
         if t.strip():
-            return t[:cap], kind, target
+            return t[:cap], "dre", dre["pdf_url"]
+    tries = 0
+    for tipo, label in ANEXO_ORDEM:
+        for a in annex_urls(ini.get("bid"), tipo):
+            if tries >= MAX_ANEXO_TRIES:
+                break
+            tries += 1
+            t = fetch_pdf.fetch_text(a["url"], cfg, workdir)
+            if t.strip():
+                return t[:cap], f"anexo do Parlamento: {a['nome'] or label}", a["url"]
+    if ini.get("url"):
+        target = pdf_link(ini["url"], cfg, workdir)
+        if target:
+            t = fetch_pdf.fetch_text(target, cfg, workdir)
+            if t.strip():
+                return t[:cap], "parlamento", target
     return "", None, None
+
+
+def annex_urls(bid, tipo):
+    if not bid:
+        return []
+    rows = q(db("votacoes"), "SELECT nome, url FROM iniciativa_anexos WHERE bid=? AND tipo=? ORDER BY rowid DESC", (bid, tipo))
+    return [r for r in rows if "doc.pdf" in (r["url"] or "")]
 
 
 def apply_text(bdir, ctx_cfg):

@@ -58,6 +58,12 @@ def expl_items(e):
 
 QUOTE = re.compile(r"«([^»]{3,})»|“([^”]{3,})”|\"([^\"]{3,})\"")
 NOTEXT = "o texto da iniciativa nao estava disponivel"
+SEM_DADOS = re.compile(
+    r"\bnao\s+(?:ha|existem?|constam?)\s+(?:dados|informacao|informacoes|votacoes|votacao|registos?|intervencoes|debate)\b"
+    r"|\bnao\s+ha\s+(?:votacao|votacoes|intervencoes)\s+registad[ao]s?"
+    r"|\bnao\s+foi\s+possivel\s+(?:apurar|determinar)"
+    r"|\bsem\s+(?:dados|informacao|informacoes)\b"
+    r"|\bdados\s+disponiveis\s+nao\s+(?:incluem|contem|indicam|mostram|permitem)", re.I)
 
 
 def fold(s):
@@ -510,6 +516,31 @@ def ent_list(art):
     return out
 
 
+VOTE_STOP = {"votacao", "plenario", "aprovado"}
+
+
+def earlier_vote_ok(p, d, sent, earlier):
+    f = fold(sent)
+    for ant in earlier:
+        if (party_key(p), d) not in {(party_key(r["partido"]), r["voto"]) for r in ant.get("por_partido", [])}:
+            continue
+        words = {w for w in toks(ant.get("fase") or "").split() if len(w) >= 6 and w not in VOTE_STOP}
+        data = str(ant.get("data") or "")
+        long_date = ""
+        if ISO.fullmatch(data):
+            y, m, dd = data.split("-")
+            long_date = f"{int(dd)} de {MESES[int(m) - 1]}"
+        if any(w in f for w in words) or (data and data in f) or (long_date and long_date in f):
+            return True
+    return False
+
+
+def blocos_com_dados(blocos):
+    b = blocos or {}
+    v = b.get("votacao") or {}
+    return bool(v.get("por_partido") or v.get("resultado") or b.get("votacoes_anteriores") or b.get("intervencoes"))
+
+
 def vote_claims(blob):
     claims = []
     for sent in re.split(r"(?<=[.!?])\s+|\n", blob):
@@ -530,7 +561,7 @@ def vote_claims(blob):
             before = next((v for _, k, v in reversed(ev[:i]) if k == "dir"), None)
             d = after or before
             if d:
-                claims.append((val, d, sent.strip()[:80]))
+                claims.append((val, d, sent.strip()))
     return claims
 
 
@@ -581,6 +612,10 @@ def _verify(art, bdir, cfg):
                 problems.append(f"evidencia_nao_literal:{t[:40]}")
             if "segundo" not in fold(t):
                 problems.append(f"o_que_muda_sem_atribuicao:{t[:40]}")
+    if lei and (blocos_com_dados(blocos) or lei.get("fases") or lei.get("votacoes") or lei.get("intervencoes")):
+        hit = SEM_DADOS.search(fold(blob))
+        if hit:
+            problems.append(f"alega_falta_de_dados_existentes:{ws(hit.group(0))[:60]}")
     if blocos is not None and "blocos" in art and art.get("blocos") != blocos:
         problems.append("blocos_alterados")
     if blocos and blocos.get("intervencoes"):
@@ -699,16 +734,18 @@ def _verify(art, bdir, cfg):
                 continue
         problems.append(f"nome_sem_suporte:{' '.join(words)}")
     claims = vote_claims(blob)
+    earlier = []
     if claims:
         table = {(party_key(p), s) for p, s in ev["votes"]}
         if blocos and blocos.get("votacao"):
             table = {(party_key(r["partido"]), r["voto"]) for r in blocos["votacao"].get("por_partido", [])}
+            earlier = blocos.get("votacoes_anteriores") or []
         if not table:
             table = text_votes(ev["struct"] + "\n" + ev["texto"])
         for p, d, s in claims:
             if not table:
                 problems.append(f"voto_sem_tabela:{p}")
-            elif (party_key(p), d) not in table:
+            elif (party_key(p), d) not in table and not earlier_vote_ok(p, d, s, earlier):
                 problems.append(f"voto_incoerente:{p}:{d}")
     for f in art.get("fontes", []):
         if f.get("href") not in allowed:

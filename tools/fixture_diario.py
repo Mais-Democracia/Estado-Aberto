@@ -91,11 +91,35 @@ def main():
                     {"id": "9003", "deputado": "Deputado Exemplo Três", "partido": "IL", "data": prev, "excerto": "Abstemo-nos: concordamos com o princípio fictício, mas o prazo de 180 dias parece-nos irrealista.", "rota": "#/votacoes/102"}]}),
             json.dumps({"do_que_trata": "A lei sintética obriga as entidades públicas de exemplo a publicar as suas contas todos os trimestres, num formato aberto e acessível a qualquer pessoa.", "o_que_muda": ["As contas passam a ser publicadas de três em três meses, e não apenas uma vez por ano.", "Os dados ficam disponíveis em formato aberto, sem necessidade de pedido.", "As entidades têm 180 dias para se adaptar."]}),
         )
+        CIDADAOS = (
+            "Parlamento aprova por unanimidade iniciativa sintética de cidadãos sobre a carreira dos professores",
+            "Uma iniciativa legislativa de cidadãos fictícia foi aprovada por unanimidade na votação final global de teste, depois de o PSD ter votado contra na generalidade.",
+            "A iniciativa legislativa de cidadãos de teste propõe corrigir o posicionamento dos docentes na carreira.\n\nNa votação na generalidade de teste, o PSD votou contra e dois partidos abstiveram-se; na votação final global todos os grupos parlamentares presentes votaram a favor.\n\nO texto aguarda promulgação, segundo os dados de teste.",
+            ids["parlamento"][6:9],
+            json.dumps({
+                "lei": {"titulo": "Projeto de Lei sintético 285/XVII — Reposicionamento na carreira docente", "tipo": "Projeto de Lei", "numero": "285", "legislatura": "XVII", "autor": "Cidadãos", "origem": "Cidadãos", "rota": "#/votacoes/103", "texto_url": "https://example.org/texto/285"},
+                "votacao": {"data": ds, "fase": "Votação final global", "orgao": "Plenário", "unanime": True, "resultado": "Aprovado por unanimidade", "por_partido": [
+                    {"partido": "PSD", "voto": "favor", "lugares": 89}, {"partido": "CH", "voto": "favor", "lugares": 60}, {"partido": "PS", "voto": "favor", "lugares": 58},
+                    {"partido": "IL", "voto": "favor", "lugares": 9}, {"partido": "L", "voto": "favor", "lugares": 6}, {"partido": "PCP", "voto": "favor", "lugares": 3},
+                    {"partido": "CDS-PP", "voto": "favor", "lugares": 2}, {"partido": "BE", "voto": "favor", "lugares": 1}, {"partido": "JPP", "voto": "favor", "lugares": 1}, {"partido": "PAN", "voto": "ausente", "lugares": 1}],
+                    "totais": {"favor": 229, "contra": 0, "abstencao": 0}},
+                "votacoes_anteriores": [
+                    {"data": prev, "fase": "Votação na generalidade", "orgao": "Plenário", "unanime": False, "resultado": "Aprovado", "por_partido": [
+                        {"partido": "CH", "voto": "favor", "lugares": 60}, {"partido": "PS", "voto": "favor", "lugares": 58}, {"partido": "L", "voto": "favor", "lugares": 6}, {"partido": "PCP", "voto": "favor", "lugares": 3},
+                        {"partido": "BE", "voto": "favor", "lugares": 1}, {"partido": "PAN", "voto": "favor", "lugares": 1}, {"partido": "JPP", "voto": "favor", "lugares": 1}, {"partido": "PSD", "voto": "contra", "lugares": 89},
+                        {"partido": "IL", "voto": "abstencao", "lugares": 9}, {"partido": "CDS-PP", "voto": "abstencao", "lugares": 2}],
+                        "totais": {"favor": 130, "contra": 89, "abstencao": 11}},
+                    {"data": prev, "fase": "Baixa à comissão", "orgao": "Comissão", "unanime": True, "resultado": "Aprovado por unanimidade", "por_partido": [], "totais": {"favor": 0, "contra": 0, "abstencao": 0}}],
+                "intervencoes": [
+                    {"id": "9011", "deputado": "Deputado Exemplo Quatro", "partido": "PSD", "data": prev, "excerto": "O PSD acompanha o objetivo fictício, mas reserva a sua posição quanto ao custo orçamental de teste.", "rota": "#/votacoes/103"}]}),
+            json.dumps({"do_que_trata": "A iniciativa legislativa de cidadãos de teste pede que o tempo de serviço dos professores seja contado de forma justa no posicionamento na carreira.", "o_que_muda": ["O tempo de serviço de teste passaria a contar para o posicionamento na carreira."]}),
+        )
         arts = [
             ("Parlamento aprova pacote sintético de medidas", "O plenário de teste aprovou ontem um pacote de medidas fictícias, com votos a favor de dois grupos.", "Primeiro parágrafo curto.\n\nSegundo parágrafo curto com um número: 42 votos.", ids["parlamento"][:3], None, None),
             ("Auditoria sintética aponta falhas em entidade de exemplo", "Uma auditoria fictícia identificou três falhas de controlo numa entidade de exemplo.", "A auditoria sintética descreve as falhas.\n\nAs recomendações constam do relatório de teste.", ids["fiscalizacao"][:2], None, None),
             ("Dossier extenso de teste sobre contratação fictícia", "Um dossier longo, inteiramente sintético, para testar corpos extensos e a quebra de linhas em ecrãs pequenos.", longo, ids["dinheiro"][:3] + ids["poder-local"][:1], None, None),
             LEI,
+            CIDADAOS,
         ]
         for n, (tit, lead, corpo, evs, blocos, expl) in enumerate(arts, 1):
             aid = (k * 10) + n

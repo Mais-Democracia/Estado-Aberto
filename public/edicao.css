@@ -385,6 +385,20 @@ html:root[data-theme="dark"] .btn-lei:hover, html:root[data-theme="dark"] .btn-l
 .vchip { display: inline-block; padding: 3px 8px; font: 700 .76rem var(--sans); white-space: nowrap; }
 .vt-b { display: flex; align-items: center; gap: 8px; }
 .vt-b i { display: block; height: 14px; }
+.vt-una { margin: 0 0 10px; font: .88rem/1.5 var(--sans); }
+.vt-una .vchip { margin-right: 6px; }
+.autor-t { font: 800 .72rem var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--ed-ink); border: 1px solid var(--ed-ink); padding: 3px 8px; }
+.vt-tl { list-style: none; margin: 0; padding: 0 0 0 14px; border-left: 2px solid var(--ed-hair); }
+.vt-tl li { position: relative; margin: 0 0 14px; padding-left: 12px; font: .88rem/1.45 var(--sans); }
+.vt-tl li::before { content: ""; position: absolute; left: -21px; top: .45em; width: 10px; height: 10px; background: var(--ed-paper); border: 2px solid var(--ed-ink); border-radius: 50%; }
+.vt-tl .vt-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.vt-tl time { font-weight: 800; }
+.vt-tl .vt-o, .vt-tl small { color: var(--ed-mute); }
+.vt-tl .vt-r { font-weight: 700; color: var(--ed-ink2); }
+.vt-tl p { margin: 4px 0 0; font-size: .88rem; }
+.vt-gr { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.vg i { display: inline-block; width: 1.3em; text-align: center; font-style: normal; margin-right: 4px; }
+.vg b { margin-right: 4px; }
 .quotes { display: grid; gap: 12px; }
 .qc { margin: 0; padding: 12px 16px; border-left: 4px solid var(--ed-red); background: var(--ed-hi); }
 .qc blockquote { margin: 0 0 8px; font: italic 1.04rem/1.55 var(--text); }
