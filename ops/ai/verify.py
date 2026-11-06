@@ -9,11 +9,15 @@ from lib import INJ
 
 MESES = ["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
 ISO = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
-LONG = re.compile(r"\b(\d{1,2})\s+de\s+(" + "|".join(MESES) + r")(?:\s+de\s+(\d{4}))?\b", re.I)
+LONG = re.compile(r"\b(\d{1,2})(?:\.?o)?\s+(?:de\s+)?(" + "|".join(MESES) + r")(?:\s+de\s+(\d{4}))?\b", re.I)
+SAME_YEAR = re.compile(r"\s+(?:desse|deste|do\s+mesmo)\s+ano\b")
+YEAR = re.compile(r"\b((?:19|20)\d{2})\b")
 SLASH = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 URL = re.compile(r"https?://|www\.|\b[\w-]+\.(?:pt|com|org|eu|gov|net)\b", re.I)
 FIRST = re.compile(r"\b(eu|nós|nos sentimos|meu|minha|meus|minhas|nosso|nossa|nossos|nossas|penso|acho|creio|acredito|acreditamos|parece-me|na minha opinião)\b", re.I)
 WORD = re.compile(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*")
+WORDC = re.compile(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*|,")
+LINK = {"de", "da", "do", "das", "dos", "e", "sobre", "para"}
 CONNECT = {"de", "da", "do", "das", "dos"}
 TAGS = re.compile(r"</?\s*(?:fonte_nao_confiavel|rascunho_nao_confiavel)\s*>", re.I)
 STOP = {"o", "a", "os", "as", "um", "uma", "uns", "umas", "em", "no", "na", "nos", "nas", "segundo", "para", "com", "por", "sobre", "ao", "aos", "à", "às", "pelo", "pela", "este", "esta", "estes", "estas", "esse", "essa", "foi", "são", "é", "se", "mas", "como", "quando", "apos", "após", "entre", "durante", "ate", "até", "e", "ou", "que", "dos", "das"}
@@ -123,14 +127,26 @@ def dates(text):
     out = set()
     for m in ISO.finditer(text):
         out.add((int(m[1]), int(m[2]), int(m[3])))
-    for m in LONG.finditer(fold(text)):
-        out.add((int(m[3]) if m[3] else None, MESES.index(m[2].lower()) + 1, int(m[1])))
+    f = fold(text)
+    for m in LONG.finditer(f):
+        y = int(m[3]) if m[3] else None
+        if not m[3] and SAME_YEAR.match(f, m.end()):
+            prev = YEAR.findall(f[max(0, m.start() - 400):m.start()].rpartition("\n")[2])
+            if prev:
+                y = int(prev[-1])
+        out.add((y, MESES.index(m[2].lower()) + 1, int(m[1])))
     for m in SLASH.finditer(text):
         out.add((int(m[3]), int(m[2]), int(m[1])))
     return out
 
 
 def strip_dates(text):
+    f = fold(text)
+    if len(f) == len(text):
+        chars = list(text)
+        for m in LONG.finditer(f):
+            chars[m.start():m.end()] = " " * (m.end() - m.start())
+        text = "".join(chars)
     for rx in (ISO, LONG, SLASH):
         text = rx.sub(" ", text)
     return text
@@ -295,7 +311,7 @@ def load_evidence(bdir):
 def name_runs(text, commons):
     out = []
     for sent in re.split(r"(?<=[.!?:;])\s+|\n|«", text):
-        toks_ = [t.group(0) for t in WORD.finditer(sent)]
+        toks_ = [t.group(0) for t in WORDC.finditer(sent)]
         run = []
         runs = []
         for i, w in enumerate(toks_):
@@ -317,6 +333,42 @@ def name_runs(text, commons):
                 continue
             out.append({"words": words, "start": r[0][0] == 0})
     return out
+
+
+def evidence_phrases(text, prefixes):
+    out = set()
+    pre = set(prefixes)
+    for sent in re.split(r"(?<=[.!?:;])\s+|\n|«", text):
+        t = [m.group(0) for m in WORDC.finditer(sent)]
+        for i, w in enumerate(t):
+            if w not in pre:
+                continue
+            j = i + 1
+            while j < len(t):
+                if t[j][0].isupper() and t[j].lower() not in STOP:
+                    j += 1
+                elif t[j].lower() in LINK and j + 1 < len(t) and t[j + 1][0].isupper() and t[j + 1].lower() not in STOP:
+                    j += 2
+                else:
+                    break
+            out.add(" " + toks(" ".join(t[i:j])) + " ")
+    return out
+
+
+def office_near(tokens_text, key, cargo_key):
+    ws_ = tokens_text.split()
+    k = key.split()
+    before, after = len(cargo_key.split()) + 3, len(cargo_key.split()) + 1
+    for i in range(len(ws_) - len(k) + 1):
+        if ws_[i:i + len(k)] == k:
+            win = " " + " ".join(ws_[max(0, i - before):i + len(k) + after]) + " "
+            if f" {cargo_key} " in win:
+                return True
+    return False
+
+
+def mentions(tokens_text, key):
+    return f" {key} " in " " + tokens_text + " "
 
 
 def cap_mid(struct):
@@ -430,6 +482,12 @@ def _verify(art, bdir, cfg):
         if not supported(q, evq | dset):
             problems.append(f"numero_sem_suporte:{q[0]}:{q[1]}")
     for s in art.get("numeros_citados", []):
+        ds = dates(str(s))
+        if ds and not quantities(strip_dates(str(s))):
+            for d in sorted(ds, key=str):
+                if not date_ok(d, fdates, ev["ref_year"]):
+                    problems.append(f"data_sem_suporte:{d}")
+            continue
         qs = quantities(strip_dates(str(s)))
         if len(qs) != 1:
             problems.append(f"numero_citado_invalido:{str(s)[:30]}")
@@ -440,7 +498,11 @@ def _verify(art, bdir, cfg):
         span = ws(next(g for g in m.groups() if g))
         if span not in ev["coll"]:
             problems.append(f"citacao_nao_literal:{span[:40]}")
+    blob0 = blob
     commons = set(cfg.get("nomes_comuns", []))
+    publicas = {toks(x) for x in cfg.get("instituicoes_publicas", [])}
+    for c in sorted(cfg.get("instituicoes_publicas", []), key=len, reverse=True):
+        blob = re.sub(r"(?<!\w)" + re.escape(c) + r"(?!\w)", " ", blob, flags=re.I)
     for c in sorted((c for c in commons if " " in c), key=len, reverse=True):
         blob = re.sub(re.escape(c), " ", blob, flags=re.I)
     ents = ent_list(art)
@@ -448,21 +510,34 @@ def _verify(art, bdir, cfg):
     st, tx = " " + toks(ev["struct"]) + " ", " " + toks(ev["texto"]) + " "
     cargos = [fold(c) for c in cfg.get("cargos_publicos", [])]
     for key, e in declared.items():
-        if f" {key} " not in st and f" {key} " not in tx:
+        if f" {key} " not in st and f" {key} " not in tx and (e["tipo"] == "pessoa" or key not in publicas):
             problems.append(f"entidade_sem_suporte:{e['nome']}")
         if e["tipo"] == "pessoa":
             cargo = fold(e["cargo_publico"])
             if not cargo or not any(c in cargo for c in cargos):
                 problems.append(f"pessoa_sem_cargo_publico:{e['nome']}")
+            elif f" {key} " not in st and f" {key} " in tx:
+                ck = toks(e["cargo_publico"])
+                if not office_near(tx.strip(), key, ck):
+                    problems.append(f"pessoa_sem_cargo_no_texto_legal:{e['nome']}")
+                if mentions(toks(blob0), key) and not office_near(toks(blob0), key, ck):
+                    problems.append(f"pessoa_sem_cargo_no_artigo:{e['nome']}")
     midcaps = cap_mid(ev["struct"])
+    phrases = evidence_phrases(ev["struct"] + "\n" + ev["texto"], cfg.get("prefixos_instituicao", []))
+    dkeys = [" " + k + " " for k in declared]
     for r in name_runs(blob, commons):
         words = list(r["words"])
         lead = 0
         while len(words) > 1 and words[0] in commons and len([w for w in words if w not in commons and w.lower() not in CONNECT]) >= 2:
             words.pop(0)
             lead += 1
+        while len(words) > 1 and words[0].lower() in CONNECT:
+            words.pop(0)
         core = [w for w in words if w.lower() not in CONNECT and w not in commons]
         key = toks(" ".join(words))
+        pk = f" {key} "
+        if any(pk in d for d in dkeys) or any(pk in p for p in phrases):
+            continue
         if len(core) == 1 and len(words) == 1:
             w = core[0]
             if key in declared:

@@ -71,6 +71,16 @@ The AI job has read-only data and write access only to `state/ai`, so it leaves 
 - A manual `python3 ops/ai/run.py` takes the shared lock as `ai` (the same lock as `estado-aberto-with-lock ai`, from `ingest/common.py`), so it cannot overlap ingest; it exits 75 when the lock is busy (`--wait` seconds). Under the systemd unit the lock is inherited.
 - Estimate for 25 candidates, 12, 5 stories at list prices (haiku 1/5, sonnet 3/15, opus 5/25 USD per million tokens in/out): about 1.35 USD per day. `python3 ops/ai/run.py --dry-run` prints it with no calls. Prices, estimates and the EUR rate are in `config.json`.
 
+## Re-verifying rejected drafts
+
+```
+python3 ops/ai/run.py --reverify <DATE>
+```
+
+Re-runs the verifier on the rejected drafts of that edition without calling the drafting model. Drafts that now pass go to the reviewer and the publish gate (reviewer calls count against the budgets) and move to `published/<D>/`; the others stay in `rejected/<D>/` with the new reasons. Retracted items are skipped and a second run changes nothing. The AI kill switches and the shared lock apply as for a normal run.
+
+Verifier rules for legal texts: dates are accepted without "de" ("24 setembro"), with ordinals ("1.º de janeiro") and as "1 de janeiro desse ano" when the previous clause in the same paragraph gives the year; dates in `numeros_citados` are checked as dates. Institutions in `instituicoes_publicas` (`config.json`) and names built on `prefixos_instituicao` (Instituto, Direção-Geral, Código, ...) that appear verbatim in the evidence need no declaration; commas split name runs. A person found only in the legal text must be declared, carry a public office, appear verbatim in the evidence next to that office, and be written next to it in the article.
+
 ## Retraction
 
 ```

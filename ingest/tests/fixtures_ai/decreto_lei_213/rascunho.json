@@ -1,0 +1,99 @@
+{
+ "edicao_data": "2026-11-06",
+ "evidence_hash": "7bb1b351aa27b9732e31ac15ee1e755a595a5ed026ad540c44d0d63748d55413",
+ "evento_ids": [
+  1
+ ],
+ "titulo": "Decreto-Lei 213/2026 cria apoio complementar aos transportes rodoviários para compensar o preço dos combustíveis",
+ "lead": "O Decreto-Lei n.º 213/2026, publicado a 5 de novembro, cria um regime de apoio extraordinário e temporário para operadores de transporte rodoviário de mercadorias por conta de outrem e de passageiros.",
+ "corpo": "O Decreto-Lei n.º 213/2026, de 5 de novembro, foi publicado no Diário da República e entra em vigor no dia seguinte ao da publicação. Trata-se de um diploma do Governo, aprovado em Conselho de Ministros de 24 de setembro de 2026, e não de uma iniciativa votada em plenário. Por isso, os dados disponíveis não incluem votações por partido nem intervenções de deputados.\n\nSegundo o texto, o Presidente da República, António José Martins Seguro, promulgou o diploma a 29 de outubro de 2026. O Primeiro-Ministro, Luís Montenegro, referendou-o a 2 de novembro de 2026.\n\nO preâmbulo justifica o regime com o aumento continuado dos preços dos combustíveis ao longo de 2026, ligado à crise no Médio Oriente. O apoio pode ser pedido isoladamente ou em complemento do apoio de referência do Decreto-Lei n.º 199/2026, de 7 de outubro. O pedido é feito ao Instituto da Mobilidade e dos Transportes.\n\nO apoio cobre custos extraordinários entre 1 de outubro e 31 de dezembro de 2026, até ao limite de 70 % desses custos.",
+ "pontos_chave": [
+  "O Decreto-Lei n.º 213/2026, de 5 de novembro, cria um apoio extraordinário e temporário aos transportes rodoviários de mercadorias e de passageiros.",
+  "O apoio corresponde a 70 % dos custos extraordinários com combustíveis entre 1 de outubro e 31 de dezembro de 2026.",
+  "O apoio é facultativo e pode ser pedido isoladamente ou em complemento do apoio do Decreto-Lei n.º 199/2026.",
+  "Trata-se de um decreto-lei do Governo: não há votações por partido nem debate em plenário nos dados disponíveis."
+ ],
+ "fontes": [
+  {
+   "label": "Decreto-Lei n.º 213/2026 no Diário da República",
+   "href": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/213-2026-1191346239"
+  }
+ ],
+ "numeros_citados": [
+  "5 novembro",
+  "24 setembro",
+  "29 outubro",
+  "2 novembro",
+  "7 outubro",
+  "1 outubro",
+  "31 dezembro",
+  "2026",
+  "70 %"
+ ],
+ "calculos": [],
+ "entidades": [
+  {
+   "nome": "António José Martins Seguro",
+   "tipo": "pessoa",
+   "cargo_publico": "Presidente da República"
+  },
+  {
+   "nome": "Luís Montenegro",
+   "tipo": "pessoa",
+   "cargo_publico": "Primeiro-Ministro"
+  },
+  {
+   "nome": "Instituto da Mobilidade e dos Transportes",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Governo",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Diário da República",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Conselho de Ministros",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Médio Oriente",
+   "tipo": "local"
+  }
+ ],
+ "blocos": {
+  "lei": {
+   "titulo": "Decreto-Lei n.º 213/2026",
+   "tipo": "Decreto-Lei",
+   "numero": "213/2026",
+   "legislatura": null,
+   "autor": null,
+   "rota": "#/dre",
+   "texto_url": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/213-2026-1191346239"
+  },
+  "votacao": null,
+  "intervencoes": []
+ },
+ "explicacao": {
+  "do_que_trata": "O decreto-lei cria um apoio temporário para empresas de transporte rodoviário de mercadorias por conta de outrem e de transporte público de passageiros, afetadas pela subida do preço dos combustíveis em 2026, ligada à crise no Médio Oriente. O objetivo declarado é permitir que estes operadores recebam uma compensação adicional, dentro do limite permitido pelas regras europeias, para além do apoio já existente.",
+  "o_que_muda": [
+   "Segundo o texto da lei, o apoio vale apenas para os custos com combustíveis entre 1 de outubro e 31 de dezembro de 2026.",
+   "Segundo o texto da lei, o apoio corresponde a 70 % dos custos extraordinários apurados.",
+   "Segundo o texto da lei, quem já recebeu o apoio de referência só recebe a diferença, quando positiva, até ao limite de 70 %.",
+   "Segundo o texto da lei, o preço histórico de referência usado no cálculo é o preço médio do combustível entre 1 de janeiro e 1 de março de 2026, apurado pela Direção-Geral de Energia e Geologia.",
+   "Segundo o texto da lei, são deduzidos aos custos os montantes que os operadores tenham repercutido nos preços dos serviços, para evitar sobrecompensação.",
+   "Segundo o texto da lei, o diploma entra em vigor no dia seguinte ao da publicação."
+  ],
+  "evidencias": [
+   "O presente regime aplica-se exclusivamente ao período compreendido entre 1 de outubro e 31 de dezembro de 2026",
+   "O montante do apoio corresponde a 70 % dos custos extraordinários apurados nos termos do artigo anterior.",
+   "o montante do apoio a pagar corresponde à diferença, quando positiva, entre o montante calculado nos termos do n.º 1 do artigo 7.º e o montante do apoio de referência atribuído ao beneficiário",
+   "preço médio do combustível fóssil utilizado pelo beneficiário apurado pela Direção-Geral de Energia e Geologia no período compreendido entre 1 de janeiro e 1 de março de 2026",
+   "são deduzidos aos custos extraordinários apurados os montantes que os beneficiários tenham repercutido nos preços dos serviços prestados",
+   "O presente decreto-lei entra em vigor no dia seguinte ao da sua publicação."
+  ]
+ },
+ "confianca": 0.85
+}

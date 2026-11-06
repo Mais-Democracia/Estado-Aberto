@@ -447,17 +447,54 @@ def pipeline(ctx, a):
     return 0
 
 
+def reverify(ctx):
+    ctx.mkdirs()
+    bad = killed_events(ctx)
+    killed = {p.name for p in ctx.killed.glob("*")} if ctx.killed.is_dir() else set()
+    todo = []
+    for p in sorted(ctx.rejected.glob("*.json")):
+        doc = jread(p)
+        if not isinstance(doc, dict) or p.stem in killed or "retirada" in (doc.get("verificacao") or {}):
+            continue
+        if bad & {int(x) for x in doc.get("evento_ids", []) if str(x).isdigit()}:
+            continue
+        bdir = ctx.bundles / p.stem
+        if not (bdir / "facts.json").exists():
+            continue
+        art = {k: doc.get(k) for k in ("titulo", "lead", "corpo", "pontos_chave", "fontes", "numeros_citados", "calculos", "entidades", "confianca", "explicacao", "blocos")}
+        art["calculos"] = art["calculos"] or []
+        if art["explicacao"] is None:
+            art.pop("explicacao")
+        if art["blocos"] is None:
+            art.pop("blocos")
+        todo.append(({"dir": bdir, "evidence_hash": p.stem, "rows": [{"id": i} for i in doc.get("evento_ids", [])]}, art, None))
+    n = {"publicado": 0, "rejeitado": 0}
+    try:
+        for item in todo:
+            room = ctx.cfg["budgets"]["max_articles"] - len(list(ctx.published.glob("*.json")))
+            r = stage_verify_review(ctx, [item], do_review=room > 0)
+            n["publicado"] += r["publicado"]
+            n["rejeitado"] += r["rejeitado"]
+    except Halt as h:
+        ctx.audit("run", decision=h.reason)
+        print(f"parado: {h.reason}")
+    ctx.audit("run", decision=f"reverificacao publicados={n['publicado']} rejeitados={n['rejeitado']}")
+    print(f"reverificados={len(todo)} publicados={n['publicado']} rejeitados={n['rejeitado']}")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--date")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--stage", choices=ORDER + ["all"], default="all")
+    ap.add_argument("--reverify", metavar="DATE")
     ap.add_argument("--kill", metavar="HASH_OR_ARTICLE_ID")
     ap.add_argument("--unkill", metavar="HASH_OR_ARTICLE_ID")
     ap.add_argument("--motivo", default="retirado pelo editor")
     ap.add_argument("--wait", type=float, default=1500)
     a = ap.parse_args(argv)
-    ctx = Ctx(a.date, a.dry_run)
+    ctx = Ctx(a.reverify or a.date, a.dry_run)
     if a.dry_run:
         return dry_run(ctx)
     if not (a.kill or a.unkill):
@@ -474,6 +511,8 @@ def main(argv=None):
                 return kill(ctx, a.kill, a.motivo[:300])
             if a.unkill:
                 return unkill(ctx, a.unkill)
+            if a.reverify:
+                return reverify(ctx)
             return pipeline(ctx, a)
     except LockTimeout:
         print("bloqueio ocupado")

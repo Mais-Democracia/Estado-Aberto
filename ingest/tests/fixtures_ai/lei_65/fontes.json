@@ -1,0 +1,17 @@
+{
+ "hrefs_permitidos": [
+  "#/anuncios",
+  "#/apoios",
+  "#/autarquias",
+  "#/deputados",
+  "#/divida",
+  "#/dre",
+  "#/edicao",
+  "#/fundos",
+  "#/leis",
+  "#/ministerios",
+  "#/orcamento",
+  "#/votacoes",
+  "https://diariodarepublica.pt/dr/detalhe/lei/65-2026-1191346238"
+ ]
+}

@@ -14,8 +14,11 @@ Regras gerais:
 - Não calcules valores novos no texto. Se precisares de um valor derivado, indica-o em calculos como {expr, resultado}, com expr feita só de números presentes nos ficheiros e operadores + - * /.
 - corpo com no máximo 250 palavras, sem URLs, sem primeira pessoa. pontos_chave com 3 a 5 itens. O corpo cobre a votação e o debate; a explicação da lei vai em explicacao.
 - fontes: apenas hrefs que constem de fontes.json, com etiqueta descritiva.
-- numeros_citados: lista dos números usados, cada um só um número com unidade curta opcional.
-- entidades: objetos {nome, tipo (pessoa|organizacao|local), cargo_publico}. Todo o nome próprio usado no texto, incluindo siglas de partidos e nomes de uma só palavra, tem de estar aqui. Para tipo pessoa, cargo_publico é obrigatório.
+- numeros_citados: lista dos números usados, cada um só um número com unidade curta opcional (montantes, percentagens, prazos, quantidades). Datas entram aqui por extenso e completas, como "24 de setembro de 2026". Nunca incluas números de artigos, de n.º, de alíneas nem de diplomas (por exemplo "artigo 7.º", "n.º 24", "213/2026"): essas remissões vão, se necessárias, só no campo evidencia.
+- Ordinais jurídicos: escreve "artigo 7.º" ou "n.º 2" apenas tal como aparecem no texto e só quando for indispensável; prefere dizer o conteúdo da regra em vez do número do artigo.
+- Datas: só escreves uma data que conste literalmente de facts.json ou texto.txt, no formato "5 de novembro de 2026". Não calcules nem deduzas datas (nem "um ano depois", nem o ano de uma data que o texto dá só como "desse ano" sem o ano estar na mesma frase ou na anterior). Se o texto diz "no dia seguinte ao da publicação" ou "60 dias após a publicação", repete essa expressão em vez de calcular a data.
+- Valores: usa os valores exatamente como estão no texto. Só arredondas ("cerca de 3 milhões") se o próprio texto arredondar do mesmo modo.
+- entidades: objetos {nome, tipo (pessoa|organizacao|local), cargo_publico}. Todo o nome próprio usado no texto, incluindo siglas de partidos, nomes de uma só palavra, organismos e instituições (Diário da República, Assembleia da República, institutos, direções-gerais, códigos como "Código do IVA"), tem de estar aqui. Para tipo pessoa, cargo_publico é obrigatório e deve ser o cargo tal como consta do texto (por exemplo "Presidente da República", "Primeiro-Ministro", "Presidente da Assembleia da República"). Nomeia uma pessoa só se o nome completo constar literalmente dos ficheiros junto ao respetivo cargo, e escreve sempre o cargo colado ao nome no artigo ("o Primeiro-Ministro, Luís Montenegro"), nunca o nome sozinho. Não nomeies mais ninguém.
 - confianca entre 0 e 1: baixa se os dados forem escassos.
 
 explicacao:

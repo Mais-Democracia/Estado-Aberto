@@ -67,8 +67,8 @@
     "triage": "1",
     "selecao": "1",
     "redacao": "1",
-    "revisao": "2",
-    "redacao_lei": "1"
+    "revisao": "3",
+    "redacao_lei": "2"
   },
   "estimates": {
     "triage": {
@@ -276,7 +276,52 @@
     "Proposta",
     "Diário",
     "Estado Aberto",
-    "União Europeia"
+    "União Europeia",
+    "Primeiro-Ministro"
+  ],
+  "instituicoes_publicas": [
+    "Diário da República",
+    "Assembleia da República",
+    "Governo",
+    "Presidente da República",
+    "Presidente da Assembleia da República",
+    "Conselho de Ministros",
+    "Tribunal Constitucional",
+    "Tribunal de Contas",
+    "Supremo Tribunal de Justiça",
+    "Autoridade Tributária e Aduaneira",
+    "Autoridade Tributária",
+    "Banco de Portugal",
+    "Provedor de Justiça",
+    "Comissão Europeia",
+    "Parlamento Europeu"
+  ],
+  "prefixos_instituicao": [
+    "Instituto",
+    "Direção-Geral",
+    "Direcção-Geral",
+    "Inspeção-Geral",
+    "Secretaria-Geral",
+    "Autoridade",
+    "Agência",
+    "Comissão",
+    "Ministério",
+    "Tribunal",
+    "Banco",
+    "Gabinete",
+    "Entidade",
+    "Fundo",
+    "Serviço",
+    "Serviços",
+    "Código",
+    "Decreto-Lei",
+    "Lei",
+    "Portaria",
+    "Regulamento",
+    "Estatuto",
+    "Sistema",
+    "Programa",
+    "Regime"
   ],
   "exclusoes": {
     "tipos": [

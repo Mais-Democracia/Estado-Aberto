@@ -792,5 +792,175 @@ class V(unittest.TestCase):
         self.assertEqual(verify.dates("5 de novembro de 2026"), {(2026, 11, 5)})
 
 
+FX = ROOT / "ingest" / "tests" / "fixtures_ai"
+
+
+class R(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import lib
+        import verify
+        self.verify, self.cfg = verify, lib.load_config()
+
+    def load(self, name):
+        d = FX / name
+        return json.loads((d / "rascunho.json").read_text(encoding="utf-8")), d
+
+    def problems(self, art, d):
+        return self.verify.verify(art, d, self.cfg)["problemas"]
+
+    def test_saved_decree_law_draft_passes(self):
+        art, d = self.load("decreto_lei_213")
+        self.assertEqual(self.problems(art, d), [])
+
+    def test_saved_law_draft_passes(self):
+        art, d = self.load("lei_65")
+        self.assertEqual(self.problems(art, d), [])
+
+    def test_dates_without_de_and_same_year_reference(self):
+        v = self.verify
+        self.assertEqual(v.dates("24 setembro"), {(None, 9, 24)})
+        self.assertEqual(v.dates("1.º de janeiro de 2027"), {(2027, 1, 1)})
+        self.assertEqual(v.dates("durante o mês de janeiro de 2027 e a partir de 1 de janeiro desse ano"), {(2027, 1, 1)})
+        self.assertEqual(v.dates("a partir de 1 de janeiro desse ano"), {(None, 1, 1)})
+
+    def test_invented_number_still_fails(self):
+        art, d = self.load("lei_65")
+        art["pontos_chave"][3] = "Os comercializadores de petróleo terão de prestar uma garantia bancária de 5 000 000 €."
+        self.assertTrue(any(p.startswith("numero_sem_suporte:5000000") for p in self.problems(art, d)))
+        art, d = self.load("lei_65")
+        art["numeros_citados"].append("4 000 000 €")
+        self.assertTrue(any(p.startswith("numero_citado_sem_suporte:4000000") for p in self.problems(art, d)))
+
+    def test_invented_date_still_fails(self):
+        art, d = self.load("lei_65")
+        art["corpo"] += " As regras aplicam-se a partir de 15 de dezembro de 2027."
+        self.assertTrue(any(p.startswith("data_sem_suporte") for p in self.problems(art, d)))
+        art, d = self.load("decreto_lei_213")
+        art["numeros_citados"].append("12 março")
+        self.assertTrue(any(p.startswith("data_sem_suporte") for p in self.problems(art, d)))
+        art, d = self.load("lei_65")
+        art["corpo"] += " O regime vigora desde 1 de janeiro de 2026."
+        self.assertTrue(any(p.startswith("data_sem_suporte") for p in self.problems(art, d)))
+
+    def test_invented_private_person_still_fails(self):
+        art, d = self.load("lei_65")
+        art["corpo"] += " A empresária Maria Fernandes contestou a medida."
+        self.assertTrue(any("Maria Fernandes" in p for p in self.problems(art, d)))
+        art, d = self.load("lei_65")
+        art["entidades"].append({"nome": "Maria Fernandes", "tipo": "pessoa", "cargo_publico": "empresária"})
+        ps = self.problems(art, d)
+        self.assertTrue(any(p.startswith("entidade_sem_suporte:Maria Fernandes") for p in ps) and any(p.startswith("pessoa_sem_cargo_publico") for p in ps), ps)
+
+    def test_office_holder_needs_verbatim_name_and_office_in_text(self):
+        art, d = self.load("lei_65")
+        art["entidades"] = [e for e in art["entidades"] if e["nome"] != "José Pedro Aguiar-Branco"]
+        self.assertTrue(any(p.startswith("nome_so_no_texto_nao_declarado") and "Aguiar-Branco" in p for p in self.problems(art, d)))
+        art, d = self.load("lei_65")
+        for e in art["entidades"]:
+            if e["nome"] == "Luís Montenegro":
+                e["cargo_publico"] = "Presidente da República"
+        self.assertTrue(any(p.startswith("pessoa_sem_cargo_no_texto_legal:Luís Montenegro") for p in self.problems(art, d)))
+        art, d = self.load("lei_65")
+        art["corpo"] += " Luís Montenegro assinou o diploma."
+        art["corpo"] = art["corpo"].replace("referendado pelo Primeiro-Ministro, Luís Montenegro", "referendado por Luís Montenegro")
+        self.assertTrue(any(p.startswith("pessoa_sem_cargo_no_artigo:Luís Montenegro") for p in self.problems(art, d)))
+        art, d = self.load("lei_65")
+        art["entidades"].append({"nome": "Mariana Ribeiro Duarte", "tipo": "pessoa", "cargo_publico": "Ministra"})
+        art["corpo"] += " A Ministra Mariana Ribeiro Duarte comentou."
+        ps = self.problems(art, d)
+        self.assertTrue(any(p.startswith("entidade_sem_suporte:Mariana Ribeiro Duarte") for p in ps), ps)
+
+    def test_institutions_must_be_in_evidence_or_public_list(self):
+        art, d = self.load("decreto_lei_213")
+        art["corpo"] += " A Autoridade Fantasma de Fiscalização acompanha o apoio."
+        self.assertTrue(any("Autoridade Fantasma" in p for p in self.problems(art, d)))
+        art, d = self.load("decreto_lei_213")
+        art["entidades"].append({"nome": "Agência Inventada de Transportes", "tipo": "organizacao"})
+        self.assertTrue(any(p.startswith("entidade_sem_suporte:Agência Inventada") for p in self.problems(art, d)))
+        art, d = self.load("decreto_lei_213")
+        art["entidades"].append({"nome": "Tribunal de Contas", "tipo": "organizacao"})
+        self.assertEqual(self.problems(art, d), [])
+
+    def test_vote_claims_still_checked_without_table(self):
+        art, d = self.load("lei_65")
+        art["corpo"] += " O PS votou a favor."
+        self.assertTrue(any(p.startswith("voto_sem_tabela") for p in self.problems(art, d)))
+
+
+class RV(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        t = Path(self.tmp.name)
+        self.state, self.data = t / "state", t / "data"
+        self.state.mkdir()
+        self.data.mkdir()
+        self.log = t / "stub.log"
+        self.env = dict(os.environ, ESTADO_ABERTO_STATE=str(self.state), ESTADO_ABERTO_DATA=str(self.data), CLAUDE_BIN=str(STUB), AI_STUB_LOG=str(self.log),
+                        AI_STUB_STATE=str(t), AI_ENV_FILE=str(t / "ai.env"), AI_ENABLED="1", AI_ALLOW_FILE="1", AI_NO_LEDGER_SCRIPT="1", PORT="1")
+        self.ai = self.state / "ai"
+        self.hashes = {}
+        for i, name in enumerate(("decreto_lei_213", "lei_65")):
+            art = json.loads((FX / name / "rascunho.json").read_text(encoding="utf-8"))
+            h = art["evidence_hash"]
+            self.hashes[name] = h
+            b = self.ai / "bundles" / h
+            b.mkdir(parents=True)
+            for f in ("facts.json", "fontes.json", "texto.txt"):
+                (b / f).write_bytes((FX / name / f).read_bytes())
+            (b / "blocos.json").write_text(json.dumps(art["blocos"]), encoding="utf-8")
+            e = art["explicacao"]
+            doc = dict(art, explicacao={"do_que_trata": e["do_que_trata"], "o_que_muda": e["o_que_muda"], "evidencias": e["evidencias"]},
+                       modelo="sonnet", revisor="opus", estado="rejeitado", criado_em="2026-11-06T11:01:22+00:00",
+                       verificacao={"verificador": {"ok": False, "problemas": ["data_sem_suporte:(2027, 1, 1)"]}, "revisor": {"veredicto": "nao_executado", "alegacoes_sem_suporte": []}})
+            if name == "lei_65":
+                doc["corpo"] += " O PS votou a favor."
+            (self.ai / "rejected" / D).mkdir(parents=True, exist_ok=True)
+            (self.ai / "rejected" / D / f"{h}.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def reverify(self):
+        return subprocess.run([sys.executable, str(RUN), "--reverify", D], env=self.env, capture_output=True, text=True, cwd=ROOT)
+
+    def names(self, sub):
+        return sorted(p.stem for p in (self.ai / sub / D).glob("*.json"))
+
+    def test_reverify_publishes_passing_and_keeps_failing_idempotently(self):
+        r = self.reverify()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.names("published"), [self.hashes["decreto_lei_213"]])
+        self.assertEqual(self.names("rejected"), [self.hashes["lei_65"]])
+        calls = [json.loads(x)["stage"] for x in self.log.read_text().splitlines()]
+        self.assertEqual(calls, ["revisao"])
+        rej = json.loads((self.ai / "rejected" / D / f"{self.hashes['lei_65']}.json").read_text())
+        self.assertTrue(any(p.startswith("voto_sem_tabela") for p in rej["verificacao"]["verificador"]["problemas"]))
+        pub = json.loads((self.ai / "published" / D / f"{self.hashes['decreto_lei_213']}.json").read_text())
+        self.assertEqual((pub["estado"], pub["verificacao"]["revisor"]["veredicto"]), ("publicado", "ok"))
+        spent = json.loads((self.ai / "budget.json").read_text())["days"]
+        self.assertGreater(sum(spent.values()), 0)
+        before = {p.name: p.read_text() for p in (self.ai / "rejected" / D).glob("*.json")}
+        r = self.reverify()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(len(self.log.read_text().splitlines()), 1)
+        self.assertEqual(before, {p.name: p.read_text() for p in (self.ai / "rejected" / D).glob("*.json")})
+        self.assertEqual(self.names("published"), [self.hashes["decreto_lei_213"]])
+
+    def test_reverify_respects_kill_switch_and_retractions(self):
+        (self.ai / "STOP").write_text("")
+        r = self.reverify()
+        self.assertEqual(self.names("published"), [])
+        h = self.hashes["decreto_lei_213"]
+        (self.ai / "STOP").unlink()
+        p = self.ai / "rejected" / D / f"{h}.json"
+        doc = json.loads(p.read_text())
+        doc["verificacao"]["retirada"] = {"motivo": "x", "em": "2026-11-06"}
+        p.write_text(json.dumps(doc))
+        self.reverify()
+        self.assertEqual(self.names("published"), [])
+        self.assertFalse(self.log.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

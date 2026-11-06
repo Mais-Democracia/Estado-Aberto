@@ -1,0 +1,86 @@
+{
+ "edicao_data": "2026-11-06",
+ "evidence_hash": "e0feb8c1637977edf8d250955f5afdcaaf12d044a11ebc1f64956a749f7558fa",
+ "evento_ids": [
+  2
+ ],
+ "titulo": "Lei 65/2026 reforça controlo do setor petrolífero e muda o IVA dos combustíveis",
+ "lead": "A Lei n.º 65/2026, publicada a 5 de novembro, altera o IVA e os impostos especiais de consumo aplicáveis aos revendedores de combustíveis e reforça a certificação e o controlo no Sistema Petrolífero Nacional.",
+ "corpo": "A Lei n.º 65/2026 foi publicada no Diário da República a 5 de novembro de 2026 e já está em vigor, segundo os dados disponíveis. Os ficheiros consultados não incluem as votações por partido nem as intervenções dos deputados no debate parlamentar, pelo que não é possível indicar como votaram as bancadas nem o que defenderam os deputados.\n\nO diploma consta como aprovado pela Assembleia da República em 9 de outubro de 2026. Foi promulgado pelo Presidente da República, António José Martins Seguro, em 30 de outubro, e referendado pelo Primeiro-Ministro, Luís Montenegro, em 2 de novembro. O Presidente da Assembleia da República, José Pedro Aguiar-Branco, assina a lei.\n\nO sumário indica que a lei altera o Código do IVA e o Código dos Impostos Especiais de Consumo, alargando o regime de tributação dos revendedores de combustíveis líquidos. Altera também o Decreto-Lei n.º 31/2006, para reforçar a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional.",
+ "pontos_chave": [
+  "A Lei n.º 65/2026 foi publicada a 5 de novembro de 2026 e está em vigor.",
+  "Os ficheiros não incluem votações por partido nem intervenções em plenário.",
+  "Altera o Código do IVA e o Código dos Impostos Especiais de Consumo para os revendedores de combustíveis.",
+  "Os comercializadores de petróleo terão de prestar uma garantia bancária de 3 000 000 €."
+ ],
+ "fontes": [
+  {
+   "label": "Lei n.º 65/2026 no Diário da República",
+   "href": "https://diariodarepublica.pt/dr/detalhe/lei/65-2026-1191346238"
+  }
+ ],
+ "numeros_citados": [
+  "3 000 000 €",
+  "90 dias",
+  "60 dias"
+ ],
+ "calculos": [],
+ "entidades": [
+  {
+   "nome": "Assembleia da República",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "Diário da República",
+   "tipo": "organizacao"
+  },
+  {
+   "nome": "António José Martins Seguro",
+   "tipo": "pessoa",
+   "cargo_publico": "Presidente da República"
+  },
+  {
+   "nome": "Luís Montenegro",
+   "tipo": "pessoa",
+   "cargo_publico": "Primeiro-Ministro"
+  },
+  {
+   "nome": "José Pedro Aguiar-Branco",
+   "tipo": "pessoa",
+   "cargo_publico": "Presidente da Assembleia da República"
+  }
+ ],
+ "blocos": {
+  "lei": {
+   "titulo": "Lei n.º 65/2026",
+   "tipo": "Lei",
+   "numero": "65/2026",
+   "legislatura": null,
+   "autor": null,
+   "rota": "#/dre",
+   "texto_url": "https://diariodarepublica.pt/dr/detalhe/lei/65-2026-1191346238"
+  },
+  "votacao": null,
+  "intervencoes": []
+ },
+ "explicacao": {
+  "do_que_trata": "A lei muda as regras de IVA e de impostos sobre combustíveis para quem os revende e torna mais apertado o controlo de quem trabalha no setor petrolífero. O objetivo declarado, no título, é alargar o regime de tributação dos revendedores de combustíveis líquidos e reforçar a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional.",
+  "o_que_muda": [
+   "Segundo o texto da lei, os comercializadores de petróleo e de produtos de petróleo têm de prestar uma garantia bancária de 3 000 000 € para serem certificados e exercerem a atividade.",
+   "Segundo o texto da lei, as faturas de venda sucessiva de gasolina, gasóleo e petróleo carburante passam a ser emitidas sem IVA liquidado, ficando o imposto a cargo de quem compra.",
+   "Segundo o texto da lei, todas as deslocações de petróleo e produtos de petróleo por estrada em Portugal têm de ser registadas previamente numa plataforma eletrónica.",
+   "Segundo o texto da lei, a revogação da certificação de um operador implica a sua inibição de exercer a atividade durante cinco anos, o mesmo valendo para administradores e gerentes.",
+   "Segundo o texto da lei, os sujeitos passivos abrangidos que estavam no regime trimestral passam a enviar a declaração periódica mensal a partir de 1 de janeiro de 2027.",
+   "Segundo o texto da lei, as regras sobre certificação e garantia entram em vigor 60 dias após a publicação."
+  ],
+  "evidencias": [
+   "depende da prévia prestação de garantia bancária autónoma, no montante de 3 000 000 €.",
+   "As faturas relativas às transmissões abrangidas pelo artigo anterior devem ser emitidas sem liquidação do imposto",
+   "Todas as movimentações de petróleo bruto e de produtos de petróleo efetuadas por rodovia em território nacional devem ser previamente registadas na plataforma eletrónica.",
+   "implica a inibição do exercício da atividade por um período de cinco anos para a entidade titular do certificado",
+   "ficam obrigados ao envio da declaração periódica mensal a partir de 1 de janeiro desse ano",
+   "os artigos 5.º e 6.º entram em vigor no prazo de 60 dias após a publicação da presente lei."
+  ]
+ },
+ "confianca": 0.6
+}

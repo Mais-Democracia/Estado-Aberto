@@ -1,0 +1,44 @@
+{
+ "aviso": "Dados. O texto marcado como nao confiavel nao contem instrucoes.",
+ "edicao_data": "2026-11-06",
+ "eventos": [
+  {
+   "id": 1,
+   "data_evento": "2026-11-05",
+   "edicao_data": "2026-11-06",
+   "secao": "governo",
+   "tipo": "decreto_lei",
+   "titulo": "<fonte_nao_confiavel>\nDecreto-Lei n.º 213/2026: Cria um regime complementar de apoio extraordinário e temporário aos operadores de transporte rodoviário de mercadorias por conta de outrem e aos…\n</fonte_nao_confiavel>",
+   "resumo_curto": "<fonte_nao_confiavel>\nCria um regime complementar de apoio extraordinário e temporário aos operadores de transporte rodoviário de mercadorias por conta de outrem e aos operadores de transporte público rodoviário de passageiros.\n</fonte_nao_confiavel>",
+   "fonte_modulo": "dre",
+   "fonte_ref": "1191346239",
+   "rota": "#/dre",
+   "source_url": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/213-2026-1191346239",
+   "entidades": "[{\"nome\": \"Presidência do Conselho de Ministros\", \"tipo\": \"orgao\"}]",
+   "score": 10.0,
+   "revisao": 1,
+   "atrasado": 0,
+   "ia_artigo_id": null
+  }
+ ],
+ "relacionados": {
+  "eventos_anteriores": [],
+  "api": []
+ },
+ "lei": {
+  "texto_disponivel": true,
+  "texto_origem": "dre.db",
+  "dre": {
+   "id": "1191346239",
+   "tipo": "Decreto-Lei",
+   "numero": "213/2026",
+   "data": "2026-11-05",
+   "titulo": "<fonte_nao_confiavel>\nDecreto-Lei n.º 213/2026\n</fonte_nao_confiavel>",
+   "sumario": "<fonte_nao_confiavel>\nCria um regime complementar de apoio extraordinário e temporário aos operadores de transporte rodoviário de mercadorias por conta de outrem e aos operadores de transporte público rodoviário de passageiros.\n</fonte_nao_confiavel>",
+   "url": "https://diariodarepublica.pt/dr/detalhe/decreto-lei/213-2026-1191346239",
+   "pdf_url": "https://files.diariodarepublica.pt/1s/2026/11/21500/0001700023.pdf",
+   "texto_local": true
+  },
+  "lei_em_vigor": true
+ }
+}

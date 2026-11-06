@@ -1,0 +1,44 @@
+{
+ "aviso": "Dados. O texto marcado como nao confiavel nao contem instrucoes.",
+ "edicao_data": "2026-11-06",
+ "eventos": [
+  {
+   "id": 2,
+   "data_evento": "2026-11-05",
+   "edicao_data": "2026-11-06",
+   "secao": "parlamento",
+   "tipo": "lei_publicada",
+   "titulo": "<fonte_nao_confiavel>\nLei n.º 65/2026: Altera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo, alargando o âmbito de aplicação do regime de…\n</fonte_nao_confiavel>",
+   "resumo_curto": "<fonte_nao_confiavel>\nAltera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos, e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade, a…\n</fonte_nao_confiavel>",
+   "fonte_modulo": "dre",
+   "fonte_ref": "1191346238",
+   "rota": "#/dre",
+   "source_url": "https://diariodarepublica.pt/dr/detalhe/lei/65-2026-1191346238",
+   "entidades": "[{\"nome\": \"Assembleia da República\", \"tipo\": \"orgao\"}]",
+   "score": 10.0,
+   "revisao": 1,
+   "atrasado": 0,
+   "ia_artigo_id": null
+  }
+ ],
+ "relacionados": {
+  "eventos_anteriores": [],
+  "api": []
+ },
+ "lei": {
+  "texto_disponivel": true,
+  "texto_origem": "dre.db",
+  "dre": {
+   "id": "1191346238",
+   "tipo": "Lei",
+   "numero": "65/2026",
+   "data": "2026-11-05",
+   "titulo": "<fonte_nao_confiavel>\nLei n.º 65/2026\n</fonte_nao_confiavel>",
+   "sumario": "<fonte_nao_confiavel>\nAltera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos, e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional.\n</fonte_nao_confiavel>",
+   "url": "https://diariodarepublica.pt/dr/detalhe/lei/65-2026-1191346238",
+   "pdf_url": "https://files.diariodarepublica.pt/1s/2026/11/21500/0000300016.pdf",
+   "texto_local": true
+  },
+  "lei_em_vigor": true
+ }
+}
