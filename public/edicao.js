@@ -206,8 +206,9 @@
   const lateTag = (it) => (it.atrasado ? `<div class="late">${esc(it.atraso || "Registo tardio")}</div>` : "");
   const iaTag = (d, it) => `<a class="ia-tag" href="#/edicao/${d.data}/ia/${it.artigo_id}" title="Coberto por artigo gerado por IA">IA</a>`;
   const tipoLabel = (t) => String(t || "").replace(/_/g, " ");
-  const colItem = (it) => `<article class="st dst"><span class="kick">${esc(tipoLabel(it.tipo))}</span><h3>${itemLink(it)}</h3>${it.resumo_curto ? `<p>${esc(cutTxt(it.resumo_curto, 170))}</p>` : ""}${lateTag(it)}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</article>`;
-  const colSection = (s) => `<section class="blk dsec ${SECTAG[s.secao] || ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${nf0.format(s.total)}</small></h2>${s.itens.map(colItem).join("")}${s.mais ? `<button type="button" class="linkbtn" data-open-tudo>+${nf0.format(s.mais)} na lista completa</button>` : ""}</section>`;
+  const LEI_RE = /^(Lei|Decreto|Resolução|Portaria)\b/i;
+  const colItem = (it, thin) => `<article class="st dst${thin ? " dlead" : ""}"><span class="kick">${esc(tipoLabel(it.tipo))}</span><h3>${itemLink(it)}</h3>${it.resumo_curto ? `<p>${esc(thin ? it.resumo_curto : cutTxt(it.resumo_curto, 170))}</p>` : ""}${lateTag(it)}${thin && itemRota(it) ? `<a class="more" href="${esc(itemRota(it))}">${LEI_RE.test(it.titulo) ? "Ver a lei" : "Ver o registo"}</a>` : ""}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</article>`;
+  const colSection = (s, thin) => `<section class="blk dsec ${SECTAG[s.secao] || ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${nf0.format(s.total)}</small></h2>${s.itens.map((it) => colItem(it, thin)).join("")}${s.mais ? `<button type="button" class="linkbtn" data-open-tudo>+${nf0.format(s.mais)} na lista completa</button>` : ""}</section>`;
   const rowItem = (d, it) => `<li class="rw${it.ia ? " is-ia" : ""}"><span class="hh">${esc(it.hora || "—")}</span><div><div class="rk"><span class="kick">${esc(tipoLabel(it.tipo))}</span>${it.ia ? iaTag(d, it) : ""}</div><div class="rt">${itemLink(it)}</div>${it.resumo_curto ? `<p>${esc(it.resumo_curto)}</p>` : ""}${lateTag(it)}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</div></li>`;
   const fullSection = (d, s) => `<section class="blk fsec ${SECTAG[s.secao] || ""}${s.vazio ? " vazio" : ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${s.vazio ? "sem registos" : nf0.format(s.itens.length)}</small></h2>${s.vazio ? `<p class="motivo">${esc(s.motivo || "Sem registos para este dia")}</p>` : `<ul class="rows">${s.itens.map((it) => rowItem(d, it)).join("")}</ul>`}</section>`;
   const VOTO = { favor: ["A favor", "✓", "favor"], contra: ["Contra", "✗", "contra"], abstencao: ["Abstenção", "○", "abst"], ausente: ["Ausente", "–", "aus"] };
@@ -233,8 +234,21 @@
       ${a.blocos ? voteStrip(a.blocos.votacao) : ""}
       <div class="ia-act">${leiBtn(a.blocos)}<a class="more" href="${esc(a.rota_detalhe)}">${a.tem_explicacao ? "Ler explicação completa" : "Ler o artigo completo"}</a></div></article>`;
   const emptyList = (d) => `<p class="muted dempty">${d.divisao.total ? "Todos os registos do dia estão cobertos pelos artigos acima." : "Sem registos nesta edição."}</p>`;
-  const listHtml = (d, v) => (v === "tudo" ? `<div class="fullgrid">${d.tudo.map((s) => fullSection(d, s)).join("")}</div>` : d.secoes.length ? `<div class="dgrid">${d.secoes.map(colSection).join("")}</div>` : emptyList(d));
-  const listTitle = (v) => (v === "tudo" ? "Lista completa do dia" : "Mais registos do dia");
+  const listHtml = (d, v) => (v === "tudo" ? `<div class="fullgrid">${d.tudo.map((s) => fullSection(d, s)).join("")}</div>` : d.secoes.length ? `<div class="dgrid${d.secoes.every((s) => s.itens.length <= 2) ? " thin" : ""}" style="--cols:${Math.min(3, d.secoes.length)};--cols2:${Math.min(2, d.secoes.length)}">${d.secoes.map((s) => colSection(s, d.secoes.every((x) => x.itens.length <= 2))).join("")}</div>` : emptyList(d));
+  const listTitle = (v, ia) => (v === "tudo" ? "Lista completa do dia" : ia ? "Mais registos do dia" : "Registos do dia");
+  const divBar = (d, full) => `<div class="divwrap"><button type="button" class="divbar" id="ed-div" aria-expanded="${full}" aria-controls="ed-lista"><span class="divbar-t">${esc(d.divisao.rotulo)}</span><span class="divbar-n">${nf0.format(d.divisao.total)} ${d.divisao.total === 1 ? "registo" : "registos"}</span><span class="divbar-a" aria-hidden="true">${full ? "Fechar" : "Abrir"}</span><svg class="chev" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>`;
+  async function mountStrip(el, d) {
+    if (d.min >= d.max) { el.innerHTML = `<p class="strip-note">A série começou a ${pd(d.min)}.</p>`; return; }
+    const end = d.data > d.max ? d.data : d.max, days = [];
+    for (let i = 0, x = end; i < 14 && x >= d.min; i++, x = navDate(x, -1)) days.unshift(x);
+    const months = [...new Set(days.map((x) => x.slice(0, 7)))], cnt = new Map();
+    const rs = await Promise.all(months.map((m) => api("edicao/arquivo?mes=" + m).catch(() => null)));
+    rs.forEach((r) => r && r.dias.forEach((x) => cnt.set(x.d, x.n ?? x.c)));
+    const mx = Math.max(...cnt.values(), 1);
+    el.innerHTML = `<div class="strip"><ul class="strip-l">${days.map((x) => `<li><a href="${edHash(x, state.vista)}" class="${x === d.data ? "sel" : ""}" style="--k:${((cnt.get(x) || 0) / mx).toFixed(2)}" title="${pd(x)}${cnt.has(x) ? ": " + nf0.format(cnt.get(x)) + " registos" : ""}"${x === d.data ? ' aria-current="page"' : ""}><b>${Number(x.slice(8))}</b><small>${MES[Number(x.slice(5, 7)) - 1].slice(0, 3)}</small></a></li>`).join("")}</ul><button type="button" class="btn-ed" id="strip-cal" aria-expanded="false" aria-controls="cal-inline">Arquivo ▾</button></div><div class="edcal" id="cal-inline" hidden></div>`;
+    const cal = el.querySelector("#cal-inline"), b = el.querySelector("#strip-cal");
+    b.onclick = () => { cal.hidden = !cal.hidden; b.setAttribute("aria-expanded", String(!cal.hidden)); if (!cal.hidden) mountCal(cal, d, false); };
+  }
 
   const renderPlate = () => {
     plateHost().innerHTML = `<div class="ed-head">
@@ -257,7 +271,7 @@
     window.onscroll = null;
     state.cur = d.data; state.max = d.max; state.min = d.min; state.vista = vista;
     document.title = `Edição de ${d.extenso}, n.º ${nf0.format(d.numero)} · Estado Aberto`;
-    const full = vista === "tudo";
+    const full = vista === "tudo", hasIa = d.ia.length > 0;
     renderPlate();
     const upd = d.atualizado_em ? new Date(d.atualizado_em) : null, updTxt = upd && !isNaN(upd) ? upd.toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "";
     $app.innerHTML = `<div class="ed">
@@ -265,21 +279,22 @@
       <div class="dateline"><span><b>Edição de ${esc(d.extenso)}</b> · ${esc(d.diaSemana)} · notícias de ${esc(d.reporta_extenso)}</span>
         <span>Edição n.º ${nf0.format(d.numero)} · ${d.estado === "fechada" ? "fechada" : "preliminar"}${updTxt && d.estado !== "fechada" ? " · atualizada às " + updTxt : ""}</span></div>
       ${d.ia.length ? `<section class="ia-col" aria-label="Artigos gerados por IA">${d.ia.map((a) => iaCard(d, a)).join("")}</section>` : ""}
-      <div class="divwrap"><button type="button" class="divbar" id="ed-div" aria-expanded="${full}" aria-controls="ed-lista"><span class="divbar-t">${esc(d.divisao.rotulo)}</span><span class="divbar-n">${nf0.format(d.divisao.total)} ${d.divisao.total === 1 ? "registo" : "registos"}</span><span class="divbar-a" aria-hidden="true">${full ? "Fechar" : "Abrir"}</span><svg class="chev" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
-      <div id="ed-lista" role="region" aria-labelledby="ed-lista-h"><h2 id="ed-lista-h" class="lista-h" tabindex="-1">${listTitle(vista)}</h2><div id="ed-lista-body">${listHtml(d, vista)}</div></div>
+      ${hasIa ? divBar(d, full) : ""}
+      <div id="ed-lista" role="region" aria-labelledby="ed-lista-h"><h2 id="ed-lista-h" class="lista-h" tabindex="-1">${listTitle(vista, hasIa)}</h2><div id="ed-lista-body">${listHtml(d, vista)}</div></div>
+      ${hasIa ? "" : divBar(d, full)}
       <div class="ed-sr" id="ed-live" aria-live="polite" role="status"></div>
-      <div class="band2 dband"><div class="col" id="arquivo"><h2 class="sec-h" style="--tag:var(--ed-gold)">Arquivo de edições</h2><div class="edcal" id="cal-inline"></div></div></div>
-      <div class="colophon"><div>Edição n.º ${nf0.format(d.numero)}, publicada a ${esc(d.extenso)}, a primeira de uma série diária iniciada a 6 de novembro de 2026. Cada edição reporta o que aconteceu no dia anterior. Os artigos assinalados «Gerado por IA» são redigidos por modelos de linguagem exclusivamente a partir dos registos listados, verificados automaticamente contra as fontes e publicados com os modelos e os números usados. Todos os restantes registos vêm diretamente das bases oficiais.</div><div>Os indicadores de risco são sinais estatísticos e não constituem acusação. <a href="#/painel-classico">Painel clássico e novidades</a> · <a href="#/roadmap">Roadmap</a> · menu superior para todas as secções.</div></div>
+      <div class="band2 dband"><div class="col" id="arquivo"><h2 class="sec-h" style="--tag:var(--ed-gold)">Arquivo de edições</h2><div id="strip-host"></div></div></div>
+      <div class="colophon"><div>Cada edição reporta o que aconteceu no dia anterior.${hasIa ? " Os artigos «Gerado por IA» são redigidos por modelos de linguagem a partir dos registos listados e verificados automaticamente contra as fontes." : ""} Os restantes registos vêm diretamente das bases oficiais.</div><div>Os indicadores de risco são sinais estatísticos e não constituem acusação. <a href="#/painel-classico">Painel clássico e novidades</a> · <a href="#/roadmap">Roadmap</a> · menu superior para todas as secções.</div></div>
     </div>`;
     wire(d);
-    mountCal(document.getElementById("cal-inline"), d, false);
+    mountStrip(document.getElementById("strip-host"), d);
     const key = d.data, live = document.getElementById("ed-live"), host = document.getElementById("ed-lista-body"), h = document.getElementById("ed-lista-h"), btn = document.getElementById("ed-div");
     const cache = { resumo: d, tudo: full ? d : null };
     const load = async (v) => { if (v === "tudo" && !cache.tudo) cache.tudo = await api(dayUrl(explicit, "tudo")); return cache[v] || cache.tudo; };
     const paint = (v, data) => {
       state.vista = v;
       host.innerHTML = listHtml(data, v);
-      h.textContent = listTitle(v);
+      h.textContent = listTitle(v, hasIa);
       btn.setAttribute("aria-expanded", String(v === "tudo"));
       btn.querySelector(".divbar-a").textContent = v === "tudo" ? "Fechar" : "Abrir";
       bindOpen();

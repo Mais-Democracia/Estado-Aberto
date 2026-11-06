@@ -29,6 +29,7 @@ def main():
     ap.add_argument("--date", default="2026-11-06")
     ap.add_argument("--days", type=int, default=1)
     ap.add_argument("--empty", action="store_true")
+    ap.add_argument("--sparse", action="store_true")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     path = os.path.join(a.out, "diario.db")
@@ -47,6 +48,15 @@ def main():
         prev = (D - dt.timedelta(days=1)).isoformat()
         con.execute("INSERT INTO edicoes VALUES(?,?,?,?)", (k + 1, ds, "preliminar" if k == a.days - 1 else "fechada", None if k == a.days - 1 else ds + "T06:00:00Z"))
         if a.empty:
+            continue
+        if a.sparse:
+            ev = prev
+            for sec, tipo, tit, res, fonte, rota in (
+                ("parlamento", "lei", "Lei n.º 65/2026: Altera o Código do IVA e define novas regras de faturação", "A Assembleia da República aprovou e o Presidente promulgou a lei sintética que altera o Código do IVA.", "votacoes", "#/votacoes/165"),
+                ("governo", "diploma", "Decreto-Lei n.º 213/2026: Cria um regime complementar de apoio às famílias", "O Governo publicou o decreto-lei sintético que cria um regime complementar de apoio.", "dre", "#/dre/213"),
+            ):
+                eid += 1
+                con.execute("INSERT INTO eventos VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (eid, f"h{eid}", ev, f"{ds}T07:{eid:02d}:00Z", ds, sec, tipo, tit, res, fonte, str(eid), rota, "https://example.org/fonte/%d" % eid, "[]", 1.0, 1, 0, None))
             continue
         ids = {}
         for sec, n in COUNTS.items():
