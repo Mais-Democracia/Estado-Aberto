@@ -1,6 +1,6 @@
 {
-  "version": "0.3.2",
-  "git_sha": "2586253d680e702c3ae31c1efb784a3ab5fa4446",
+  "version": "0.3.3",
+  "git_sha": "7a16c02601b0149cf9bcdb1d9caacf672bfb69fa",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- AI confidence gate 0.6 with `AI_CONFIANCA_MIN` override.\n- AI publish decisions log their reason."
+  "notes": "### Changed\n- Laws published in the DRE are linked to their parliamentary initiative by incremental steps (`dre_recent`, `votacoes_recent`), by law number, exact title or citation.\n- AI articles for laws include the final vote by party and the plenary debate, also when the link pass has not run yet.\n- Superseded AI articles are hidden and kept for audit."
 }
