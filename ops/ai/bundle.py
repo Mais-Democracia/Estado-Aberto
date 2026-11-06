@@ -23,6 +23,8 @@ def shortlist(ctx):
             p = subprocess.run([sys.executable, str(script), "--shortlist", ctx.date], capture_output=True, text=True, timeout=120, cwd=ROOT)
             rows = json.loads(p.stdout)
             if isinstance(rows, list):
+                if rows and all(isinstance(r, int) for r in rows):
+                    return event_rows(rows[:n])
                 return rows[:n]
         except Exception:
             pass
