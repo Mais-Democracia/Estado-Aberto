@@ -294,7 +294,7 @@ def load_evidence(bdir):
 
 def name_runs(text, commons):
     out = []
-    for sent in re.split(r"(?<=[.!?:;])\s+|\n", text):
+    for sent in re.split(r"(?<=[.!?:;])\s+|\n|«", text):
         toks_ = [t.group(0) for t in WORD.finditer(sent)]
         run = []
         runs = []
@@ -321,7 +321,7 @@ def name_runs(text, commons):
 
 def cap_mid(struct):
     out = set()
-    for sent in re.split(r"(?<=[.!?:;])\s+|\n", struct):
+    for sent in re.split(r"(?<=[.!?:;])\s+|\n|«", struct):
         ws = [t.group(0) for t in WORD.finditer(sent)]
         for i, w in enumerate(ws):
             if i > 0 and w[0].isupper():
