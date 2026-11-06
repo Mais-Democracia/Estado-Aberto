@@ -12,11 +12,11 @@ WorkingDirectory=/opt/estado-aberto/current
 EnvironmentFile=-/etc/estado-aberto/ingest.env
 Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
 Environment=STATE_DIR=/var/lib/estado-aberto/state
-ExecStart=/usr/local/bin/estado-aberto-python ingest/run_all.py --schedule weekly --profile server --lock-wait 7200
+ExecStart=/usr/local/bin/estado-aberto-python ingest/run_all.py --schedule weekly --profile server --lock-wait 7200 --max-mb 600
 TimeoutStartSec=28800
 Nice=10
 IOSchedulingClass=idle
 CPUWeight=20
-MemoryHigh=350M
-MemoryMax=450M
+MemoryHigh=500M
+MemoryMax=600M
 SyslogIdentifier=estado-aberto-weekly

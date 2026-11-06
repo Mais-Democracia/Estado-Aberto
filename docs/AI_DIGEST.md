@@ -40,16 +40,16 @@ Source text is wrapped in `<fonte_nao_confiavel>` tags inside files, lines that 
 
 ## Enabling
 
-1. Install the CLI at `/opt/claude-cli/claude` (or set `CLAUDE_BIN`) and log in or put `ANTHROPIC_API_KEY` in `/etc/estado-aberto/ai.env`.
-2. Create the user `estado-aberto-ai` with read access to the data directory and write access to `state/ai`.
-3. Install the units from `ops/systemd/` (`estado-aberto-ai.service`, `estado-aberto-ai-import.service`, `estado-aberto-ai.timer`) and enable the timer. The timer starts the import unit, which requires the AI unit and runs after it.
-4. Put `AI_ENABLED=1` in `ai.env`.
+1. Install the CLI at `/opt/claude-cli/claude` (or set `CLAUDE_BIN`).
+2. `sudo ops/install.sh` creates the user `estado-aberto-ai` (no login, home `state/ai/home`, member of group `estado-aberto`), `state/ai`, `/etc/estado-aberto/ai.env` (0640 root:estado-aberto-ai; `AI_ENABLED=0`, empty `ANTHROPIC_API_KEY`, `CLAUDE_BIN`, budgets) and the three units. It does not enable the timer.
+3. Choose the credential: put `ANTHROPIC_API_KEY` in `ai.env` (dedicated user, below), or install the login-user drop-in (next section).
+4. Put `AI_ENABLED=1` in `ai.env`, run `sudo systemctl start estado-aberto-ai.service` once under supervision, then `sudo ops/install.sh --enable-ai-timer`. The timer starts the import unit, which requires the AI unit and runs after it. Both units take the shared lock as `ai`, the lowest priority after the updater and ingest.
 
 Stop at any time with `touch state/ai/STOP` or `AI_ENABLED=0`.
 
 ## Running under an existing login user
 
-If the CLI login already exists in a user's home, the drop-in `ops/ai/estado-aberto-ai-login-user.conf` can be installed as `/etc/systemd/system/estado-aberto-ai.service.d/login-user.conf`. Tradeoffs: it avoids a second login and key, but the job then runs with that user's file permissions and can read their home (`ProtectHome=read-only`, with only `~/.claude` writable); the path-scoped read rules and absence of Bash limit the model, not the unit sandbox. A dedicated user is stricter. The maintainer chooses.
+If the CLI login already exists in a user's home, the drop-in `ops/ai/estado-aberto-ai-login-user.conf` can be installed as `/etc/systemd/system/estado-aberto-ai.service.d/login-user.conf`. Tradeoffs: it avoids a second login and key, but the job then runs with that user's file permissions and can read their home (`ProtectHome=read-only`, with only `~/.claude` writable); the path-scoped read rules and absence of Bash limit the model, not the unit sandbox. A dedicated user is stricter. The maintainer chooses: dedicated user plus API key (default, nothing to do beyond filling `ai.env`) or the drop-in (replace `<login user>`, `<login group>`; the drop-in also adds the `estado-aberto` group so the user can take the shared lock).
 
 ## Tests
 

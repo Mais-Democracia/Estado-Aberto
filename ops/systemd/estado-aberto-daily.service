@@ -12,7 +12,7 @@ WorkingDirectory=/opt/estado-aberto/current
 EnvironmentFile=-/etc/estado-aberto/ingest.env
 Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
 Environment=STATE_DIR=/var/lib/estado-aberto/state
-ExecStart=/usr/local/bin/estado-aberto-python ingest/run_all.py --schedule daily --profile server --lock-wait 3600
+ExecStart=/usr/local/bin/estado-aberto-python ingest/run_all.py --schedule daily --profile server --lock-wait 3600 --max-mb 450
 SuccessExitStatus=75
 TimeoutStartSec=10800
 Nice=10

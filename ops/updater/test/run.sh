@@ -201,6 +201,20 @@ bash "$OPS/install.sh" --dry-run --no-swap --enable-timers --node "$NODE_PATH_T"
 grep -q "systemctl enable --now estado-aberto-updater.timer estado-aberto-refresh.timer estado-aberto-daily.timer estado-aberto-weekly.timer" "$T/i4.log"
 check "--enable-timers enables updater, refresh, daily and weekly" $?
 
+grep -q "estado-aberto-ai.service" "$T/i3.log" && grep -q "estado-aberto-ai-import.service" "$T/i3.log" && grep -q "estado-aberto-ai.timer" "$T/i3.log" && grep -q "useradd.*estado-aberto-ai" "$T/i3.log" && grep -q "/etc/estado-aberto/ai.env (0640 root:estado-aberto-ai)" "$T/i3.log"
+check "installer installs the AI units, user and ai.env" $?
+! grep -q "systemctl enable.*ai.timer" "$T/i3.log" "$T/i4.log"
+check "installer never enables the AI timer unless asked" $?
+bash "$OPS/install.sh" --dry-run --no-swap --enable-ai-timer --node "$NODE_PATH_T" --python "$(command -v python3)" > "$T/i5.log" 2>&1
+grep -q "systemctl enable --now estado-aberto-ai.timer" "$T/i5.log" && ! grep -q "enable --now estado-aberto-updater.timer" "$T/i5.log"
+check "--enable-ai-timer enables only the AI timer" $?
+n=0
+for u in estado-aberto-ai.service estado-aberto-ai-import.service; do
+  grep -q "^ExecStart=/usr/local/sbin/estado-aberto-with-lock ai --wait 1500 -- " "$OPS/systemd/$u" && ! grep -q "flock" "$OPS/systemd/$u" && n=$((n + 1))
+done
+[ "$n" -eq 2 ]
+check "AI units take the shared ordered lock instead of plain flock" $?
+
 if command -v systemd-analyze > /dev/null 2>&1; then
   UV="$T/units"; mkdir -p "$UV"
   for u in "$OPS"/systemd/*.service "$OPS"/systemd/*.timer; do

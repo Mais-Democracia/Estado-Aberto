@@ -6,14 +6,16 @@ NODE_BIN=""
 PYTHON_BIN=""
 SWAP=1
 TIMERS=0
+AI_TIMER=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1; shift ;;
     --node) NODE_BIN="${2:?--node needs a path}"; shift 2 ;;
     --python) PYTHON_BIN="${2:?--python needs a path}"; shift 2 ;;
     --enable-timers) TIMERS=1; shift ;;
+    --enable-ai-timer) AI_TIMER=1; shift ;;
     --no-swap) SWAP=0; shift ;;
-    -h|--help) echo "usage: sudo ops/install.sh [--dry-run] [--node /path/to/node] [--python /path/to/python3.12] [--enable-timers] [--no-swap]"; exit 0 ;;
+    -h|--help) echo "usage: sudo ops/install.sh [--dry-run] [--node /path/to/node] [--python /path/to/python3.12] [--enable-timers] [--enable-ai-timer] [--no-swap]"; exit 0 ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -64,12 +66,26 @@ if getent group systemd-journal > /dev/null 2>&1 && ! id -nG "$SVC" 2> /dev/null
   run usermod -aG systemd-journal "$SVC"
 fi
 
+AI_USER=estado-aberto-ai
+AI_HOME=/var/lib/$SVC/state/ai/home
+if ! id "$AI_USER" > /dev/null 2>&1; then
+  run useradd --system --no-create-home --home-dir "$AI_HOME" --shell /usr/sbin/nologin "$AI_USER"
+fi
+if ! id -nG "$AI_USER" 2> /dev/null | tr ' ' '\n' | grep -qx "$SVC"; then
+  run usermod -aG "$SVC" "$AI_USER"
+fi
+
 say "directories"
 run install -d -m 0755 -o "$SVC" -g "$SVC" /opt/$SVC /opt/$SVC/releases
 run install -d -m 0755 -o "$SVC" -g "$SVC" /var/lib/$SVC
 run install -d -m 0755 -o "$SVC" -g "$SVC" /var/lib/$SVC/data
-run install -d -m 0750 -o "$SVC" -g "$SVC" /var/lib/$SVC/state
+run install -d -m 2770 -o "$SVC" -g "$SVC" /var/lib/$SVC/state
+run install -m 0664 -o "$SVC" -g "$SVC" /dev/null /var/lib/$SVC/state/update.lock.new
+run mv -n /var/lib/$SVC/state/update.lock.new /var/lib/$SVC/state/update.lock
+run rm -f /var/lib/$SVC/state/update.lock.new
 run install -d -m 0755 -o root -g "$SVC" /etc/$SVC
+run install -d -m 0750 -o "$AI_USER" -g "$SVC" /var/lib/$SVC/state/ai
+run install -d -m 0700 -o "$AI_USER" -g "$AI_USER" "$AI_HOME"
 
 say "environment files (kept if present)"
 write_env() {
@@ -86,6 +102,20 @@ GITHUB_TOKEN="
 write_env app.env "PORT=3000
 HOST=0.0.0.0"
 write_env ingest.env "ESTADO_ABERTO_CONTACT="
+write_ai_env() {
+  local dst="/etc/$SVC/ai.env"
+  if [ -e "$dst" ]; then say "keeping $dst"; return; fi
+  if [ "$DRY" -eq 1 ]; then echo "  would create $dst (0640 root:$AI_USER)"; return; fi
+  printf '%s\n' "AI_ENABLED=0
+ANTHROPIC_API_KEY=
+CLAUDE_BIN=/opt/claude-cli/claude
+AI_MAX_USD_DAY=2.5
+AI_MAX_USD_MONTH=60
+AI_MAX_ARTICLES=5" > "$dst"
+  chown root:"$AI_USER" "$dst"
+  chmod 0640 "$dst"
+}
+write_ai_env
 
 say "node and python symlinks and helper scripts"
 run ln -sfn "$NODE_BIN" /usr/local/bin/estado-aberto-node
@@ -123,6 +153,11 @@ if [ "$TIMERS" -eq 1 ]; then
   run systemctl try-restart $SVC-updater.timer $SVC-refresh.timer $SVC-daily.timer $SVC-weekly.timer
 else
   say "timers installed but not enabled; rerun with --enable-timers when ready"
+fi
+if [ "$AI_TIMER" -eq 1 ]; then
+  run systemctl enable --now $SVC-ai.timer
+else
+  say "AI units installed but the AI timer is not enabled; rerun with --enable-ai-timer after setting AI_ENABLED=1 in /etc/$SVC/ai.env"
 fi
 
 if [ "$SWAP" -eq 1 ]; then

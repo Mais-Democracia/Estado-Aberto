@@ -20,11 +20,11 @@ Target host: AWS Lightsail, 1 GB RAM, 2 vCPU, 40 GB SSD (about 12 GB of data alr
 - `estado-aberto-daily.timer` (02:30 Europe/Lisbon) runs `--schedule daily` (includes the 6h steps; steps refreshed less than their `fresh_hours` ago are skipped).
 - `estado-aberto-weekly.timer` (Sunday 01:00 Europe/Lisbon) runs `--schedule weekly`: the statistics chain and the full rebuilds.
 - `estado-aberto-ingest-queue.service` runs ingest jobs queued by an update, after the switch and a settle delay.
-- Every ingest unit uses `Nice=10`, idle I/O class, `CPUWeight=20`, `MemoryHigh=350M`, `MemoryMax=450M` and `OnFailure=estado-aberto-alert@%n.service`. The run-time cap is `TimeoutStartSec` (systemd ignores `RuntimeMaxSec` for oneshot units): refresh 1 h, daily 3 h, weekly 8 h.
+- The refresh and daily units use `MemoryHigh=350M`, `MemoryMax=450M` and pass `--max-mb 450`, so `run_all` warns for any step estimated above the cap. The weekly unit uses `MemoryHigh=500M`, `MemoryMax=600M` and `--max-mb 600` because `entities` loads a 50 MB JSON (about 500 MB peak); the 2 GB swapfile from the installer is the safety margin for it. Every ingest unit also uses `Nice=10`, idle I/O class, `CPUWeight=20` and `OnFailure=estado-aberto-alert@%n.service`. The run-time cap is `TimeoutStartSec` (systemd ignores `RuntimeMaxSec` for oneshot units): refresh 1 h, daily 3 h, weekly 8 h.
 
 ## Locking
 
-Updater, ingest and the AI job share one advisory lock, `$STATE_DIR/update.lock` (`/var/lib/estado-aberto/state/update.lock`), taken with `flock`. Only one holds it at a time, so two heavy steps never run together. Waiters are ordered **updater, then ingest, then AI**: a waiter announces itself with `state/lock.want.<role>.<pid>`, and a lower-priority waiter does not take a free lock while a higher-priority waiter is alive. A running ingest releases the lock between steps when an updater is waiting and takes it back afterwards.
+Updater, ingest and the AI job share one advisory lock, `$STATE_DIR/update.lock` (`/var/lib/estado-aberto/state/update.lock`), taken with `flock`; the AI units go through `estado-aberto-with-lock ai --wait 1500 -- ...` (installed from `ops/updater/with-lock.sh`), which applies the same ordering. The AI user is in the `estado-aberto` group and the state directory is `2770`, so it can create `lock.want.ai.<pid>` and take the lock. Only one holds it at a time, so two heavy steps never run together. Waiters are ordered **updater, then ingest, then AI**: a waiter announces itself with `state/lock.want.<role>.<pid>`, and a lower-priority waiter does not take a free lock while a higher-priority waiter is alive. A running ingest releases the lock between steps when an updater is waiting and takes it back afterwards.
 
 - Python: `ingest/common.py` `SharedLock(role, wait=7200)`. `run_all.py` uses it (`--lock-role`, `--lock-wait SECONDS`, default 2 h).
 - Shell: `ops/updater/lock.sh` (installed as `/usr/local/sbin/estado-aberto-lock.sh`) `ea_lock_acquire <role> <wait>`. The updater and the queue runner use it.
@@ -71,7 +71,9 @@ sudo ops/install.sh [--node /path/to/node] [--python /path/to/python3.12] [--ena
 sudo -u estado-aberto /usr/local/sbin/estado-aberto-updater --force-tag vX.Y.Z
 ```
 
-The installer creates the user, directories, env templates, units, timers, a sudoers rule limited to restarting the app and starting the ingest queue, and a 2 GB swapfile with `vm.swappiness=10` when `swapon --show` lists no swap. It links `/usr/local/bin/estado-aberto-node` and `/usr/local/bin/estado-aberto-python`; `--python` defaults to the first of `python3.13`, `python3.12`, `python3` that is 3.12 or newer, and the installer fails otherwise. The system `python3` is never replaced. Timers are installed but only enabled with `--enable-timers`.
+The installer creates the user, directories, env templates, units, timers, a sudoers rule limited to restarting the app and starting the ingest queue, and a 2 GB swapfile with `vm.swappiness=10` when `swapon --show` lists no swap. It links `/usr/local/bin/estado-aberto-node` and `/usr/local/bin/estado-aberto-python`; `--python` defaults to the first of `python3.13`, `python3.12`, `python3` that is 3.12 or newer, and the installer fails otherwise. The system `python3` is never replaced. Timers are installed but only enabled with `--enable-timers`. The AI digest units (`estado-aberto-ai.service`, `estado-aberto-ai-import.service`, `estado-aberto-ai.timer`) are installed too, together with the user `estado-aberto-ai` (no login, home `state/ai/home`), `state/ai` and `/etc/estado-aberto/ai.env` (0640 root:estado-aberto-ai, `AI_ENABLED=0`, empty `ANTHROPIC_API_KEY`). The AI timer is never enabled unless `--enable-ai-timer` is given, and the job does nothing while `AI_ENABLED=0`.
+
+The maintainer chooses how the AI job authenticates: either keep the dedicated user and put `ANTHROPIC_API_KEY` in `ai.env` (strictest, the default), or install the drop-in `ops/ai/estado-aberto-ai-login-user.conf` as `/etc/systemd/system/estado-aberto-ai.service.d/login-user.conf` to run under an existing login user that already has the CLI logged in. See [AI_DIGEST.md](AI_DIGEST.md#running-under-an-existing-login-user).
 
 ### Amazon Linux 2023
 
@@ -82,7 +84,7 @@ sudo ops/install.sh --node "$(readlink -f $(command -v node))" --python /usr/bin
 
 `nodejs22` gives a system Node readable by every user; if it is unavailable, install Node 22 or newer under `/usr/local` and pass that path. A Node under `/home/<SSH_USER>/.nvm` is not readable by the service user. `python3` is 3.9 on this image and stays that way. An existing swapfile is detected and left alone.
 
-Enable the timers only after the first manual `estado-aberto-updater --check` and one supervised `estado-aberto-ingest-queue` run (or `run_all --dry-run`), then rerun `sudo ops/install.sh --enable-timers` (it enables the updater, refresh, daily and weekly timers and restarts them to pick up schedule changes; running it again changes nothing).
+Enable the timers only after the first manual `estado-aberto-updater --check` and one supervised `estado-aberto-ingest-queue` run (or `run_all --dry-run`), then rerun `sudo ops/install.sh --enable-timers` (and `--enable-ai-timer` once `AI_ENABLED=1` is set) (it enables the updater, refresh, daily and weekly timers and restarts them to pick up schedule changes; running it again changes nothing).
 
 ## Daily use
 

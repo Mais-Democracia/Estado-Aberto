@@ -7,14 +7,17 @@ Wants=network-online.target
 Type=oneshot
 User=estado-aberto-ai
 Group=estado-aberto-ai
+SupplementaryGroups=estado-aberto
+UMask=0002
 WorkingDirectory=/opt/estado-aberto/current
 EnvironmentFile=-/etc/estado-aberto/ai.env
 Environment=CLAUDE_BIN=/opt/claude-cli/claude
 Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
 Environment=ESTADO_ABERTO_STATE=/var/lib/estado-aberto/state
+Environment=STATE_DIR=/var/lib/estado-aberto/state
 Environment=HOME=/var/lib/estado-aberto/state/ai/home
 ExecStartPre=/usr/bin/mkdir -p /var/lib/estado-aberto/state/ai/home
-ExecStart=/usr/bin/flock -w 1500 /var/lib/estado-aberto/state/update.lock /usr/local/bin/estado-aberto-python ops/ai/run.py
+ExecStart=/usr/local/sbin/estado-aberto-with-lock ai --wait 1500 -- /usr/local/bin/estado-aberto-python ops/ai/run.py
 TimeoutStartSec=1800
 RuntimeMaxSec=1800
 Nice=15
@@ -35,5 +38,5 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 CapabilityBoundingSet=
 ReadOnlyPaths=/var/lib/estado-aberto/data
-ReadWritePaths=/var/lib/estado-aberto/state/ai
+ReadWritePaths=/var/lib/estado-aberto/state
 SyslogIdentifier=estado-aberto-ai
