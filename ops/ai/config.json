@@ -194,7 +194,7 @@
     },
     "version_verified": "2.1.314"
   },
-  "confianca_min": 0.7,
+  "confianca_min": 0.6,
   "max_words": 250,
   "pdf": {
     "max_bytes": 10485760,

@@ -87,7 +87,7 @@ elif stage in ("redacao", "redacao_lei"):
     hrefs = json.loads(rd("fontes.json"))["hrefs_permitidos"]
     out = {"titulo": titulo, "lead": resumo, "corpo": corpo,
            "pontos_chave": ["Facto registado.", "Fonte oficial.", "Dados do dia."],
-           "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "calculos": [], "entidades": [], "confianca": 0.9}
+           "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "calculos": [], "entidades": [], "confianca": float(os.environ.get("AI_STUB_CONFIANCA", "0.9"))}
     if stage == "redacao_lei":
         lei = f.get("lei") or {}
         lines = [x.strip() for x in strip(rd("texto.txt")).splitlines() if len(x.strip()) >= 15]

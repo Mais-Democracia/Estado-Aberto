@@ -52,6 +52,12 @@ def load_config():
     b["max_usd_day"] = float(os.environ.get("AI_MAX_USD_DAY", b["max_usd_day"]))
     b["max_usd_month"] = float(os.environ.get("AI_MAX_USD_MONTH", b["max_usd_month"]))
     b["max_articles"] = int(os.environ.get("AI_MAX_ARTICLES", b["max_articles"]))
+    cm = os.environ.get("AI_CONFIANCA_MIN")
+    if cm:
+        v = float(cm)
+        if not 0 <= v <= 1:
+            raise ValueError(f"AI_CONFIANCA_MIN fora de 0..1: {cm}")
+        cfg["confianca_min"] = v
     return cfg
 
 

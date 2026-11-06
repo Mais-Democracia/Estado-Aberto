@@ -17,7 +17,7 @@ The edition for date D reports on D-1. The ledger (`diario.db`) holds events and
 
 Small-day mode: when the shortlist (after the editorial exclusions) has at most `AI_MAX_ARTICLES` events, stages 2 and 3 are skipped (no model calls) and every candidate is drafted, however unimportant; `work/<D>/selecao.json` records `"modo": "dia_pequeno"`. With more candidates triage and selection run as before, and the top `pipeline.min_artigos_dia` (3) events are always drafted even if selection returns fewer or fails.
 
-Publish gate: verifier passes AND reviewer `ok` AND `confianca >= 0.7`. A draft that fails the verifier is rejected without calling the reviewer. Any exception while verifying or reviewing one story marks only that story `rejeitado` with the reason `erro:<Type>`; the run continues with the next stories. The importer does the same per file: a file that cannot be imported forces its existing row to `rejeitado`.
+Publish gate: verifier passes AND reviewer `ok` AND `confianca >= confianca_min` (0.6; override with `AI_CONFIANCA_MIN`, a float 0..1, in `ai.env`). Every publish decision is written to `audit.log` with `confianca` and `motivo` (`verificador`, `revisor` or `confianca X<Y`; empty when published). A draft that fails the verifier is rejected without calling the reviewer. Any exception while verifying or reviewing one story marks only that story `rejeitado` with the reason `erro:<Type>`; the run continues with the next stories. The importer does the same per file: a file that cannot be imported forces its existing row to `rejeitado`.
 
 ## Law explainers
 

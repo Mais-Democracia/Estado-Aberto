@@ -99,6 +99,28 @@ class T(unittest.TestCase):
         audit = [json.loads(x) for x in (self.state / "ai" / "audit.log").read_text().splitlines()]
         self.assertTrue(all({"time", "stage", "model", "tokens_in", "tokens_out", "usd", "cache", "decision"} <= set(a) for a in audit))
 
+    def audit_publish(self):
+        return [json.loads(x) for x in (self.state / "ai" / "audit.log").read_text().splitlines() if json.loads(x)["stage"] == "publish"]
+
+    def test_confianca_at_threshold_passes(self):
+        self.run_ai(AI_STUB_CONFIANCA="0.6")
+        self.assertEqual(len(self.published()), 2)
+        self.assertTrue(all(a["confianca"] == 0.6 for a in self.audit_publish()))
+
+    def test_confianca_below_threshold_rejected_with_motivo(self):
+        self.run_ai(AI_STUB_CONFIANCA="0.59")
+        self.assertEqual(len(self.published()), 0)
+        motivos = {a["motivo"] for a in self.audit_publish()}
+        self.assertIn("confianca 0.59<0.6", motivos)
+        self.assertIn("revisor", motivos)
+        self.assertIn("verificador", motivos)
+
+    def test_confianca_env_override(self):
+        self.run_ai(AI_STUB_CONFIANCA="0.55", AI_CONFIANCA_MIN="0.5")
+        self.assertEqual(len(self.published()), 2)
+        r = self.run_ai(AI_CONFIANCA_MIN="1.5")
+        self.assertNotEqual(r.returncode, 0)
+
     def test_large_day_keeps_triage_and_selection(self):
         r = self.run_ai(AI_MAX_ARTICLES="3")
         self.assertEqual(r.returncode, 0, r.stderr)

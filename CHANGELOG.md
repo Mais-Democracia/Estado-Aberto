@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- AI confidence gate 0.6 with `AI_CONFIANCA_MIN` override.
+- AI publish decisions log their reason.
+
 ## [0.3.1] - 2026-11-06
 
 ### Changed

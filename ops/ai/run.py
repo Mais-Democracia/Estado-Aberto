@@ -203,6 +203,7 @@ def stage_verify_review(ctx, drafts, do_review=True):
             jwrite(b["dir"] / "verificacao.json", ver)
             ctx.audit("verify", decision="ok" if ver["ok"] else "falha", evidence=b["evidence_hash"][:12], problemas=ver["problemas"][:5])
             if not ver["ok"]:
+                ctx.audit("publish", decision="rejeitado", evidence=b["evidence_hash"][:12], confianca=art["confianca"], motivo="verificador")
                 outcome(ctx, b, art, ver, {"veredicto": "nao_executado", "alegacoes_sem_suporte": []}, "rejeitado", models)
                 n["rejeitado"] += 1
                 continue
@@ -216,8 +217,14 @@ def stage_verify_review(ctx, drafts, do_review=True):
                 continue
             rev = res["data"]
             jwrite(b["dir"] / "revisao.json", rev)
-            ok = rev["veredicto"] == "ok" and art["confianca"] >= conf_min
-            ctx.audit("publish", decision="publicado" if ok else "rejeitado", evidence=b["evidence_hash"][:12])
+            if rev["veredicto"] != "ok":
+                motivo = "revisor"
+            elif art["confianca"] < conf_min:
+                motivo = f"confianca {art["confianca"]}<{conf_min}"
+            else:
+                motivo = ""
+            ok = not motivo
+            ctx.audit("publish", decision="publicado" if ok else "rejeitado", evidence=b["evidence_hash"][:12], confianca=art["confianca"], motivo=motivo)
             outcome(ctx, b, art, ver, rev, "publicado" if ok else "rejeitado", models)
             n["publicado" if ok else "rejeitado"] += 1
         except Halt:

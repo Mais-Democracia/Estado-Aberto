@@ -123,7 +123,8 @@ ANTHROPIC_API_KEY=
 CLAUDE_BIN=/opt/claude-cli/claude
 AI_MAX_USD_DAY=2.5
 AI_MAX_USD_MONTH=60
-AI_MAX_ARTICLES=5" > "$dst"
+AI_MAX_ARTICLES=5
+AI_CONFIANCA_MIN=0.6" > "$dst"
   chown root:"$AI_USER" "$dst"
   chmod 0640 "$dst"
 }
