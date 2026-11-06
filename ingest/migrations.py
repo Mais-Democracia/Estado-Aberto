@@ -1,6 +1,7 @@
 """Idempotent in-place schema upgrades for databases built by older releases (stdlib only)."""
 import sqlite3
 import sys
+from pathlib import Path
 
 POLITICA_COLUMNS = {"entities": [("population_source", "TEXT")]}
 VOTACOES_COLUMNS = {
@@ -55,11 +56,20 @@ def ensure_estado_empresas(con):
     return 0
 
 
+def ensure_diario(con):
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "jobs"))
+    from diario import SCHEMA
+    con.executescript(SCHEMA)
+    return 0
+
+
+CREATE_IF_MISSING = {"diario"}
 DATABASES = {
     "politica": ensure_politica,
     "votacoes": ensure_votacoes,
     "responsaveis": ensure_responsaveis,
     "estado_empresas": ensure_estado_empresas,
+    "diario": ensure_diario,
 }
 
 
@@ -67,7 +77,7 @@ def migrate_all(data_dir, log=print):
     done = 0
     for name, fn in DATABASES.items():
         f = data_dir / f"{name}.db"
-        if not f.exists():
+        if not f.exists() and name not in CREATE_IF_MISSING:
             log(f"migrate: {name}.db absent, skipped")
             continue
         con = sqlite3.connect(f, timeout=60)
