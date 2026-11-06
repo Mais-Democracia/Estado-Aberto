@@ -85,6 +85,7 @@ run mv -n /var/lib/$SVC/state/update.lock.new /var/lib/$SVC/state/update.lock
 run rm -f /var/lib/$SVC/state/update.lock.new
 run install -d -m 0755 -o root -g "$SVC" /etc/$SVC
 run install -d -m 0750 -o "$AI_USER" -g "$SVC" /var/lib/$SVC/state/ai
+run install -d -m 0775 -o "$AI_USER" -g "$SVC" /var/lib/$SVC/state/ai/killed
 run install -d -m 0700 -o "$AI_USER" -g "$AI_USER" "$AI_HOME"
 
 say "environment files (kept if present)"

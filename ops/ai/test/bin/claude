@@ -6,6 +6,14 @@ import sys
 from pathlib import Path
 
 argv = sys.argv[1:]
+if "--help" in argv:
+    omit = set(filter(None, os.environ.get("AI_STUB_HELP_OMIT", "").split(",")))
+    flags = ["-p, --print", "--model <model>", "--output-format <format>", "--json-schema <schema>", "--system-prompt[-file]", "--tools <tools...>",
+             "--allowedTools, --allowed-tools <tools...>", "--disallowedTools, --disallowed-tools <tools...>", "--strict-mcp-config", "--bare",
+             "--setting-sources <sources>", "--permission-mode <mode>  (choices: acceptEdits, auto, bypassPermissions, manual, dontAsk, plan)",
+             "--no-session-persistence", "--max-budget-usd <amount>"]
+    print("Usage: claude [options]\n" + "\n".join("  " + f for f in flags if not any(o in f for o in omit)))
+    sys.exit(0)
 opt = {}
 i = 0
 while i < len(argv):
@@ -21,8 +29,31 @@ stage = m.group(1) if m else "?"
 cwd = Path.cwd()
 log = os.environ.get("AI_STUB_LOG")
 if log:
+    ri = cwd / "rascunho_revisao.txt"
     with open(log, "a", encoding="utf-8") as f:
-        f.write(json.dumps({"stage": stage, "cwd": str(cwd), "model": opt.get("--model"), "allowed": opt.get("--allowedTools"), "schema": bool(opt.get("--json-schema"))}) + "\n")
+        f.write(json.dumps({"stage": stage, "cwd": str(cwd), "model": opt.get("--model"), "allowed": opt.get("--allowedTools"), "schema": bool(opt.get("--json-schema")),
+                            "files": sorted(p.name for p in cwd.iterdir()), "review_input": ri.read_text(encoding="utf-8") if ri.exists() else None, "argv": argv}) + "\n")
+beh = json.loads(os.environ.get("AI_STUB_BEHAVIOR") or "{}").get(stage)
+stdir = os.environ.get("AI_STUB_STATE")
+if beh == "fail_once" and stdir:
+    mark = Path(stdir) / ("once_" + stage)
+    if not mark.exists():
+        mark.write_text("1")
+        sys.exit(1)
+    beh = None
+if beh == "touch_stop":
+    Path(os.environ["AI_STUB_STOPFILE"]).write_text("")
+if beh == "fail_cost":
+    print(json.dumps({"type": "result", "subtype": "error_max_budget_usd", "is_error": True, "total_cost_usd": 0.31, "usage": {"input_tokens": 100, "output_tokens": 10}}))
+    sys.exit(1)
+if beh == "fail_nocost":
+    sys.exit(3)
+if beh == "timeout":
+    import time
+    time.sleep(30)
+if beh == "badjson":
+    print("nao e json")
+    sys.exit(0)
 
 
 def rd(name):
@@ -56,7 +87,14 @@ elif stage == "redacao":
     hrefs = json.loads(rd("fontes.json"))["hrefs_permitidos"]
     out = {"titulo": titulo, "lead": resumo, "corpo": corpo,
            "pontos_chave": ["Facto registado.", "Fonte oficial.", "Dados do dia."],
-           "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "entidades": [], "confianca": 0.9}
+           "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "calculos": [], "entidades": [], "confianca": 0.9}
+    ov = os.environ.get("AI_STUB_OVERRIDE")
+    if ov:
+        for rule in json.loads(Path(ov).read_text(encoding="utf-8")):
+            if rule["match"] in titulo:
+                out.update(rule["draft"])
+                if "corpo_append" in rule:
+                    out["corpo"] += rule["corpo_append"]
     usage = {"input_tokens": 38000, "output_tokens": 1500}
 elif stage == "revisao":
     bad = "REJEITAR" in rd("facts.json")

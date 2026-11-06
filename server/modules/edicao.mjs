@@ -193,11 +193,15 @@ export default function (ctx) {
   const series = (rows, a, b, key = "n") => { const m = new Map(rows.map((r) => [r.d, r[key] || 0])); return dayRange(a, b).map((d) => ({ d, v: m.get(d) || 0 })); };
 
   const cache = new Map();
+  const ledgerStamp = () => {
+    const f = path.join(dataDir, "diario.db");
+    try { return [f, f + "-wal"].map((x) => { try { const s = fs.statSync(x); return `${s.mtimeMs}:${s.size}`; } catch { return "-"; } }).join("|"); } catch { return ""; }
+  };
   const edition = (d) => {
-    const hit = cache.get(d);
-    if (hit && Date.now() - hit.at < 600000) return hit.v;
+    const hit = cache.get(d), stamp = ledgerStamp();
+    if (hit && hit.stamp === stamp && Date.now() - hit.at < 600000) return hit.v;
     const v = buildEdition(d);
-    cache.set(d, { at: v.partial ? Date.now() - 540000 : Date.now(), v });
+    cache.set(d, { at: v.partial ? Date.now() - 540000 : Date.now(), stamp, v });
     if (cache.size > 40) cache.delete(cache.keys().next().value);
     return v;
   };
@@ -596,8 +600,10 @@ export default function (ctx) {
   const ledgerArticle = (id) => {
     const dia = openData("diario");
     if (!dia) return null;
-    const a = Q1(dia, "SELECT * FROM artigos_ia WHERE id = ? AND estado = 'publicado'", id);
+    const a = Q1(dia, "SELECT * FROM artigos_ia WHERE id = ?", id);
     if (!a) return null;
+    const ver = J(a.verificacao, null), ret = ver && ver.retirada ? ver.retirada : null;
+    if (a.estado !== "publicado" && !ret) return null;
     const D = day10(a.edicao_data);
     const ids = new Set(listOf(a.evento_ids).map(Number));
     const rows = Q(dia, "SELECT id, data_evento, ingerido_em, edicao_data, secao, tipo, titulo, resumo_curto, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE ia_artigo_id = ? OR edicao_data = ? ORDER BY score DESC, id", a.id, D);
@@ -605,6 +611,9 @@ export default function (ctx) {
     const cnt = {};
     for (const e of linked) cnt[e.secao] = (cnt[e.secao] || 0) + 1;
     const secao = Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x] || (SEC_ORDER[x] ?? 99) - (SEC_ORDER[y] ?? 99))[0] || "governo";
+    if (a.estado !== "publicado") {
+      return { tipo: "ia", id: a.id, data: D, ...head(D), secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: "", paragraphs: [], pontos_chave: [], fontes: [], numeros_citados: [], entidades: [], confianca: null, modelo: S(a.modelo), revisor: "", verificacao: null, criado_em: S(a.criado_em), revisao: a.revisao, retirado: { motivo: S(ret.motivo).slice(0, 300), em: S(ret.em).slice(0, 25) }, eventos: linked.map((e) => itemOf(e, D)) };
+    }
     return {
       tipo: "ia", id: a.id, data: D, ...head(D), secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead),
       paragraphs: S(a.corpo).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes),

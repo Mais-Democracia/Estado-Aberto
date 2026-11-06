@@ -1,8 +1,10 @@
 import datetime
+import fcntl
 import hashlib
 import json
 import os
 import re
+import signal
 import sqlite3
 import subprocess
 import tempfile
@@ -92,16 +94,27 @@ class Ctx:
         self.published = self.ai / "published" / self.date
         self.rejected = self.ai / "rejected" / self.date
         self.audit_path = self.ai / "audit.log"
+        self.budget_path = self.ai / "budget.json"
+        self.killed = self.ai / "killed"
         self.claude_bin = os.environ.get("CLAUDE_BIN") or self.cfg["claude_bin_default"]
         self.port = os.environ.get("PORT", "3000")
         self.api = f"http://127.0.0.1:{self.port}"
         self.calls = 0
+        self.actual = {}
 
     def mkdirs(self):
         for d in (self.work, self.bundles, self.cache, self.published, self.rejected):
             d.mkdir(parents=True, exist_ok=True)
 
     def enabled(self):
+        f = Path(os.environ.get("AI_ENV_FILE") or "/etc/estado-aberto/ai.env")
+        try:
+            for line in f.read_text(encoding="utf-8").splitlines():
+                k, _, v = line.partition("=")
+                if k.strip() == "AI_ENABLED":
+                    return v.strip().strip("\"'") == "1"
+        except OSError:
+            pass
         return os.environ.get("AI_ENABLED", "0") == "1"
 
     def stopped(self):
@@ -115,19 +128,46 @@ class Ctx:
         with open(self.audit_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-    def spent(self, prefix):
-        total = 0.0
+    def _budget_read(self):
+        try:
+            return json.loads(self.budget_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _budget_seed(self):
+        days = {}
         try:
             for line in self.audit_path.read_text(encoding="utf-8").splitlines():
                 try:
                     r = json.loads(line)
                 except ValueError:
                     continue
-                if str(r.get("time", "")).startswith(prefix):
-                    total += float(r.get("usd") or 0)
-        except FileNotFoundError:
+                d = str(r.get("time", ""))[:10]
+                if d:
+                    days[d] = days.get(d, 0.0) + float(r.get("usd") or 0)
+        except OSError:
             pass
-        return total
+        return {"days": days}
+
+    def charge(self, usd):
+        self.ai.mkdir(parents=True, exist_ok=True)
+        fd = os.open(self.ai / "budget.lock", os.O_RDWR | os.O_CREAT, 0o660)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            b = self._budget_read() or self._budget_seed()
+            day = now().date().isoformat()
+            b["days"][day] = round(float(b["days"].get(day, 0.0)) + float(usd), 6)
+            keep = sorted(b["days"])[-100:]
+            b["days"] = {k: b["days"][k] for k in keep}
+            tmp = self.ai / f"budget.json.{os.getpid()}"
+            tmp.write_text(json.dumps(b, sort_keys=True), encoding="utf-8")
+            os.replace(tmp, self.budget_path)
+        finally:
+            os.close(fd)
+
+    def spent(self, prefix):
+        b = self._budget_read() or self._budget_seed()
+        return sum(float(v) for k, v in b["days"].items() if k.startswith(prefix))
 
     def spent_day(self):
         return self.spent(now().date().isoformat())
@@ -149,6 +189,8 @@ class Ctx:
     def guard(self, stage, est):
         if self.stopped():
             raise Halt("stop")
+        if not self.enabled():
+            raise Halt("desativado")
         b = self.cfg["budgets"]
         if self.spent_day() + est > b["max_usd_day"]:
             raise Halt("budget_day")
@@ -169,6 +211,8 @@ def validate(schema, v, path="$"):
     if isinstance(v, str):
         if len(v) < schema.get("minLength", 0) or len(v) > schema.get("maxLength", 10 ** 9):
             errs.append(f"{path}: comprimento")
+        if "pattern" in schema and not re.search(schema["pattern"], v):
+            errs.append(f"{path}: formato")
     if isinstance(v, (int, float)) and not isinstance(v, bool):
         if v < schema.get("minimum", -1e18) or v > schema.get("maximum", 1e18):
             errs.append(f"{path}: intervalo")
@@ -208,23 +252,72 @@ def wrap(text):
     return "<fonte_nao_confiavel>\n" + sanitize(text) + "\n</fonte_nao_confiavel>"
 
 
-def parse_output(stdout):
+class CliError(Exception):
+    def __init__(self, kind, cost=None, tin=0, tout=0):
+        super().__init__(kind)
+        self.kind = kind
+        self.cost = cost
+        self.tin = tin
+        self.tout = tout
+
+
+def _result_obj(stdout):
     obj = json.loads(stdout)
     if isinstance(obj, list):
         obj = next((x for x in reversed(obj) if isinstance(x, dict) and x.get("type") == "result"), obj[-1])
+    return obj
+
+
+def _usage(obj):
+    u = obj.get("usage") or {}
+    tin = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+    cost = obj.get("total_cost_usd")
+    try:
+        cost = float(cost) if cost is not None else None
+    except (TypeError, ValueError):
+        cost = None
+    return tin, int(u.get("output_tokens") or 0), cost
+
+
+def salvage(stdout):
+    try:
+        return _usage(_result_obj(stdout))
+    except Exception:
+        return 0, 0, None
+
+
+def parse_output(stdout):
+    obj = _result_obj(stdout)
+    tin, tout, cost = _usage(obj)
     if obj.get("is_error"):
-        raise RuntimeError("cli_error")
+        sub = str(obj.get("subtype") or "")
+        raise CliError("max_budget" if "budget" in sub else "cli_error", cost, tin, tout)
     data = obj.get("structured_output")
     if data is None:
         r = obj.get("result")
         if isinstance(r, str):
             r = re.sub(r"^```(?:json)?\s*|\s*```$", "", r.strip())
-            data = json.loads(r)
+            try:
+                data = json.loads(r)
+            except ValueError:
+                raise CliError("json_invalido", cost, tin, tout)
         else:
             data = r
-    u = obj.get("usage") or {}
-    tin = sum(int(u.get(k) or 0) for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
-    return data, tin, int(u.get("output_tokens") or 0), obj.get("total_cost_usd")
+    return data, tin, tout, cost
+
+
+def run_cli(argv, prompt, cwd, timeout):
+    p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd, start_new_session=True)
+    try:
+        out, err = p.communicate(prompt, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(p.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        p.communicate()
+        raise CliError("timeout")
+    return p.returncode, out
 
 
 def call_model(ctx, stage, cwd, user_prompt, evidence_hash, est=None):
@@ -236,32 +329,54 @@ def call_model(ctx, stage, cwd, user_prompt, evidence_hash, est=None):
     if cf.exists():
         ctx.audit(stage, model, 0, 0, 0.0, True, "cache", evidence=evidence_hash[:12])
         return json.loads(cf.read_text(encoding="utf-8"))
-    ctx.guard(stage, est if est is not None else ctx.estimate_stage(stage))
     schema_path = HERE / "schemas" / f"{sc['schema']}.json"
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     cwd = Path(cwd).resolve()
     rule = "//" + str(cwd).lstrip("/") + "/**"
     subs = {"model": model, "schema_json": canon(schema), "system_prompt_file": str(HERE / "prompts" / f"{sc['prompt']}.md"),
-            "read_rules": f"Read({rule}),Grep({rule}),Glob({rule})", "max_turns": str(sc["max_turns"]), "max_usd": str(sc["max_usd"])}
+            "read_rules": f"Read({rule}),Grep({rule}),Glob({rule})", "max_usd": str(sc["max_usd"])}
     argv = [ctx.claude_bin] + [a.format(**subs) if "{" in a else a for a in ctx.cfg["cli"]["args"]]
-    ctx.calls += 1
-    try:
-        p = subprocess.run(argv, input=user_prompt, capture_output=True, text=True, cwd=cwd, timeout=ctx.cfg["cli"]["timeout_s"])
-        if p.returncode != 0:
-            raise RuntimeError(f"exit {p.returncode}")
-        data, tin, tout, cost = parse_output(p.stdout)
-    except Exception as e:
-        ctx.audit(stage, model, 0, 0, 0.0, False, "falha", erro=type(e).__name__, evidence=evidence_hash[:12])
-        return None
-    usd = float(cost) if cost is not None else ctx.price(tier, tin, tout)
-    errs = validate(schema, data)
-    if errs:
-        ctx.audit(stage, model, tin, tout, usd, False, "invalido", erro=errs[0][:80], evidence=evidence_hash[:12])
-        return None
-    ctx.cache.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=ctx.cache)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump({"data": data, "tokens_in": tin, "tokens_out": tout, "usd": usd}, f, ensure_ascii=False)
-    os.replace(tmp, cf)
-    ctx.audit(stage, model, tin, tout, usd, False, "ok", evidence=evidence_hash[:12])
-    return {"data": data, "tokens_in": tin, "tokens_out": tout, "usd": usd}
+    base_est = est if est is not None else ctx.estimate_stage(stage)
+    for attempt in range(2):
+        ctx.guard(stage, max(base_est, ctx.actual.get(stage, 0.0)))
+        ctx.calls += 1
+        tin = tout = 0
+        cost = None
+        kind = None
+        data = None
+        try:
+            rc, out = run_cli(argv, user_prompt, cwd, ctx.cfg["cli"]["timeout_s"])
+            tin, tout, cost = salvage(out)
+            if rc != 0:
+                try:
+                    sub = str(_result_obj(out).get("subtype") or "")
+                except Exception:
+                    sub = ""
+                raise CliError("max_budget" if "budget" in sub else "exit_%d" % rc, cost, tin, tout)
+            data, tin, tout, cost = parse_output(out)
+        except CliError as e:
+            kind, cost, tin, tout = e.kind, e.cost if e.cost is not None else cost, e.tin or tin, e.tout or tout
+        except Exception as e:
+            kind = type(e).__name__
+        if kind is None:
+            errs = validate(schema, data)
+            if errs:
+                kind = "invalido:" + errs[0][:60]
+        if cost is not None or tin or tout:
+            usd = max(cost if cost is not None else 0.0, ctx.price(tier, tin, tout))
+        else:
+            usd = float(sc["max_usd"])
+        ctx.actual[stage] = max(ctx.actual.get(stage, 0.0), usd)
+        ctx.charge(usd)
+        if kind is None:
+            ctx.cache.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=ctx.cache)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"data": data, "tokens_in": tin, "tokens_out": tout, "usd": usd}, f, ensure_ascii=False)
+            os.replace(tmp, cf)
+            ctx.audit(stage, model, tin, tout, usd, False, "ok", evidence=evidence_hash[:12])
+            return {"data": data, "tokens_in": tin, "tokens_out": tout, "usd": usd}
+        ctx.audit(stage, model, tin, tout, usd, False, "falha", erro=kind[:80], tentativa=attempt + 1, evidence=evidence_hash[:12])
+        if kind in ("timeout", "max_budget"):
+            return None
+    return None

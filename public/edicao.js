@@ -310,6 +310,15 @@
     state.cur = null;
     if (!a) { $app.innerHTML = `<div class="ed"><p class="note warn">Artigo não encontrado. <a href="${edHash(date)}">Voltar à edição</a></p></div>`; return; }
     document.title = `${a.titulo} · Estado Aberto`;
+    if (a.retirado) {
+      const when = a.retirado.em ? ` em ${esc(String(a.retirado.em).slice(0, 10))}` : "";
+      $app.innerHTML = `<div class="ed"><div class="art-wrap"><div class="art-nav"><a href="${edHash(a.data)}">‹ Voltar à edição de ${pd(a.data)}</a></div>
+        <header class="art-head"><span class="kick">${esc(a.secao_titulo)}</span><h1>${esc(a.titulo)}</h1></header>
+        <p class="note warn"><b>Corrigido/retirado.</b> Este artigo gerado por IA foi retirado${when}.${a.retirado.motivo ? ` Motivo: ${esc(a.retirado.motivo)}.` : ""} Os registos originais prevalecem.</p>
+        ${a.eventos.length ? `<div class="fnotes"><h4>Registos</h4><ul class="evl">${a.eventos.map((e) => `<li>${itemLink(e)}</li>`).join("")}</ul></div>` : ""}</div></div>`;
+      window.scrollTo(0, 0);
+      return;
+    }
     const words = a.paragraphs.join(" ").split(/\s+/).length, mins = Math.max(1, Math.round(words / 190));
     const conf = a.confianca != null && !isNaN(a.confianca) ? Math.round(Number(a.confianca) * 100) + "%" : "";
     const nums = (a.numeros_citados || []).map((x) => (typeof x === "string" ? x : [x.valor, x.fonte && "(" + x.fonte + ")", x.descricao].filter(Boolean).join(" "))).filter(Boolean);

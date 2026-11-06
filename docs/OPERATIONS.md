@@ -73,7 +73,7 @@ sudo -u estado-aberto /usr/local/sbin/estado-aberto-updater --force-tag vX.Y.Z
 
 The installer creates the user, directories, env templates, units, timers, a sudoers rule limited to restarting the app and starting the ingest queue, and a 2 GB swapfile with `vm.swappiness=10` when `swapon --show` lists no swap. It links `/usr/local/bin/estado-aberto-node` and `/usr/local/bin/estado-aberto-python`; `--python` defaults to the first of `python3.13`, `python3.12`, `python3` that is 3.12 or newer, and the installer fails otherwise. The system `python3` is never replaced. Timers are installed but only enabled with `--enable-timers`. The AI digest units (`estado-aberto-ai.service`, `estado-aberto-ai-import.service`, `estado-aberto-ai.timer`) are installed too, together with the user `estado-aberto-ai` (no login, home `state/ai/home`), `state/ai` and `/etc/estado-aberto/ai.env` (0640 root:estado-aberto-ai, `AI_ENABLED=0`, empty `ANTHROPIC_API_KEY`). The AI timer is never enabled unless `--enable-ai-timer` is given, and the job does nothing while `AI_ENABLED=0`.
 
-The maintainer chooses how the AI job authenticates: either keep the dedicated user and put `ANTHROPIC_API_KEY` in `ai.env` (strictest, the default), or install the drop-in `ops/ai/estado-aberto-ai-login-user.conf` as `/etc/systemd/system/estado-aberto-ai.service.d/login-user.conf` to run under an existing login user that already has the CLI logged in. See [AI_DIGEST.md](AI_DIGEST.md#running-under-an-existing-login-user).
+The AI job authenticates only with `ANTHROPIC_API_KEY` in `ai.env` under the dedicated user. Running under an existing login user is not recommended. See [AI_DIGEST.md](AI_DIGEST.md#running-under-a-login-user-is-not-recommended).
 
 ### Amazon Linux 2023
 

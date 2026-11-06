@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -31,6 +32,17 @@ def shortlist(ctx):
     con = ledger()
     q = "SELECT id, secao, tipo, titulo, resumo_curto, fonte_modulo, fonte_ref, rota, source_url, entidades, score FROM eventos WHERE edicao_data=? ORDER BY score DESC, id LIMIT ?"
     return [dict(r) for r in con.execute(q, (ctx.date, n))]
+
+
+def excluded(cfg, row):
+    ex = cfg.get("exclusoes", {})
+    if str(row.get("tipo") or "") in ex.get("tipos", []):
+        return "tipo"
+    txt = " ".join(str(row.get(k) or "") for k in ("titulo", "resumo_curto"))
+    for p in ex.get("padroes", []):
+        if re.search(p, txt, re.I):
+            return "padrao"
+    return None
 
 
 def event_rows(ids):
@@ -111,7 +123,7 @@ def allowed_hrefs(ctx, rows, rel):
 
 def build(ctx, ids):
     rows = event_rows(ids)
-    if not rows:
+    if not rows or any(excluded(ctx.cfg, r) for r in rows):
         return None
     ev = evidence_hash(rows)
     d = ctx.bundles / ev
