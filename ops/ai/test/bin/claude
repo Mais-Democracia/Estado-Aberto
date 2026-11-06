@@ -75,7 +75,7 @@ elif stage == "selecao":
     n = json.loads(rd("limite.json"))["max_historias"]
     out = {"historias": [{"evento_id": x["id"], "motivo": "importante"} for x in c[:n]]}
     usage = {"input_tokens": 12000, "output_tokens": 1000}
-elif stage == "redacao":
+elif stage in ("redacao", "redacao_lei"):
     f = json.loads(rd("facts.json"))
     ev = f["eventos"][0]
     titulo, resumo = strip(ev["titulo"]), strip(ev["resumo_curto"])
@@ -88,6 +88,14 @@ elif stage == "redacao":
     out = {"titulo": titulo, "lead": resumo, "corpo": corpo,
            "pontos_chave": ["Facto registado.", "Fonte oficial.", "Dados do dia."],
            "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "calculos": [], "entidades": [], "confianca": 0.9}
+    if stage == "redacao_lei":
+        lei = f.get("lei") or {}
+        lines = [x.strip() for x in strip(rd("texto.txt")).splitlines() if len(x.strip()) >= 15]
+        if lei.get("texto_disponivel") and len(lines) >= 3:
+            out["explicacao"] = {"do_que_trata": "A iniciativa trata do tema indicado no título.",
+                                 "o_que_muda": [{"texto": "Segundo o texto da iniciativa, existe uma medida concreta prevista.", "evidencia": x} for x in lines[:3]]}
+        else:
+            out["explicacao"] = {"do_que_trata": "A iniciativa trata do tema do título; o texto da iniciativa não estava disponível.", "o_que_muda": []}
     ov = os.environ.get("AI_STUB_OVERRIDE")
     if ov:
         for rule in json.loads(Path(ov).read_text(encoding="utf-8")):

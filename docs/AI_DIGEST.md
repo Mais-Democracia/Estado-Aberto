@@ -15,7 +15,22 @@ The edition for date D reports on D-1. The ledger (`diario.db`) holds events and
 | 5 | verify | none | See Verifier |
 | 6 | review | opus | One call per story. The pipeline writes `rascunho_revisao.txt` (the draft wrapped in `<rascunho_nao_confiavel>`, free text length-capped); the model never sees `rascunho.json`. `ok` or `rejeitar` plus unsupported claims |
 
+Small-day mode: when the shortlist (after the editorial exclusions) has at most `AI_MAX_ARTICLES` events, stages 2 and 3 are skipped (no model calls) and every candidate is drafted, however unimportant; `work/<D>/selecao.json` records `"modo": "dia_pequeno"`. With more candidates triage and selection run as before, and the top `pipeline.min_artigos_dia` (3) events are always drafted even if selection returns fewer or fails.
+
 Publish gate: verifier passes AND reviewer `ok` AND `confianca >= 0.7`. A draft that fails the verifier is rejected without calling the reviewer. Any exception while verifying or reviewing one story marks only that story `rejeitado` with the reason `erro:<Type>`; the run continues with the next stories. The importer does the same per file: a file that cannot be imported forces its existing row to `rejeitado`.
+
+## Law explainers
+
+Events whose initiative is a `Lei` (votação, debate, `lei_publicada`, `promulgacao`; resolved by `ops/ai/lei.py` from `fonte_modulo`/`fonte_ref` and the `iniciativa` entity) get a `lei` section in `facts.json` built read-only from `votacoes.db`, `intervencoes.db`, `politica.db` (seats), `dre.db` and `presidencia.db` in `ESTADO_ABERTO_SOURCE_DATA` (default: the data dir; every table and column is optional):
+
+- the initiative record, authors, lifecycle phases, outcome;
+- every plenary vote with the party-by-party position (`partido`, `sentido`, `lugares`) and seat totals;
+- up to 10 plenary speeches linked to the initiative (substantive ones, at most one per party per round, 1800 characters each, wrapped as untrusted);
+- the legal text, in this order: the DRE act text from `dre.db`, the DRE act PDF, the first `app.parlamento.pt/webutils/docs/doc.pdf` link on the initiative page. Fetched through `fetch_pdf.py` (robots, `allowed_hosts`, 10 MB, `pdftotext -l 12`, 60000 characters). Without text, `lei.texto_disponivel` is false and the article must say "o texto da iniciativa não estava disponível".
+
+The draft uses `prompts/redacao_lei.md` and `schemas/artigo_lei.json`: the usual fields plus `explicacao {do_que_trata, o_que_muda[{texto, evidencia}]}`. The pipeline stores `explicacao` as `{do_que_trata, o_que_muda[str], evidencias[str]}`.
+
+`blocos` is built by code, never by a model, saved as `blocos.json` in the bundle and copied into the article: `lei {titulo,tipo,numero,legislatura,autor,rota,texto_url}`, `votacao {data,resultado,por_partido[{partido,voto,lugares}],totais{favor,contra,abstencao}}`, `intervencoes[{id,deputado,partido,data,excerto,rota}]` (at most 6, `excerto` a verbatim substring of at most 280 characters after the salutation). `rota` is `#/votacoes/<bid>`. Both columns live in `artigos_ia` (`blocos`, `explicacao`, added by `migrations.ensure_artigos_ia`; `diario_ia.py` also ensures them).
 
 ## Verifier
 
@@ -27,6 +42,9 @@ Publish gate: verifier passes AND reviewer `ok` AND `confianca >= 0.7`. A draft 
 - Whole names: a multi-word proper name must occur contiguously in the evidence (case and accent insensitive). Single-word names (including at sentence start when the word is capitalised elsewhere in the evidence) must be declared in `entidades`; all-caps acronyms of 2 to 8 letters must occur in the evidence.
 - `entidades` are objects `{nome, tipo, cargo_publico}`. A `pessoa` needs a public role from `cargos_publicos` in `config.json`. A name found only in `texto.txt` (a PDF) must be declared.
 - Dates need day and month, and year when given; a date without year only matches an evidence date of the edition year or without year.
+- `explicacao` is verified like the body (numbers, names, dates, units; `do_que_trata` at most 120 words). Each `o_que_muda` item must contain "segundo" and carry an `evidencia` that is a verbatim substring (whitespace-insensitive) of `texto.txt` or `facts.json`; with text available there must be 3 to 6 items; without it the honest line is required.
+- Quotes (`«…»`, `“…”`, `"…"`) are never model-written: a quoted span must occur verbatim in the evidence.
+- `blocos` in an imported article must equal the bundle's `blocos.json`; vote claims are checked against `blocos.votacao` when present.
 - Vote direction: if the article says a party or group voted `a favor`, `contra` or abstained, the vote table in the evidence (`partido`/`sentido`) must agree; no table means the claim fails.
 - Hrefs in `fontes.json`, 250 words, no URLs, no first person, no instruction-like lines or wrapper tags in any draft field.
 

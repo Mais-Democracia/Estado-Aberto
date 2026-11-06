@@ -51,6 +51,18 @@ def stage_bundle(ctx):
     return items
 
 
+def small_day(ctx, items):
+    return len(items) <= ctx.cfg["budgets"]["max_articles"]
+
+
+def stage_small(ctx, items):
+    ids = [i["id"] for i in items]
+    jwrite(ctx.work / "triage.json", {"ranking": ids, "top": ids, "modo": "dia_pequeno"})
+    jwrite(ctx.work / "selecao.json", {"escolhidas": ids, "modo": "dia_pequeno"})
+    ctx.audit("select", decision=f"dia_pequeno:{len(ids)}")
+    return ids
+
+
 def stage_triage(ctx, items):
     top_n = ctx.cfg["pipeline"]["select_from"]
     ids = [i["id"] for i in items]
@@ -80,15 +92,19 @@ def stage_select(ctx, items, top):
     jwrite(d / "candidates.json", cand_view(rows))
     jwrite(d / "limite.json", {"max_historias": mx})
     res = call_model(ctx, "selecao", d, "Le candidates.json e limite.json e escolhe as historias.", ev, ctx.estimate_stage("selecao", len(rows)))
-    if not res:
-        return []
     chosen, seen = [], set()
-    for h in res["data"]["historias"]:
+    for h in (res["data"]["historias"] if res else []):
         i = h["evento_id"]
         if i in byid and i not in seen:
             seen.add(i)
             chosen.append(i)
     chosen = chosen[:mx]
+    floor = min(ctx.cfg["pipeline"]["min_artigos_dia"], mx)
+    for i in top:
+        if len(chosen) >= floor:
+            break
+        if i in byid and i not in chosen:
+            chosen.append(i)
     jwrite(ctx.work / "selecao.json", {"escolhidas": chosen})
     return chosen
 
@@ -104,10 +120,18 @@ def killed_events(ctx):
     return out
 
 
+def stored_expl(e):
+    if not isinstance(e, dict):
+        return None
+    items = V.expl_items(e)
+    return {"do_que_trata": e.get("do_que_trata", ""), "o_que_muda": [t for t, _ in items], "evidencias": [x for _, x in items]}
+
+
 def outcome(ctx, b, art, ver, rev, estado, models):
     doc = {"edicao_data": ctx.date, "evidence_hash": b["evidence_hash"], "evento_ids": [r["id"] for r in b["rows"]],
            "titulo": art["titulo"], "lead": art["lead"], "corpo": art["corpo"], "pontos_chave": art["pontos_chave"],
            "fontes": art["fontes"], "numeros_citados": art["numeros_citados"], "calculos": art.get("calculos", []), "entidades": art["entidades"],
+           "blocos": jread(b["dir"] / "blocos.json"), "explicacao": stored_expl(art.get("explicacao")),
            "confianca": art["confianca"], "modelo": models[0], "revisor": models[1],
            "verificacao": {"verificador": ver, "revisor": rev}, "estado": estado}
     target = (ctx.published if estado == "publicado" else ctx.rejected) / f"{b['evidence_hash']}.json"
@@ -129,9 +153,9 @@ def stage_draft(ctx, items, chosen):
                 continue
             B.add_text(ctx, b)
             t = b["dir"] / "texto.txt"
-            ev = sha(b["evidence_hash"], hashed(t))
+            ev = sha(b["evidence_hash"], hashed(t), hashed(b["dir"] / "facts.json"))
             (b["dir"] / "rascunho.json").unlink(missing_ok=True)
-            res = call_model(ctx, "redacao", b["dir"], "Redige o artigo sobre o evento descrito nos ficheiros desta pasta.", ev)
+            res = call_model(ctx, "redacao_lei" if b.get("lei") else "redacao", b["dir"], "Redige o artigo sobre o evento descrito nos ficheiros desta pasta.", ev)
             if not res:
                 continue
             jwrite(ctx.work / "drafts" / f"{b['evidence_hash']}.json", res["data"])
@@ -162,6 +186,10 @@ def review_input(art):
     d["numeros_citados"] = [cap(x, 40) for x in art.get("numeros_citados", [])[:30]]
     d["entidades"] = [{"nome": cap(e.get("nome", ""), 120), "tipo": cap(e.get("tipo", ""), 20), "cargo_publico": cap(e.get("cargo_publico", ""), 80)} if isinstance(e, dict) else cap(e, 120) for e in art.get("entidades", [])[:30]]
     d["calculos"] = [{"expr": cap(c.get("expr", ""), 120), "resultado": cap(c.get("resultado", ""), 40)} for c in art.get("calculos", [])[:10]]
+    if isinstance(art.get("explicacao"), dict):
+        e = art["explicacao"]
+        d["explicacao"] = {"do_que_trata": cap(e.get("do_que_trata", ""), 900),
+                           "o_que_muda": [{"texto": cap(t, 300), "evidencia": cap(x, 400)} for t, x in V.expl_items(e)[:6]]}
     return "<rascunho_nao_confiavel>\n" + json.dumps(d, ensure_ascii=False, indent=1) + "\n</rascunho_nao_confiavel>\n"
 
 
@@ -205,23 +233,76 @@ def stage_verify_review(ctx, drafts, do_review=True):
     return n
 
 
+def law_report(ctx, rows, fetch=True):
+    import tempfile
+    ctx.bundles = Path(tempfile.mkdtemp(prefix="ea-dry-"))
+    ctx.work = ctx.bundles / "work"
+    found = []
+    for r in rows:
+        try:
+            b = B.build(ctx, [r["id"]])
+        except Exception:
+            continue
+        if not b or not b.get("lei"):
+            continue
+        txt = B.add_text(ctx, b) if fetch else False
+        facts = jread(b["dir"] / "facts.json", {}).get("lei", {})
+        blocos = jread(b["dir"] / "blocos.json", {})
+        found.append((r, facts, blocos, txt, b))
+    return found
+
+
+def print_law(r, facts, blocos, txt, b):
+    ini = facts.get("iniciativa") or {}
+    print(f"LEI evento {r['id']} ({r.get('tipo')}): {str(ini.get('tipo') or '')} n.o {ini.get('numero')}/{ini.get('legislatura')} | {lib.sanitize(str(blocos.get('lei', {}).get('titulo') or ''))[:90]}")
+    print(f"  rota {blocos.get('lei', {}).get('rota')} | lei_em_vigor={facts.get('lei_em_vigor')} | bundle {b['dir'].name[:12]}")
+    v = blocos.get("votacao")
+    if v:
+        parts = ", ".join(f"{p['partido']} {p['voto']}" + (f" ({p['lugares']})" if p.get("lugares") is not None else "") for p in v["por_partido"])
+        print(f"  votacao {v['data']} {v['resultado']}: {parts} | totais {v['totais']}")
+    else:
+        print("  votacao: sem dados")
+    iv = facts.get("intervencoes") or []
+    by = {}
+    for x in iv:
+        by[x.get("partido") or "gov"] = by.get(x.get("partido") or "gov", 0) + 1
+    print(f"  intervencoes: {facts.get('intervencoes_total', 0)} no total, {len(iv)} no bundle {by}, {len(blocos.get('intervencoes', []))} excertos")
+    for x in blocos.get("intervencoes", [])[:2]:
+        print(f"    [{x['partido']}] {x['deputado']}: {x['excerto'][:110]}")
+    t = b["dir"] / "texto.txt"
+    print(f"  texto_disponivel={facts.get('texto_disponivel')} origem={facts.get('texto_origem')} chars={t.stat().st_size if t.exists() else 0} url={blocos.get('lei', {}).get('texto_url')}")
+
+
 def dry_run(ctx):
     c = ctx.cfg
+    mx = c["budgets"]["max_articles"]
+    laws = []
     try:
-        rows = B.shortlist(ctx)
+        rows = [r for r in B.shortlist(ctx) if not B.excluded(c, r)]
         src = f"diario.db ({len(rows)} candidatos)"
         n = len(rows)
     except Exception:
+        rows = None
         n = c["pipeline"]["shortlist_size"]
         src = f"sem diario.db: {n} candidatos assumidos"
+    small = rows is not None and n <= mx
     top = min(n, c["pipeline"]["select_from"])
-    k = min(top, c["budgets"]["max_articles"])
+    k = n if small else min(top, mx)
+    k = max(k, min(n, c["pipeline"]["min_artigos_dia"], mx))
+    if rows:
+        laws = law_report(ctx, rows[:k], fetch=os.environ.get("AI_DRY_NO_FETCH") != "1")
+    nl = len(laws)
     eur = c["eur_per_usd"]
     total = 0.0
-    print(f"dry-run edicao {ctx.date} | {src} | max_artigos={k} | sem chamadas ao modelo")
+    modo = "dia pequeno: sem triagem nem selecao" if small else "triagem + selecao"
+    print(f"dry-run edicao {ctx.date} | {src} | modo={modo} | max_artigos={k} leis={nl} | sem chamadas ao modelo")
     plan = [("bundle", "-", 0, 0, 0.0, f"{n} bundles (sem modelo)"),
             ("verify", "-", 0, 0, 0.0, f"{k} verificacoes (sem modelo)")]
-    for st, cnt, m in (("triage", 1, n), ("selecao", 1, top), ("redacao", k, 1), ("revisao", k, 1)):
+    steps = [] if small else [("triage", 1, n), ("selecao", 1, top)]
+    steps += [("redacao", k - nl, 1), ("redacao_lei", nl, 1), ("revisao", k, 1)]
+    for st, cnt, m in steps:
+        if cnt <= 0:
+            continue
         e = c["estimates"][st]
         tin = e["in_per_candidate"] * m if "in_per_candidate" in e else e["in"]
         tout = e["out"]
@@ -229,10 +310,12 @@ def dry_run(ctx):
         usd = ctx.price(tier, tin, tout) * cnt
         plan.append((st, tier, tin * cnt, tout * cnt, usd, f"{cnt} chamada(s)"))
         total += usd
-    print(f"{'etapa':<9}{'modelo':<8}{'tokens_in':>10}{'tokens_out':>11}{'usd':>8}{'eur':>8}  nota")
+    print(f"{'etapa':<12}{'modelo':<8}{'tokens_in':>10}{'tokens_out':>11}{'usd':>8}{'eur':>8}  nota")
     for st, tier, ti, to, usd, note in plan:
-        print(f"{st:<9}{tier:<8}{ti:>10}{to:>11}{usd:>8.3f}{usd * eur:>8.3f}  {note}")
+        print(f"{st:<12}{tier:<8}{ti:>10}{to:>11}{usd:>8.3f}{usd * eur:>8.3f}  {note}")
     print(f"TOTAL estimado: ${total:.2f} / EUR {total * eur:.2f} por dia (limite diario ${c['budgets']['max_usd_day']:.2f})")
+    for law in laws:
+        print_law(*law)
     return 0
 
 
@@ -332,8 +415,13 @@ def pipeline(ctx, a):
         if not items:
             ctx.audit("run", decision="sem candidatos")
             return 0
-        top = jread(ctx.work / "triage.json", {}).get("top", []) if "triage" not in want else stage_triage(ctx, items)
-        chosen = jread(ctx.work / "selecao.json", {}).get("escolhidas", []) if "select" not in want else stage_select(ctx, items, top)
+        small = small_day(ctx, items)
+        if small and ("triage" in want or "select" in want):
+            ids = stage_small(ctx, items)
+            top, chosen = ids, ids
+        else:
+            top = jread(ctx.work / "triage.json", {}).get("top", []) if "triage" not in want else stage_triage(ctx, items)
+            chosen = jread(ctx.work / "selecao.json", {}).get("escolhidas", []) if "select" not in want else stage_select(ctx, items, top)
         if {"draft", "verify", "review", "publish"} & set(want):
             have = len(list(ctx.published.glob("*.json")))
             room = max(0, ctx.cfg["budgets"]["max_articles"] - have)

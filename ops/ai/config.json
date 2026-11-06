@@ -28,7 +28,8 @@
   },
   "pipeline": {
     "shortlist_size": 25,
-    "select_from": 12
+    "select_from": 12,
+    "min_artigos_dia": 3
   },
   "stages": {
     "triage": {
@@ -54,13 +55,20 @@
       "prompt": "revisao",
       "schema": "revisao",
       "max_usd": 0.4
+    },
+    "redacao_lei": {
+      "tier": "sonnet",
+      "prompt": "redacao_lei",
+      "schema": "artigo_lei",
+      "max_usd": 0.5
     }
   },
   "prompt_versions": {
     "triage": "1",
     "selecao": "1",
     "redacao": "1",
-    "revisao": "1"
+    "revisao": "2",
+    "redacao_lei": "1"
   },
   "estimates": {
     "triage": {
@@ -78,6 +86,10 @@
     "revisao": {
       "in": 19500,
       "out": 600
+    },
+    "redacao_lei": {
+      "in": 45000,
+      "out": 2300
     }
   },
   "runtime": {
@@ -187,7 +199,7 @@
   "pdf": {
     "max_bytes": 10485760,
     "timeout_s": 20,
-    "max_pages": 8,
+    "max_pages": 12,
     "max_chars": 60000
   },
   "related_api": {

@@ -56,11 +56,18 @@ def ensure_estado_empresas(con):
     return 0
 
 
+ARTIGOS_IA_COLUMNS = {"artigos_ia": [("blocos", "TEXT"), ("explicacao", "TEXT")]}
+
+
+def ensure_artigos_ia(con):
+    return add_columns(con, ARTIGOS_IA_COLUMNS)
+
+
 def ensure_diario(con):
     sys.path.insert(0, str(Path(__file__).resolve().parent / "jobs"))
     from diario import SCHEMA
     con.executescript(SCHEMA)
-    return 0
+    return ensure_artigos_ia(con)
 
 
 CREATE_IF_MISSING = {"diario"}

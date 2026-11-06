@@ -17,7 +17,7 @@ WORD = re.compile(r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’-]*")
 CONNECT = {"de", "da", "do", "das", "dos"}
 TAGS = re.compile(r"</?\s*(?:fonte_nao_confiavel|rascunho_nao_confiavel)\s*>", re.I)
 STOP = {"o", "a", "os", "as", "um", "uma", "uns", "umas", "em", "no", "na", "nos", "nas", "segundo", "para", "com", "por", "sobre", "ao", "aos", "à", "às", "pelo", "pela", "este", "esta", "estes", "estas", "esse", "essa", "foi", "são", "é", "se", "mas", "como", "quando", "apos", "após", "entre", "durante", "ate", "até", "e", "ou", "que", "dos", "das"}
-SKIP_KEYS = {"id", "ids", "score", "revisao", "atrasado", "hash", "fonte_ref", "ia_artigo_id", "evidence_hash", "evento_ids", "bid", "voto_id", "n_ordem", "rid", "source_url", "rota", "url", "href", "fonte_modulo"}
+SKIP_KEYS = {"id", "ids", "score", "revisao", "atrasado", "hash", "fonte_ref", "ia_artigo_id", "evidence_hash", "evento_ids", "bid", "voto_id", "n_ordem", "rid", "palavras", "source_url", "rota", "url", "href", "fonte_modulo"}
 NUMTXT = r"\d{1,3}(?:[   .]\d{3})+(?:,\d+)?|\d+(?:[.,]\d+)?"
 NUM = re.compile(r"(?<![\w/-])(" + NUMTXT + r")")
 TAIL = re.compile(
@@ -29,6 +29,25 @@ SENSOS = {"favor": "favor", "contra": "contra", "abstencao": "abstencao", "abste
 PARTIDOS = ["PS", "PSD", "CH", "IL", "BE", "PCP", "PAN", "Livre", "CDS-PP", "CDS", "JPP", "PEV", "Chega", "Iniciativa Liberal", "Bloco de Esquerda"]
 VOTE_VERB = re.compile(r"\bvot(?:ou|aram|ando)\b|\babst(?:eve|iveram|endo)[- ]se\b|\babsten[cç][aã]o\b|\babst[eé]m[- ]se\b", re.I)
 DIR = re.compile(r"\ba\s+favor\b|\bcontra\b|\babst(?:eve|iveram|endo)[- ]se\b|\babsten[cç][aã]o\b", re.I)
+
+
+def ws(s):
+    return re.sub(r"[\s\u00a0]+", " ", str(s)).strip()
+
+
+def expl_items(e):
+    evs = list(e.get("evidencias") or [])
+    out = []
+    for i, x in enumerate(e.get("o_que_muda") or []):
+        if isinstance(x, dict):
+            out.append((str(x.get("texto", "")), str(x.get("evidencia", ""))))
+        else:
+            out.append((str(x), str(evs[i]) if i < len(evs) else ""))
+    return out
+
+
+QUOTE = re.compile(r"«([^»]{3,})»|“([^”]{3,})”|\"([^\"]{3,})\"")
+NOTEXT = "o texto da iniciativa nao estava disponivel"
 
 
 def fold(s):
@@ -268,7 +287,9 @@ def load_evidence(bdir):
         ref = str(obj.get("edicao_data", "")) if isinstance(obj, dict) else ""
     struct = TAGS.sub(" ", "\n".join(strs))
     allnum = TAGS.sub(" ", "\n".join(nums)) + "\n" + texto
-    return {"struct": struct, "texto": texto, "numtext": allnum, "votes": votes, "ref_year": int(ref[:4]) if ref[:4].isdigit() else None}
+    lei = obj.get("lei") if isinstance(obj, dict) and isinstance(obj.get("lei"), dict) else None
+    return {"struct": struct, "texto": texto, "numtext": allnum, "votes": votes, "ref_year": int(ref[:4]) if ref[:4].isdigit() else None,
+            "lei": lei, "coll": ws(struct + "\n" + texto)}
 
 
 def name_runs(text, commons):
@@ -362,14 +383,40 @@ def _verify(art, bdir, cfg):
     ev = load_evidence(bdir)
     allowed = set(json.loads((bdir / "fontes.json").read_text(encoding="utf-8")).get("hrefs_permitidos", []))
     textos = [art.get("titulo", ""), art.get("lead", ""), art.get("corpo", "")] + list(art.get("pontos_chave", []))
+    expl = art.get("explicacao") if isinstance(art.get("explicacao"), dict) else None
+    items = expl_items(expl) if expl else []
+    if expl:
+        textos += [str(expl.get("do_que_trata", ""))] + [t for t, _ in items]
+    bp = Path(bdir) / "blocos.json"
+    blocos = json.loads(bp.read_text(encoding="utf-8")) if bp.exists() else None
     blob = "\n".join(str(t) for t in textos)
     if len(art.get("corpo", "").split()) > cfg["max_words"]:
         problems.append("corpo_excede_palavras")
+    lei = ev["lei"]
+    if expl and len(str(expl.get("do_que_trata", "")).split()) > 120:
+        problems.append("explicacao_excede_palavras")
+    if lei and not expl:
+        problems.append("explicacao_em_falta")
+    if expl and not lei:
+        problems.append("explicacao_sem_lei")
+    if lei and expl:
+        if lei.get("texto_disponivel"):
+            if not 3 <= len(items) <= 6:
+                problems.append("o_que_muda_itens")
+        elif NOTEXT not in fold(" ".join([str(expl.get("do_que_trata", "")), str(art.get("corpo", "")), str(art.get("lead", ""))])).replace("  ", " "):
+            problems.append("falta_aviso_sem_texto")
+        for t, e in items:
+            if len(ws(e)) < 15 or ws(e) not in ev["coll"]:
+                problems.append(f"evidencia_nao_literal:{t[:40]}")
+            if "segundo" not in fold(t):
+                problems.append(f"o_que_muda_sem_atribuicao:{t[:40]}")
+    if blocos is not None and "blocos" in art and art.get("blocos") != blocos:
+        problems.append("blocos_alterados")
     if URL.search(blob):
         problems.append("url_no_texto")
     if FIRST.search(blob):
         problems.append("primeira_pessoa")
-    allstrings = blob + "\n" + "\n".join(str(x) for x in art.get("numeros_citados", [])) + "\n" + json.dumps(art.get("fontes", []), ensure_ascii=False) + json.dumps(art.get("entidades", []), ensure_ascii=False) + json.dumps(art.get("calculos", []), ensure_ascii=False)
+    allstrings = blob + "\n" + "\n".join(str(x) for x in art.get("numeros_citados", [])) + "\n" + json.dumps(art.get("fontes", []), ensure_ascii=False) + json.dumps(art.get("entidades", []), ensure_ascii=False) + json.dumps(art.get("calculos", []), ensure_ascii=False) + json.dumps(expl or {}, ensure_ascii=False)
     if INJ.search(allstrings) or TAGS.search(allstrings):
         problems.append("injecao_no_rascunho")
     fdates = dates(ev["numtext"])
@@ -389,6 +436,10 @@ def _verify(art, bdir, cfg):
             continue
         if not supported(qs[0], evq | dset):
             problems.append(f"numero_citado_sem_suporte:{qs[0][0]}:{qs[0][1]}")
+    for m in QUOTE.finditer(blob):
+        span = ws(next(g for g in m.groups() if g))
+        if span not in ev["coll"]:
+            problems.append(f"citacao_nao_literal:{span[:40]}")
     commons = set(cfg.get("nomes_comuns", []))
     for c in sorted((c for c in commons if " " in c), key=len, reverse=True):
         blob = re.sub(re.escape(c), " ", blob, flags=re.I)
@@ -440,6 +491,8 @@ def _verify(art, bdir, cfg):
     claims = vote_claims(blob)
     if claims:
         table = {(party_key(p), s) for p, s in ev["votes"]}
+        if blocos and blocos.get("votacao"):
+            table = {(party_key(r["partido"]), r["voto"]) for r in blocos["votacao"].get("por_partido", [])}
         for p, d, s in claims:
             if not table:
                 problems.append(f"voto_sem_tabela:{p}")

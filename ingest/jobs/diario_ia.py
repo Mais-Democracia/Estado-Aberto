@@ -11,12 +11,25 @@ sys.path.insert(0, str(ROOT / "ops" / "ai"))
 import lib  # noqa: E402
 import verify as V  # noqa: E402
 
-FIELDS = ("titulo", "lead", "corpo", "pontos_chave", "fontes", "numeros_citados", "entidades", "confianca", "modelo", "revisor", "verificacao", "estado", "evento_ids")
-JSON_FIELDS = {"pontos_chave", "fontes", "numeros_citados", "entidades", "verificacao", "evento_ids"}
+FIELDS = ("titulo", "lead", "corpo", "pontos_chave", "fontes", "numeros_citados", "entidades", "confianca", "modelo", "revisor", "verificacao", "estado", "evento_ids", "blocos", "explicacao")
+JSON_FIELDS = {"pontos_chave", "fontes", "numeros_citados", "entidades", "verificacao", "evento_ids", "blocos", "explicacao"}
+NULLABLE = {"blocos", "explicacao"}
 
 
 def j(v):
     return json.dumps(v, ensure_ascii=False, sort_keys=True)
+
+
+def enc(k, v):
+    if k in JSON_FIELDS:
+        return None if (v is None and k in NULLABLE) else j(v)
+    return v
+
+
+def dec(k, v):
+    if k in JSON_FIELDS:
+        return None if v is None else j(json.loads(v))
+    return v
 
 
 def reverify(doc, bdir, cfg):
@@ -59,13 +72,12 @@ def import_doc(con, doc, cfg, bundles, killed=None):
                     break
             except ValueError:
                 continue
-    vals = {k: (j(doc[k]) if k in JSON_FIELDS else doc[k]) for k in FIELDS}
+    vals = {k: enc(k, doc.get(k)) for k in FIELDS}
     if row:
         cur = con.execute("SELECT * FROM artigos_ia WHERE id=?", (row[0],)).fetchone()
         cols = [d[0] for d in con.execute("SELECT * FROM artigos_ia LIMIT 0").description]
         old = dict(zip(cols, cur))
-        same = old["evidence_hash"] == ev and all(
-            (j(json.loads(old[k])) if k in JSON_FIELDS else old[k]) == (j(json.loads(vals[k])) if k in JSON_FIELDS else vals[k]) for k in FIELDS)
+        same = old["evidence_hash"] == ev and all(dec(k, old[k]) == dec(k, vals[k]) for k in FIELDS)
         aid = row[0]
         if same:
             return aid, state, False
@@ -126,6 +138,10 @@ def main(argv=None):
     if not con.execute("SELECT 1 FROM sqlite_master WHERE name='artigos_ia'").fetchone():
         print("tabela artigos_ia inexistente")
         return 1
+    sys.path.insert(0, str(ROOT / "ingest"))
+    import migrations  # noqa: E402
+    with con:
+        migrations.ensure_artigos_ia(con)
     n = {"novos_ou_alterados": 0, "inalterados": 0, "falhas": 0}
     killed = ai / "killed"
     for d in dates:
