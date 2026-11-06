@@ -22,14 +22,14 @@
   },
   "eur_per_usd": 0.92,
   "budgets": {
-    "max_usd_day": 2.5,
-    "max_usd_month": 60,
-    "max_articles": 5,
-    "max_updates": 3
+    "max_usd_day": 100000,
+    "max_usd_month": 1000000,
+    "max_articles": 1000,
+    "max_updates": 1000
   },
   "pipeline": {
-    "shortlist_size": 25,
-    "select_from": 12,
+    "shortlist_size": 200,
+    "select_from": 60,
     "min_artigos_dia": 3,
     "refresh_dias": 2
   },

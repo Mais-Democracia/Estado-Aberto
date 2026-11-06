@@ -1,1 +1,1 @@
-{"type":"object","required":["historias"],"properties":{"historias":{"type":"array","maxItems":10,"items":{"type":"object","required":["evento_id","motivo"],"properties":{"evento_id":{"type":"integer"},"motivo":{"type":"string","maxLength":300}}}}}}
+{"type":"object","required":["historias"],"properties":{"historias":{"type":"array","maxItems":100,"items":{"type":"object","required":["evento_id","motivo"],"properties":{"evento_id":{"type":"integer"},"motivo":{"type":"string","maxLength":300}}}}}}

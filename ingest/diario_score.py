@@ -65,12 +65,12 @@ def score(tipo, amount=None, narrow=False, rejected=False, risk=False, first=Fal
     return round(max(0.0, s), 4)
 
 
-def select_shortlist(rows, n=25, per_section=6):
+def select_shortlist(rows, n=200, per_section=None):
     ordered = sorted(rows, key=lambda r: (-float(r["score"]), int(r["id"])))
     taken, count = [], {}
     for r in ordered:
         sec = r["secao"]
-        if count.get(sec, 0) >= per_section:
+        if per_section is not None and count.get(sec, 0) >= per_section:
             continue
         count[sec] = count.get(sec, 0) + 1
         taken.append(r)
@@ -84,7 +84,7 @@ def _default_db():
     return data.expanduser().resolve() / "diario.db"
 
 
-def shortlist(edicao_data, n=25, per_section=6, con=None):
+def shortlist(edicao_data, n=200, per_section=None, con=None):
     own = con is None
     if own:
         path = _default_db()
@@ -102,5 +102,5 @@ def shortlist(edicao_data, n=25, per_section=6, con=None):
     return select_shortlist(rows, n, per_section)
 
 
-def shortlist_json(edicao_data, n=25, per_section=6, con=None):
+def shortlist_json(edicao_data, n=200, per_section=None, con=None):
     return json.dumps(shortlist(edicao_data, n, per_section, con))

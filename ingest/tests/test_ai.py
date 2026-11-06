@@ -182,7 +182,7 @@ class T(unittest.TestCase):
         empty.mkdir()
         r = self.run_ai("--dry-run", ESTADO_ABERTO_DATA=str(empty))
         self.assertEqual(r.returncode, 0)
-        self.assertIn("TOTAL estimado: $1.35", r.stdout)
+        self.assertIn("TOTAL estimado: $15.34", r.stdout)
         self.assertIn("EUR", r.stdout)
         self.assertEqual(self.calls(), 0)
 
