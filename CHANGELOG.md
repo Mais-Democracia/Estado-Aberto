@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-06
+
 ### Added
 - AI explainers for laws: party votes, deputies' speeches and a plain-language explanation checked against the text.
 - Small-day mode: days with few candidates skip triage and selection.
