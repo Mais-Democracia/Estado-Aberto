@@ -1,6 +1,6 @@
 {
-  "version": "0.3.0",
-  "git_sha": "0b3259092d444bc6643531edabffaf06d83069c8",
+  "version": "0.3.1",
+  "git_sha": "c6de52e2f317bbb4e6ce3c0561eac8772d124426",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Added\n- AI explainers for laws: party votes, deputies' speeches and a plain-language explanation checked against the text.\n- Small-day mode: days with few candidates skip triage and selection.\n- Ledger object routes: items link to the law and object pages.\n- Login runtime mode for the AI service (`AI_AUTH_MODE=login`) with a systemd drop-in and installer option.\n\n### Changed\n- The front page no longer shows data-freshness notices."
+  "notes": "### Changed\n- AI verifier no longer rejects legitimate legal references.\n- `--reverify` republishes cached drafts without regenerating.\n- Lock helper fails fast and creates group-writable lock files.\n- Votacoes incremental step has deadlines and reports partial results.\n- Refresh no longer fails when optional steps are partial.\n- Front page layout for sparse days."
 }
