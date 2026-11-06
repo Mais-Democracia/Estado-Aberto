@@ -5,6 +5,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- Laws published in the DRE are linked to their parliamentary initiative by incremental steps (`dre_recent`, `votacoes_recent`), by law number, exact title or citation.
+- AI articles for laws include the final vote by party and the plenary debate, also when the link pass has not run yet.
+- Superseded AI articles are hidden and kept for audit.
+
 ## [0.3.2] - 2026-11-06
 
 ### Changed

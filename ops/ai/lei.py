@@ -3,16 +3,22 @@ import json
 import os
 import re
 import sqlite3
+import sys
 import urllib.parse
 from pathlib import Path
 
 import fetch_pdf
-from lib import data_dir, open_ro, wrap
+from lib import ROOT, data_dir, open_ro, wrap
+
+sys.path.insert(0, str(ROOT / "ingest"))
+import linking  # noqa: E402
 
 LAW_TIPO = re.compile(r"\bLei\b", re.I)
 SENSOS = ("favor", "contra", "abstencao")
 SPEECH_CAP = 1800
 FACT_SPEECHES = 10
+FACT_VOTES = 12
+LISTA_CAP = 200
 BLOCO_SPEECHES = 6
 MIN_WORDS = 60
 EXCERTO_MAX = 280
@@ -87,6 +93,14 @@ def entity_bid(row):
     return None
 
 
+def match_bid(act_id):
+    act = dre_act(act_id)
+    if not act or act.get("kind") not in linking.ACT_KINDS:
+        return None
+    hit = linking.best(act, db("votacoes"))
+    return hit["bid"] if hit else None
+
+
 def locate(row):
     mod, ref = row.get("fonte_modulo"), str(row.get("fonte_ref") or "")
     vcon = db("votacoes")
@@ -115,6 +129,8 @@ def locate(row):
             bid = i["bid"] if i else None
     if bid is None:
         bid = entity_bid(row)
+    if bid is None and act_id:
+        bid = match_bid(act_id)
     return bid, vote_id, act_id
 
 
@@ -133,19 +149,22 @@ def seats(vcon, leg):
 
 def plenary_votes(vcon, bid, seat_map, main_id):
     out = []
-    for v in q(vcon, "SELECT id, data, fase, orgao, resultado, unanime FROM votos WHERE bid=? AND orgao=? ORDER BY data, id", (bid, "Plenário")):
+    for v in q(vcon, "SELECT * FROM votos WHERE bid=? ORDER BY data, id", (bid,)):
+        plen = v.get("orgao") == "Plenário"
         gp = q(vcon, "SELECT partido, sentido FROM voto_partido WHERE voto_id=? AND kind=?", (v["id"], "gp"))
         split = sorted({r["partido"] for r in q(vcon, "SELECT partido FROM voto_partido WHERE voto_id=? AND kind IN (?,?)", (v["id"], "dividido", "parcial"))} - {r["partido"] for r in gp})
         rows = [{"partido": r["partido"], "sentido": r["sentido"], "lugares": seat_map.get(pk(r["partido"]))} for r in gp]
         rows.sort(key=lambda r: (-(r["lugares"] or 0), r["partido"]))
-        known = bool(rows) and all(r["lugares"] is not None for r in rows)
+        known = plen and bool(rows) and all(r["lugares"] is not None for r in rows)
         tot = {s: (sum(r["lugares"] for r in rows if r["sentido"] == s) if known else None) for s in SENSOS}
-        out.append({"id": v["id"], "data": v["data"], "fase": v["fase"], "resultado": v["resultado"], "unanime": v["unanime"],
-                    "por_partido": rows, "partidos_divididos": split, "totais": tot})
-    main = next((v for v in out if v["id"] == main_id), None)
+        listas = {s: str(v[s])[:LISTA_CAP] for s in SENSOS if v.get(s)}
+        out.append({"id": v["id"], "data": v["data"], "fase": v["fase"], "orgao": v.get("orgao"), "resultado": v["resultado"], "unanime": v["unanime"],
+                    "por_partido": rows, "partidos_divididos": split, "totais": tot, "listas": listas})
+    plenary = [v for v in out if v["orgao"] == "Plenário"]
+    main = next((v for v in plenary if v["id"] == main_id), None)
     if main is None:
-        final = [v for v in out if str(v["fase"] or "").lower().startswith("votação final")]
-        main = (final or out or [None])[-1]
+        final = [v for v in plenary if str(v["fase"] or "").lower().startswith("votação final")]
+        main = (final or plenary or [None])[-1]
     return out, main
 
 
@@ -210,7 +229,7 @@ def excerto(text):
 
 def load_speeches(bid):
     icon = db("intervencoes")
-    rows = q(icon, "SELECT i.id, i.data, i.orador, i.partido, i.kind, i.cargo, i.palavras, i.texto, i.dep_bid FROM intervencoes i "
+    rows = q(icon, "SELECT i.* FROM intervencoes i "
                    "WHERE i.id IN (SELECT iv_id FROM iv_ini WHERE bid=?)", (bid,))
     return ordered_speeches(rows), len(rows)
 
@@ -218,7 +237,7 @@ def load_speeches(bid):
 def dre_act(act_id):
     if not act_id:
         return None
-    return one(db("dre"), "SELECT id, kind, number, year, date, title, summary, url, pdf_url, source_url, text FROM acts WHERE id=?", (act_id,))
+    return one(db("dre"), "SELECT * FROM acts WHERE id=?", (act_id,))
 
 
 def build_lei(row):
@@ -255,23 +274,28 @@ def _build_lei(row):
                                "lei_ref": ini.get("lei_ref"), "dr_ref": ini.get("dr_ref"), "dr_date": ini.get("dr_date"), "rota": rota, "url": ini.get("source_url")}
         facts["fases"] = fases
         votes, main = plenary_votes(vcon, bid, seats(vcon, ini.get("leg")), vote_id)
-        facts["votacoes"] = votes[-4:]
+        facts["votacoes"] = votes[-FACT_VOTES:]
         facts["votacao_principal"] = main["id"] if main else None
         speeches, total = load_speeches(bid)
         facts["intervencoes_total"] = total
-        facts["intervencoes"] = [{"id": s["id"], "orador": s["orador"], "partido": s["partido"], "cargo": s["cargo"], "data": s["data"],
-                                  "rota": rota, "detalhe": (s["texto"] or "")[:SPEECH_CAP]} for s in speeches[:FACT_SPEECHES]]
         deps = [s for s in speeches if s.get("kind") == "dep"] or speeches
+        picked = []
+        for s in deps[:BLOCO_SPEECHES]:
+            ex = excerto(s["texto"] or "")
+            if ex and ex in s["texto"]:
+                picked.append((s, ex))
+        shown = [s for s, _ in picked]
+        shown += [s for s in speeches if s not in shown][:max(0, FACT_SPEECHES - len(shown))]
+        facts["intervencoes"] = [{"id": s["id"], "orador": s["orador"], "partido": s["partido"], "cargo": s["cargo"], "tipo": s.get("kind"), "data": s["data"],
+                                  "rota": rota, "source_url": s.get("source_url"), "detalhe": (s["texto"] or "")[:SPEECH_CAP]} for s in shown]
         blocos["lei"] = {"titulo": ini.get("titulo"), "tipo": ini.get("tipo"), "numero": ini.get("numero"), "legislatura": ini.get("leg"),
                          "autor": ini.get("autoria"), "rota": rota, "texto_url": None}
         if main:
             blocos["votacao"] = {"data": main["data"], "resultado": main["resultado"],
                                  "por_partido": [{"partido": r["partido"], "voto": r["sentido"], "lugares": r["lugares"]} for r in main["por_partido"]],
                                  "totais": {"favor": main["totais"]["favor"], "contra": main["totais"]["contra"], "abstencao": main["totais"]["abstencao"]}}
-        for s in deps[:BLOCO_SPEECHES]:
-            ex = excerto(s["texto"] or "")
-            if ex and ex in s["texto"]:
-                blocos["intervencoes"].append({"id": s["id"], "deputado": s["orador"], "partido": s["partido"] or "", "data": s["data"], "excerto": ex, "rota": rota})
+        for s, ex in picked:
+            blocos["intervencoes"].append({"id": s["id"], "deputado": s["orador"], "partido": s["partido"] or "", "data": s["data"], "excerto": ex, "rota": rota})
     if act:
         facts["dre"] = {"id": act["id"], "tipo": act.get("kind"), "numero": act.get("number"), "data": act.get("date"), "titulo": act.get("title"),
                         "sumario": act.get("summary"), "url": act.get("url") or act.get("source_url"), "pdf_url": act.get("pdf_url"),
@@ -279,6 +303,12 @@ def _build_lei(row):
         if not blocos["lei"]:
             blocos["lei"] = {"titulo": act.get("title"), "tipo": act.get("kind"), "numero": act.get("number"), "legislatura": None,
                              "autor": None, "rota": "#/dre", "texto_url": None}
+    if act and not ini:
+        facts["iniciativa_parlamentar"] = False
+        if act.get("kind") in linking.ACT_KINDS:
+            facts["aviso_votacao"] = "não foi possível associar este diploma a uma iniciativa parlamentar: não afirmes nada sobre votação ou debate"
+        else:
+            facts["aviso_votacao"] = "este diploma não passou por votação em plenário da Assembleia da República"
     facts["lei_em_vigor"] = bool(act or (ini and (ini.get("lei_ref") or ini.get("dr_ref"))))
     return facts, blocos
 

@@ -37,6 +37,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from common import DATA_DIR, READ_TIMEOUT, ROOT, UA, timed_opener  # noqa: E402
 from since import cutoff, report, since_days  # noqa: E402
+import linking  # noqa: E402
 import migrations  # noqa: E402
 
 NAME = "votacoes"
@@ -646,6 +647,24 @@ def resolve_diplomas(client, con):
     return n
 
 
+def link_initiatives(con):
+    f = DATA_DIR / "dre.db"
+    if not f.exists():
+        return 0
+    try:
+        d = sqlite3.connect(f, timeout=60)
+        try:
+            days = linking.LINK_DAYS if SINCE else None
+            linking.link_acts(d, con, days)
+            n = linking.sync_initiatives(con, d, days)
+        finally:
+            d.close()
+        return n
+    except sqlite3.Error as e:
+        print(f"initiative link pass failed: {e}", flush=True)
+        return 0
+
+
 def link_dre(con):
     """DRE act id ONLY for initiatives whose AR page has a Diário da República publication phase, matched by act kind + NUMBER/YEAR
     stated by the AR (on the initiative page or its 'texto aprovado' page). No title/summary matching: several bills can amend the same law."""
@@ -755,6 +774,8 @@ def main():
     con.commit()
     nr = resolve_diplomas(client, con)
     print(f"act numbers from AR texto-aprovado pages: {nr}", flush=True)
+    nl = link_initiatives(con)
+    print(f"initiatives linked to acts: {nl}", flush=True)
     nd = link_dre(con)
     meta = {"updated_at": now(), "requests": client.n, "stopped": stopped or "", "legs": ",".join(LEGS),
             "listed": con.execute("SELECT COUNT(*) FROM listagem").fetchone()[0],

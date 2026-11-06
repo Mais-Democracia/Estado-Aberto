@@ -35,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 from since import cutoff, report, since_days  # noqa: E402
+import linking  # noqa: E402
 
 NAME = "dre"
 DB = DATA_DIR / f"{NAME}.db"
@@ -494,6 +495,19 @@ def phase_initiatives(con):
     log("initiative links:", con.execute("SELECT COUNT(*) FROM act_initiatives").fetchone()[0])
 
 
+def phase_link(con):
+    vdb = DATA_DIR / "votacoes.db"
+    if not vdb.exists():
+        return
+    try:
+        v = sqlite3.connect(f"file:{vdb}?mode=ro", uri=True)
+        n = linking.link_acts(con, v, linking.LINK_DAYS if SINCE else None)
+        v.close()
+        log("acts linked to initiatives:", n)
+    except sqlite3.Error as e:
+        log("initiative link pass failed:", e)
+
+
 def build_fts(con):
     con.executescript("""
       DROP TABLE IF EXISTS acts_fts;
@@ -512,6 +526,7 @@ def main():
     phase_details(con)
     phase_targets(con)
     phase_initiatives(con)
+    phase_link(con)
     build_fts(con)
     stats = {k: con.execute(q).fetchone()[0] for k, q in {
         "acts_in_window": "SELECT COUNT(*) FROM acts WHERE in_window=1", "acts_total": "SELECT COUNT(*) FROM acts",

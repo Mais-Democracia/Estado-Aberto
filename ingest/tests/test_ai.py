@@ -613,6 +613,114 @@ INSERT INTO voto_partido VALUES(5001,'PSD','favor','gp',NULL,NULL),(5001,'PS','a
         self.assertIn("texto_disponivel=False", r.stdout)
         self.assertEqual(self.stages(), [])
 
+    TITULO = "Altera o Código do Imposto sobre o Valor Acrescentado, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade dos combustíveis"
+
+    def add_unlinked_law(self):
+        con = sqlite3.connect(self.data / "diario.db")
+        con.execute("INSERT INTO eventos(id,hash,data_evento,edicao_data,secao,tipo,titulo,resumo_curto,fonte_modulo,fonte_ref,rota,source_url,entidades,score) VALUES(3,'h3','2026-11-05',?,?,?,?,?,?,?,?,?,?,?)",
+                    (D, "governo", "lei_publicada", "Lei n.º 65/2026", "Lei publicada no Diário da República.", "dre", "A3", "#/dre", None, "[]", 5))
+        con.commit()
+        con.close()
+        d = sqlite3.connect(self.src / "dre.db")
+        d.execute("INSERT INTO acts VALUES('A3','Lei','65/2026',2026,'2026-11-05','Lei n.º 65/2026',?,'https://dre.pt/a3',NULL,NULL,'Artigo primeiro altera o regime dos revendedores.\nArtigo segundo reforça a rastreabilidade dos combustíveis.\nArtigo terceiro cria um registo de operadores.\n')", (self.TITULO,))
+        d.commit()
+        d.close()
+        v = sqlite3.connect(self.src / "votacoes.db")
+        v.execute("INSERT INTO iniciativas VALUES(300,'Proposta de Lei|86|XVII','Proposta de Lei',86,'XVII',?,'Governo','Governo','2026-07-01','Aprovado (aguarda publicação)','Votação final global','Aprovado','2026-10-09',NULL,NULL,NULL,NULL,'https://www.parlamento.pt/x?BID=300')",
+                  (self.TITULO[:190] + "…",))
+        v.execute("INSERT INTO votos VALUES(5010,300,'2026-10-09','Votação final global','Plenário','Aprovado',0)")
+        v.executemany("INSERT INTO voto_partido VALUES(5010,?,?,'gp',NULL,NULL)", [("PSD", "favor"), ("CH", "favor"), ("PS", "contra"), ("IL", "abstencao")])
+        v.commit()
+        v.close()
+        self.add_speeches(((40, "Rui Dias", "PS"), (41, "Eva Lima", "CH"), (42, "Ana Costa", "PSD")))
+
+    def add_speeches(self, specs):
+        i = sqlite3.connect(self.src / "intervencoes.db")
+        for k, nome, par in specs:
+            txt = f"Sr. Presidente, a bancada do {par} considera que o regime dos revendedores de combustíveis precisa de maior rastreabilidade. " * 4
+            i.execute("INSERT INTO intervencoes VALUES(?,?,?,?,?,?,?,?,?)", (k, "2026-10-09", nome, par, 1, "dep", None, len(txt.split()), txt))
+            i.execute("INSERT INTO iv_ini VALUES(?,?,?,?,?,?,?)", (k, 300, None, None, None, None, None))
+        i.commit()
+        i.close()
+
+    def test_law_without_act_initiatives_row_gets_vote_and_debate_and_old_article_is_superseded(self):
+        self.add_unlinked_law()
+        r = self.run_ai()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        bdir, facts, blocos = self.bundles()[3]
+        lei = facts["lei"]
+        self.assertEqual(lei["iniciativa"]["bid"], 300)
+        self.assertEqual(lei["iniciativa"]["rota"], "#/votacoes/300")
+        self.assertEqual(blocos["lei"]["rota"], "#/votacoes/300")
+        self.assertEqual(blocos["lei"]["autor"], "Governo")
+        self.assertEqual(blocos["votacao"]["data"], "2026-10-09")
+        self.assertEqual(blocos["votacao"]["resultado"], "Aprovado")
+        self.assertEqual({(p["partido"], p["voto"]) for p in blocos["votacao"]["por_partido"]}, {("PSD", "favor"), ("CH", "favor"), ("PS", "contra"), ("IL", "abstencao")})
+        self.assertEqual({x["partido"] for x in blocos["intervencoes"]}, {"PS", "CH", "PSD"})
+        self.assertEqual(len(lei["intervencoes"]), 3)
+        self.assertEqual({s["tipo"] for s in lei["intervencoes"]}, {"dep"})
+        self.assertEqual(len(lei["votacoes"]), 1)
+        self.assertIn(3, self.docs(), self.docs("rejected").get(3, {}).get("verificacao"))
+        env = dict(self.env)
+
+        def imp():
+            return subprocess.run([sys.executable, str(IMPORT), "--date", D], env=env, capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(imp().returncode, 0)
+        con = sqlite3.connect(self.data / "diario.db")
+        first = con.execute("SELECT id, evidence_hash, revisao, estado FROM artigos_ia WHERE evento_ids='[3]'").fetchall()
+        self.assertEqual([x[3] for x in first], ["publicado"])
+        self.add_speeches(((43, "Rui Dias", "PS"),))
+        self.assertEqual(self.run_ai().returncode, 0)
+        self.assertEqual(imp().returncode, 0)
+        rows = con.execute("SELECT id, evidence_hash, revisao, estado FROM artigos_ia WHERE evento_ids='[3]' ORDER BY id").fetchall()
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0][3], "substituido")
+        self.assertEqual(rows[0][1], first[0][1])
+        self.assertEqual(rows[1][3], "publicado")
+        self.assertEqual(rows[1][2], rows[0][2])
+        self.assertGreaterEqual(rows[1][2], 1)
+        self.assertEqual(con.execute("SELECT ia_artigo_id FROM eventos WHERE id=3").fetchone()[0], rows[1][0])
+        self.assertEqual(imp().returncode, 0)
+        self.assertEqual(con.execute("SELECT estado FROM artigos_ia WHERE id=?", (rows[0][0],)).fetchone()[0], "substituido")
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM artigos_ia WHERE evento_ids='[3]' AND estado='publicado'").fetchone()[0], 1)
+
+    def test_link_pass_links_unlinked_acts_idempotently_and_updates_initiative(self):
+        self.add_unlinked_law()
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import linking
+        d = sqlite3.connect(self.src / "dre.db")
+        v = sqlite3.connect(self.src / "votacoes.db")
+        v.execute("INSERT INTO iniciativas VALUES(301,'Proposta de Lei|87|XVII','Proposta de Lei',87,'XVII',?,'Governo','Governo','2026-07-01','Aprovado','x','Aprovado','2026-10-09',NULL,NULL,NULL,NULL,NULL)", (self.TITULO,))
+        v.commit()
+        self.assertEqual(linking.link_acts(d, v, None), 1)
+        self.assertIsNone(d.execute("SELECT 1 FROM act_initiatives WHERE act_id='A3'").fetchone())
+        d.execute("DELETE FROM act_initiatives")
+        v.execute("DELETE FROM iniciativas WHERE bid=301")
+        v.commit()
+        self.assertEqual(linking.link_acts(d, v, None), 2)
+        self.assertEqual(linking.link_acts(d, v, None), 0)
+        row = d.execute("SELECT act_id, initiative_key, method, score FROM act_initiatives WHERE act_id='A3'").fetchone()
+        self.assertEqual(row[:2], ("A3", "Proposta de Lei|86|XVII"))
+        self.assertEqual(row[2], "título exato")
+        self.assertGreaterEqual(row[3], 0.9)
+        self.assertEqual(linking.sync_initiatives(v, d, None), 1)
+        self.assertEqual(linking.sync_initiatives(v, d, None), 0)
+        self.assertEqual(v.execute("SELECT lei_ref, estado, dr_date FROM iniciativas WHERE bid=300").fetchone(), ("Lei 65/2026", "Publicado", "2026-11-05"))
+
+    def test_decree_law_keeps_honest_no_plenary_vote_notice(self):
+        d = sqlite3.connect(self.src / "dre.db")
+        d.execute("INSERT INTO acts VALUES('A9','Decreto-Lei','213/2026',2026,'2026-11-05','Decreto-Lei n.º 213/2026','Altera o regime dos revendedores','https://dre.pt/a9',NULL,NULL,'Artigo primeiro.')")
+        d.commit()
+        d.close()
+        os.environ["ESTADO_ABERTO_SOURCE_DATA"] = str(self.src)
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import lei
+        self.addCleanup(os.environ.pop, "ESTADO_ABERTO_SOURCE_DATA", None)
+        facts, blocos = lei.build_lei({"fonte_modulo": "dre", "tipo": "lei_publicada", "fonte_ref": "A9"})
+        self.assertFalse(facts["iniciativa_parlamentar"])
+        self.assertIn("não passou por votação em plenário", facts["aviso_votacao"])
+        self.assertIsNone(blocos["votacao"])
+
     def test_locate_resolves_votes_debates_and_dre_acts(self):
         os.environ["ESTADO_ABERTO_SOURCE_DATA"] = str(self.src)
         sys.path.insert(0, str(ROOT / "ops" / "ai"))

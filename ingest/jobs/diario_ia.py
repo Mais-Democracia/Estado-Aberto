@@ -51,6 +51,31 @@ def read_marker(killed, ev):
     return m if isinstance(m, dict) else {}
 
 
+def same_events(raw, ids_key):
+    try:
+        return j(sorted(json.loads(raw))) == ids_key
+    except (TypeError, ValueError):
+        return False
+
+
+def newer_published(con, doc, ids_key, own_id):
+    mine = str(doc.get("criado_em") or "")
+    for r in con.execute("SELECT id, evento_ids, criado_em FROM artigos_ia WHERE estado='publicado'"):
+        if r[0] != own_id and str(r[2] or "") > mine > "" and same_events(r[1], ids_key):
+            return True
+    return False
+
+
+def supersede(con, aid, ids_key):
+    inherited = 0
+    for r in con.execute("SELECT id, revisao, evento_ids FROM artigos_ia WHERE estado='publicado' AND id<>?", (aid,)).fetchall():
+        if same_events(r[2], ids_key):
+            con.execute("UPDATE artigos_ia SET estado='substituido', revisao=revisao+1 WHERE id=?", (r[0],))
+            inherited = max(inherited, r[1] + 1)
+    if inherited:
+        con.execute("UPDATE artigos_ia SET revisao=MAX(revisao, ?) WHERE id=?", (inherited, aid))
+
+
 def import_doc(con, doc, cfg, bundles, killed=None):
     state = doc["estado"]
     ver = reverify(doc, bundles / doc["evidence_hash"], cfg)
@@ -63,20 +88,18 @@ def import_doc(con, doc, cfg, bundles, killed=None):
         doc = dict(doc, estado=state, verificacao=dict(doc["verificacao"], reverificacao=ver))
     ed, ev = doc["edicao_data"], doc["evidence_hash"]
     row = con.execute("SELECT id, revisao FROM artigos_ia WHERE edicao_data=? AND evidence_hash=?", (ed, ev)).fetchone()
-    if not row:
-        ids = j(sorted(doc["evento_ids"]))
-        for r in con.execute("SELECT id, revisao, evento_ids FROM artigos_ia WHERE edicao_data=?", (ed,)):
-            try:
-                if j(sorted(json.loads(r[2]))) == ids:
-                    row = r
-                    break
-            except ValueError:
-                continue
+    ids_key = j(sorted(doc["evento_ids"]))
+    if state == "publicado" and newer_published(con, doc, ids_key, row[0] if row else None):
+        state = "substituido"
+    cols = [d[0] for d in con.execute("SELECT * FROM artigos_ia LIMIT 0").description]
+    old = None
+    if row:
+        old = dict(zip(cols, con.execute("SELECT * FROM artigos_ia WHERE id=?", (row[0],)).fetchone()))
+        if state == "publicado" and old["estado"] == "substituido" and old["evidence_hash"] == ev:
+            state = "substituido"
+    doc = dict(doc, estado=state)
     vals = {k: enc(k, doc.get(k)) for k in FIELDS}
     if row:
-        cur = con.execute("SELECT * FROM artigos_ia WHERE id=?", (row[0],)).fetchone()
-        cols = [d[0] for d in con.execute("SELECT * FROM artigos_ia LIMIT 0").description]
-        old = dict(zip(cols, cur))
         same = old["evidence_hash"] == ev and all(dec(k, old[k]) == dec(k, vals[k]) for k in FIELDS)
         aid = row[0]
         if same:
@@ -85,11 +108,13 @@ def import_doc(con, doc, cfg, bundles, killed=None):
         con.execute(f"UPDATE artigos_ia SET {sets} WHERE id=?", [vals[k] for k in FIELDS] + [ev, aid])
         changed = True
     else:
-        cols = ["edicao_data", "evidence_hash", "criado_em", "revisao"] + list(FIELDS)
-        con.execute(f"INSERT INTO artigos_ia ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
+        icols = ["edicao_data", "evidence_hash", "criado_em", "revisao"] + list(FIELDS)
+        con.execute(f"INSERT INTO artigos_ia ({','.join(icols)}) VALUES ({','.join('?' * len(icols))})",
                     [ed, ev, doc.get("criado_em"), 0] + [vals[k] for k in FIELDS])
         aid = con.execute("SELECT id FROM artigos_ia WHERE edicao_data=? AND evidence_hash=?", (ed, ev)).fetchone()[0]
         changed = True
+    if state == "publicado":
+        supersede(con, aid, ids_key)
     for eid in doc["evento_ids"]:
         if state == "publicado":
             con.execute("UPDATE eventos SET ia_artigo_id=? WHERE id=? AND COALESCE(ia_artigo_id,0)<>?", (aid, eid, aid))

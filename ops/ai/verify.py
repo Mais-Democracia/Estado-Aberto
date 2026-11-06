@@ -464,6 +464,15 @@ def _verify(art, bdir, cfg):
                 problems.append(f"o_que_muda_sem_atribuicao:{t[:40]}")
     if blocos is not None and "blocos" in art and art.get("blocos") != blocos:
         problems.append("blocos_alterados")
+    if blocos and blocos.get("intervencoes"):
+        fp = Path(bdir) / "facts.json"
+        try:
+            sp = {s.get("id"): str(s.get("detalhe") or "") for s in (json.loads(fp.read_text(encoding="utf-8")).get("lei") or {}).get("intervencoes", [])}
+        except (OSError, ValueError):
+            sp = {}
+        for x in blocos["intervencoes"]:
+            if not x.get("excerto") or x["excerto"] not in sp.get(x.get("id"), ""):
+                problems.append(f"excerto_nao_literal:{x.get('id')}")
     if URL.search(blob):
         problems.append("url_no_texto")
     if FIRST.search(blob):
