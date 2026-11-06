@@ -438,6 +438,33 @@ def c_posicoes(c):
 ATO_SKIP = {"condecoracao", "homologacao", "nomeacao", "exoneracao", "veto"}
 
 
+ATO_PLURAL = {"promulgacao": ("promulgação", "promulgações"), "veto": ("veto", "vetos"), "nomeacao": ("nomeação", "nomeações"), "exoneracao": ("exoneração", "exonerações"),
+              "condecoracao": ("condecoração", "condecorações"), "homologacao": ("homologação", "homologações"), "envio_tc": ("pedido ao Tribunal Constitucional", "pedidos ao Tribunal Constitucional"),
+              "ratificacao": ("ratificação", "ratificações"), "indulto": ("indulto", "indultos"), "outro": ("outro ato", "outros atos")}
+
+
+def presidencia_dia(c, days):
+    if not days or "tipo" not in c.cols("atos") or "data" not in c.cols("atos"):
+        return []
+    canon = " AND (canon IS NULL OR canon = 1)" if "canon" in c.cols("atos") else ""
+    rows = c.q(f"SELECT data, tipo, COUNT(*) AS n, MAX(rowid) AS rid FROM src.atos WHERE data IN ({','.join('?' * len(days))}){canon} GROUP BY data, tipo", days)
+    by = defaultdict(dict)
+    rid = {}
+    for r in rows:
+        by[r["data"]][r["tipo"] or "outro"] = r["n"]
+        rid[r["data"]] = max(rid.get(r["data"], 0), r["rid"] or 0)
+    out = []
+    for d in sorted(by):
+        counts = by[d]
+        total = sum(counts.values())
+        if total < 2:
+            continue
+        parts = [f"{n} {ATO_PLURAL.get(t, (t, t))[0 if n == 1 else 1]}" for t, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
+        out.append(c.ev("atos", d, "presidencia_dia", d, "governo", f"Presidente da República: {total} atos em {pdate(d)}", "Atos do dia: " + ", ".join(parts) + ".",
+                        "#/presidencia", None, [ent("Presidente da República", "orgao")], rid=rid.get(d)))
+    return out
+
+
 def c_presidencia(c):
     out = []
     w, p = c.win("vetos", "data", ext=True)
@@ -449,13 +476,16 @@ def c_presidencia(c):
                         route("#/atos-presidente", r["id"]), r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"]))
     c.mark("vetos", "data")
     w, p = c.win("atos", "data", ext=True)
+    days = set()
     for r in c.rows("atos", ["id", "data", "tipo", "titulo", "texto", "mensagem_url", "source_url"], ["id", "data", "tipo"], w, p):
+        days.add(valid_date(r["data"]))
         if r["tipo"] in ATO_SKIP:
             continue
         body = [x.strip() for x in str(r["texto"] or "").split("\n") if x.strip()][2:]
         tipo = "promulgacao" if r["tipo"] == "promulgacao" else "ato_presidente"
         out.append(c.ev("atos", r["id"], tipo, r["data"], "governo", clean(r["titulo"]).rstrip("."), cut(" ".join(body), 260) or None,
                         route("#/atos-presidente", r["id"]), r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"], sub=r["tipo"]))
+    out += presidencia_dia(c, sorted(d for d in days if d))
     c.mark("atos", "data")
     w, p = c.win("comunicados", "data")
     for r in c.rows("comunicados", ["url", "data", "titulo", "tipo", "ato_id"], ["url", "data"], f"ato_id IS NULL AND {w}", p):

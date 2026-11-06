@@ -169,6 +169,8 @@ def stage_draft(ctx, items, chosen):
 
 
 def stage_for(b):
+    if any(r.get("tipo") == "presidencia_dia" for r in b.get("rows", [])):
+        return "redacao_agregado"
     if b.get("lei"):
         return "redacao_votacao" if b.get("variante") == "votacao" else "redacao_lei"
     return "redacao"

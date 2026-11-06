@@ -181,9 +181,9 @@ export default function (ctx) {
   const atoStory = (r, section, extra = {}) => {
     const body = atoBody(r.texto), first = body.join(" ");
     const sent = (first.match(/[^.!?:]+[.!?:]/g) || [first]).slice(0, 2).join(" ");
-    const nom = r.tipo === "nomeacao", prom = r.tipo === "promulgacao";
+    const nom = r.tipo === "nomeacao", prom = r.tipo === "promulgacao", dia = r.tipo === "presidencia_dia";
     const hed = nom ? cut(r.titulo.replace(/\.$/, "").replace(/^Nomeia\s+/, "Presidente da República nomeia "), 190) : prom ? promHed(r) : cut(r.titulo.replace(/\.$/, ""), 190);
-    return { id: `ato-${r.id}`, section, kicker: nom ? "Nomeação" : r.tipo === "veto" ? "Veto" : prom ? "Promulgação" : "Presidência", hed, dek: null, lead: [nom ? `Decreto publicado a ${pdate(r.data)}: ${cut(r.titulo, 300)}` : `Em ${pdate(r.data)}: ${cut(sent || r.titulo, 360)}`], ref: `ato/${encodeURIComponent(r.id)}`, date: r.data, ...extra };
+    return { id: `ato-${r.id}`, section, kicker: nom ? "Nomeação" : r.tipo === "veto" ? "Veto" : prom ? "Promulgação" : dia ? "Presidência: atos do dia" : "Presidência", hed, dek: null, lead: [nom ? `Decreto publicado a ${pdate(r.data)}: ${cut(r.titulo, 300)}` : `Em ${pdate(r.data)}: ${cut(sent || r.titulo, 360)}`], ref: `ato/${encodeURIComponent(r.id)}`, date: r.data, ...extra };
   };
 
   const dreCount = (a, b) => Q(dre, "SELECT kind, COUNT(*) n FROM acts WHERE date >= ? AND date <= ? GROUP BY kind ORDER BY n DESC", a, b);
@@ -783,7 +783,7 @@ export default function (ctx) {
     if (act?.url) fn.push({ n: fn.length + 1, label: `Diário da República: ${act.kind} n.º ${act.number}`, url: act.url });
     const par = body.length ? body.slice(0, 8) : [a.titulo];
     return {
-      tipo: "ato", id: a.id, kicker: a.tipo === "nomeacao" ? "Nomeação" : a.tipo === "promulgacao" ? "Promulgação" : "Presidência", date: a.data,
+      tipo: "ato", id: a.id, kicker: a.tipo === "nomeacao" ? "Nomeação" : a.tipo === "promulgacao" ? "Promulgação" : a.tipo === "presidencia_dia" ? "Presidência: atos do dia" : "Presidência", date: a.data,
       hed: a.titulo.replace(/\.$/, ""), dek: `Publicado a ${pdate(a.data)}`, by: "Texto da Presidência da República, reproduzido dos dados do portal",
       paragraphs: par, pull: null, charts: [], flags: [], stats: [["Tipo", a.tipo], ["Data", pdate(a.data)]], links: [{ label: a.tipo === "nomeacao" ? "Quem decide e nomeações" : "Atos do Presidente", ref: a.tipo === "nomeacao" ? "responsaveis" : "atos-presidente" }], fontes: fn,
     };

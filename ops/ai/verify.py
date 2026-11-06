@@ -99,8 +99,8 @@ def load_allow(cfg):
     p = Path(cfg.get("lista_instituicoes") or ALLOW_FILE)
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        raw = {}
+    except (OSError, ValueError) as e:
+        raise RuntimeError(f"lista de instituicoes publicas ilegivel: {p}") from e
     rx = []
     for x in raw.get("padroes", []):
         try:

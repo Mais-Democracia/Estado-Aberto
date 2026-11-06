@@ -8,6 +8,7 @@ BASE = {
     "veto": 90,
     "votacao_final": 80,
     "promulgacao": 60,
+    "presidencia_dia": 85,
     "auditoria_tc": 55,
     "sancao_regulador": 50,
     "nomeacao_conselho": 40,

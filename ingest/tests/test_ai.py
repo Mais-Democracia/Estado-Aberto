@@ -1385,5 +1385,142 @@ class RS(unittest.TestCase):
         self.assertEqual(json.loads(r.stdout.strip().splitlines()[-1]), {"novos_ou_alterados": 0, "inalterados": 2, "falhas": 0})
 
 
+PDIA = "2026-11-05"
+ATOS = "CREATE TABLE atos (id TEXT PRIMARY KEY, data TEXT, tipo TEXT, subtipo TEXT, diploma_tipo TEXT, diploma_ref TEXT, decreto_ref TEXT, iniciativa_key TEXT, dre_act_id TEXT, titulo TEXT, texto TEXT, mensagem_url TEXT, source_url TEXT, canon INTEGER DEFAULT 1, extra TEXT)"
+
+
+class PresidenciaBase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        con = sqlite3.connect(self.dir / "presidencia.db")
+        con.execute(ATOS)
+        atos = [
+            ("p1", PDIA, "promulgacao", "Decreto", "12/XVII", "Promulga o diploma do Governo sobre taxas", "Promulgou o decreto sobre taxas.\nDetalhe.\nTexto do ato.", "IK1", "A1"),
+            ("p2", PDIA, "promulgacao", "Decreto", "13/XVII", "Promulga o diploma da Assembleia sobre rendas", "Promulgou o decreto.\nDetalhe.\nTexto.", None, None),
+            ("p3", PDIA, "promulgacao", "Decreto", "14/XVII", "Promulga o diploma sobre escolas", "Promulgou o decreto.\nDetalhe.\nTexto.", None, None),
+            ("n1", PDIA, "nomeacao", None, None, "Nomeia o presidente do Instituto Exemplo", "Nomeou.\nDetalhe.\nTexto.", None, None),
+            ("n2", PDIA, "nomeacao", None, None, "Nomeia o embaixador de Portugal", "Nomeou.\nDetalhe.\nTexto.", None, None),
+            ("v1", PDIA, "veto", "Decreto", "15/XVII", "Veta o diploma sobre portagens", "Vetou.\nDetalhe.\nTexto.", None, None),
+            ("x1", "2026-11-04", "promulgacao", "Decreto", "11/XVII", "Promulga o diploma de outro dia", "Promulgou.\nDetalhe.\nTexto.", None, None),
+        ]
+        for i, d, t, dt_, dr, ti, tx, ik, da in atos:
+            con.execute("INSERT INTO atos(id,data,tipo,diploma_tipo,diploma_ref,titulo,texto,iniciativa_key,dre_act_id) VALUES(?,?,?,?,?,?,?,?,?)", (i, d, t, dt_, dr, ti, tx, ik, da))
+        con.commit()
+        con.close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+
+class PresidenciaDiaEvento(PresidenciaBase):
+    def test_aggregate_event_created_with_counts(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        sys.path.insert(0, str(ROOT / "ingest" / "jobs"))
+        import diario as J
+        import diario_score as S
+
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.execute(f"ATTACH DATABASE '{self.dir / 'presidencia.db'}' AS src")
+        ctx = J.Ctx(con, "presidencia", "2026-11-01", "2026-11-09", {}, True, {})
+        evs = [e for e in J.c_presidencia(ctx) if e]
+        agg = [e for e in evs if e["tipo"] == "presidencia_dia"]
+        self.assertEqual([(e["ref"], e["secao"], e["modulo"]) for e in agg], [(PDIA, "governo", "presidencia")])
+        self.assertEqual(agg[0]["titulo"], "Presidente da República: 6 atos em 5 de novembro de 2026")
+        self.assertIn("3 promulgações", agg[0]["resumo"])
+        self.assertIn("2 nomeações", agg[0]["resumo"])
+        self.assertIn("1 veto", agg[0]["resumo"])
+        self.assertTrue(any(e["tipo"] == "promulgacao" for e in evs))
+        self.assertEqual(S.score("presidencia_dia"), 85)
+
+
+class PresidenciaBundle(PresidenciaBase):
+    def setUp(self):
+        super().setUp()
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import bundle
+        import lib
+        import lei
+        import verify
+        self.bundle, self.lib, self.lei, self.verify = bundle, lib, lei, verify
+        self.cfg = lib.load_config()
+        con = sqlite3.connect(self.dir / "diario.db")
+        con.executescript(SCHEMA)
+        ent = json.dumps([{"nome": "Presidente da República", "tipo": "orgao"}])
+        rows = [
+            (1, "promulgacao", "Promulga o diploma do Governo sobre taxas", "p1", "2026-11-05"),
+            (2, "ato_presidente", "Outro ato sem relação", "zz", "2026-11-04"),
+            (3, "promulgacao", "Promulga o diploma de outro dia", "x1", "2026-11-04"),
+            (4, "presidencia_dia", "Presidente da República: 6 atos em 5 de novembro de 2026", PDIA, PDIA),
+            (5, "lei_publicada", "Lei n.º 1/2026", "A1", "2026-11-05"),
+        ]
+        for i, t, ti, ref, de in rows:
+            mod = "dre" if t == "lei_publicada" else "presidencia"
+            con.execute("INSERT INTO eventos(id,hash,data_evento,edicao_data,secao,tipo,titulo,resumo_curto,fonte_modulo,fonte_ref,rota,source_url,entidades,score) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (i, f"h{i}", de, D, "governo", t, ti, "Resumo.", mod, ref, "#/presidencia", None, ent if mod == "presidencia" else "[]", 5))
+        con.commit()
+        con.close()
+        self.env = mock.patch.dict(os.environ, {"ESTADO_ABERTO_DATA": str(self.dir), "ESTADO_ABERTO_SOURCE_DATA": str(self.dir)})
+        self.env.start()
+        (self.dir / "bundles").mkdir()
+        from types import SimpleNamespace
+        self.ctx = SimpleNamespace(cfg=self.cfg, date=D, bundles=self.dir / "bundles", api="http://127.0.0.1:1")
+
+    def tearDown(self):
+        self.lei.close_all()
+        self.env.stop()
+        super().tearDown()
+
+    def test_related_ignores_generic_office_name(self):
+        rows = self.bundle.event_rows([1])
+        ids = {x["id"] for x in self.bundle.related(self.ctx, rows)["eventos_anteriores"]}
+        self.assertNotIn(2, ids)
+        self.assertNotIn(3, ids)
+        self.assertIn(5, ids)
+
+    def test_ato_block_in_facts(self):
+        b = self.bundle.build(self.ctx, [1])
+        facts = json.loads((b["dir"] / "facts.json").read_text(encoding="utf-8"))
+        self.assertEqual(facts["ato"]["tipo"], "promulgacao")
+        self.assertEqual(facts["ato"]["diploma_ref"], "12/XVII")
+        self.assertEqual(facts["ato"]["data"], PDIA)
+        self.assertIn("taxas", facts["ato"]["titulo"])
+
+    def test_dia_bundle_counts_and_verification(self):
+        b = self.bundle.build(self.ctx, [4])
+        facts = json.loads((b["dir"] / "facts.json").read_text(encoding="utf-8"))
+        dia = facts["dia"]
+        self.assertEqual(dia["total"], 6)
+        self.assertEqual(dia["contagens"], {"promulgacao": 3, "nomeacao": 2, "veto": 1})
+        self.assertEqual(dia["atos"][0]["tipo"], "veto")
+        self.assertLessEqual(len(dia["atos"]), 25)
+        self.assertEqual(facts["relacionados"]["eventos_anteriores"], [])
+        hrefs = json.loads((b["dir"] / "fontes.json").read_text(encoding="utf-8"))["hrefs_permitidos"]
+        self.assertIn("#/atos-presidente/p1", hrefs)
+        self.assertFalse(b["lei"])
+        import run
+        self.assertEqual(run.stage_for(b), "redacao_agregado")
+        art = {"titulo": "Presidente pratica 6 atos num dia", "lead": "O Presidente da República praticou 6 atos.", "corpo": "Foram 3 promulgações, 2 nomeações e 1 veto.",
+               "pontos_chave": ["3 promulgações", "2 nomeações", "1 veto"], "fontes": [{"label": "Atos", "href": "#/presidencia"}],
+               "numeros_citados": ["6", "3", "2", "1"], "calculos": [], "entidades": [], "confianca": 0.9}
+        r = self.verify.verify(art, b["dir"], self.cfg)
+        self.assertTrue(r["ok"], r)
+
+
+class LoadAllow(unittest.TestCase):
+    def test_missing_or_broken_list_raises(self):
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import verify
+        with tempfile.TemporaryDirectory() as t:
+            with self.assertRaises(RuntimeError):
+                verify.load_allow({"lista_instituicoes": str(Path(t) / "nao_existe.json")})
+            bad = Path(t) / "mau.json"
+            bad.write_text("{", encoding="utf-8")
+            with self.assertRaises(RuntimeError):
+                verify.load_allow({"lista_instituicoes": str(bad)})
+        verify.load_allow({})
+
+
 if __name__ == "__main__":
     unittest.main()

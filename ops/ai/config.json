@@ -69,6 +69,12 @@
       "prompt": "redacao_votacao",
       "schema": "artigo_lei",
       "max_usd": 0.5
+    },
+    "redacao_agregado": {
+      "tier": "sonnet",
+      "prompt": "redacao_agregado",
+      "schema": "artigo",
+      "max_usd": 0.4
     }
   },
   "prompt_versions": {
@@ -77,7 +83,8 @@
     "redacao": "1",
     "revisao": "3",
     "redacao_lei": "3",
-    "redacao_votacao": "2"
+    "redacao_votacao": "2",
+    "redacao_agregado": "1"
   },
   "estimates": {
     "triage": {
@@ -103,6 +110,10 @@
     "redacao_votacao": {
       "in": 45000,
       "out": 2300
+    },
+    "redacao_agregado": {
+      "in": 38000,
+      "out": 1500
     }
   },
   "runtime": {
@@ -234,7 +245,9 @@
     "#/autarquias",
     "#/apoios",
     "#/fundos",
-    "#/ministerios"
+    "#/ministerios",
+    "#/presidencia",
+    "#/atos-presidente"
   ],
   "allowed_hosts": [
     "parlamento.pt",

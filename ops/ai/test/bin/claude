@@ -75,7 +75,7 @@ elif stage == "selecao":
     n = json.loads(rd("limite.json"))["max_historias"]
     out = {"historias": [{"evento_id": x["id"], "motivo": "importante"} for x in c[:n]]}
     usage = {"input_tokens": 12000, "output_tokens": 1000}
-elif stage in ("redacao", "redacao_lei", "redacao_votacao"):
+elif stage in ("redacao", "redacao_lei", "redacao_votacao", "redacao_agregado"):
     f = json.loads(rd("facts.json"))
     ev = f["eventos"][0]
     titulo, resumo = strip(ev["titulo"]), strip(ev["resumo_curto"])

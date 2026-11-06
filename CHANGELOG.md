@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- Daily President of the Republic summary story covering all of the day's acts, with its own writing prompt.
+
+### Fixed
+- Presidency stories no longer pull unrelated events by the generic office name and carry the act's own facts.
+- The AI verifier now fails loudly if its public institutions list is missing.
+
 ## [0.3.11] - 2026-11-06
 
 ### Fixed
