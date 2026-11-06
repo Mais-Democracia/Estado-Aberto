@@ -1,6 +1,6 @@
 {
-  "version": "0.3.9",
-  "git_sha": "dfb3195a8cab33108005c87eed078195e6093189",
+  "version": "0.3.10",
+  "git_sha": "13aeb6b1717a71c4c52474a6230248c86ac4cbb5",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Fixed\n- \"A minha lista\" is now per visitor (random id kept in the browser) instead of shared by everyone; existing shared entries are dropped."
+  "notes": "### Changed\n- \"A minha lista\" asks for consent before storing a random visitor id in the browser (local storage, no tracking cookies), explains what it is for, and works only if accepted."
 }
