@@ -5,6 +5,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Fixed
+- "Ver a lei" on AI articles about decrees without an initiative now opens the act page.
+- Failures while building the law evidence are logged instead of silently dropping votes and debate.
+
+### Changed
+- AI articles open with what the law does before the vote and debate, and "O que muda" no longer repeats "segundo o texto da lei" in every item.
+
 ## [0.3.10] - 2026-11-06
 
 ### Changed

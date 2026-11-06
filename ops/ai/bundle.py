@@ -134,7 +134,8 @@ def build(ctx, ids):
     if len(rows) == 1:
         try:
             lei, blocos = L.build_lei(rows[0])
-        except Exception:
+        except Exception as e:
+            print(f"build_lei falhou: {type(e).__name__}: {e}", file=sys.stderr)
             lei, blocos = None, L.empty_blocos()
     ev = evidence_hash(rows)
     if lei:

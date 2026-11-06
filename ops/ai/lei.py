@@ -323,7 +323,7 @@ def _build_lei(row):
                         "texto_local": bool(act.get("text"))}
         if not blocos["lei"]:
             blocos["lei"] = {"titulo": act.get("title"), "tipo": act.get("kind"), "numero": act.get("number"), "legislatura": None,
-                             "autor": None, "rota": "#/dre", "texto_url": None}
+                             "autor": None, "rota": "#/dre/" + str(act["id"]), "texto_url": None}
     if act and not ini:
         facts["iniciativa_parlamentar"] = False
         if act.get("kind") in linking.ACT_KINDS:

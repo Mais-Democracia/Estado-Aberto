@@ -610,8 +610,8 @@ def _verify(art, bdir, cfg):
         for t, e in items:
             if len(ws(e)) < 15 or ws(e) not in ev["coll"]:
                 problems.append(f"evidencia_nao_literal:{t[:40]}")
-            if "segundo" not in fold(t):
-                problems.append(f"o_que_muda_sem_atribuicao:{t[:40]}")
+        if items and not any("segundo" in fold(t) for t, _ in items) and "segundo" not in fold(str(expl.get("do_que_trata", ""))):
+            problems.append("o_que_muda_sem_atribuicao")
     if lei and (blocos_com_dados(blocos) or lei.get("fases") or lei.get("votacoes") or lei.get("intervencoes")):
         hit = SEM_DADOS.search(fold(blob))
         if hit:
