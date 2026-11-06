@@ -187,6 +187,16 @@ def ent(nome, tipo, id=None):
     return e
 
 
+def route(base, arg=None, **params):
+    out = base + (f"/{quote(str(arg), safe='')}" if arg not in (None, "") else "")
+    qs = "&".join(f"{k}={quote(str(v), safe='')}" for k, v in params.items() if v not in (None, ""))
+    return out + (f"?{qs}" if qs else "")
+
+
+def ini_route(bid, tab=None):
+    return route("#/votacoes", bid, tab=tab) if bid not in (None, "") else "#/votacoes"
+
+
 def ro_uri(path):
     return f"file:{quote(str(path))}?mode=ro"
 
@@ -374,8 +384,9 @@ def c_votacoes(c):
         ini = inis.get(r["bid"])
         titulo, resumo, fs, cs, ok, rej = vote_texts(r, ini, c.shared["seats"])
         final = bool(FINAL_RE.match(str(r["fase"] or ""))) and bool(ini and LAW_RE.search(str(ini.get("tipo") or "")))
-        e = c.ev("votos", r["id"], "votacao_final" if final else "votacao", r["data"], "parlamento", titulo, resumo, "#/votacoes", r["source_url"],
-                 [ent(ini["tipo"] + f" n.º {ini['numero']}/{ini['leg']}", "iniciativa", r["bid"])] if ini and ini.get("tipo") and ini.get("numero") else [],
+        e = c.ev("votos", r["id"], "votacao_final" if final else "votacao", r["data"], "parlamento", titulo, resumo, ini_route(r["bid"]), r["source_url"],
+                 [ent(ini["tipo"] + f" n.º {ini['numero']}/{ini['leg']}", "iniciativa", r["bid"])] if ini and ini.get("tipo") and ini.get("numero")
+                 else ([ent("Iniciativa", "iniciativa", r["bid"])] if r["bid"] else []),
                  rid=r["_rid"], narrow=cs > 0 and S.is_narrow(abs(fs - cs)), rejected=rej)
         out.append(e)
     c.mark("votos", "data")
@@ -386,7 +397,7 @@ def c_votacoes(c):
         out.append(c.ev("iniciativas", r["bid"], "iniciativa_entrada", r["data_entrada"], "parlamento",
                         f"Dá entrada no Parlamento: {ref}" + (f" «{cut(t, 140)}»" if t else ""),
                         f"{ref} deu entrada a {pdate(r['data_entrada'])}" + (f", da autoria de {clean(r['autoria'])}." if r["autoria"] else "."),
-                        "#/parlamento", r["source_url"], [ent(ref, "iniciativa", r["bid"])], rid=r["_rid"]))
+                        ini_route(r["bid"]), r["source_url"], [ent(ref, "iniciativa", r["bid"])], rid=r["_rid"]))
     c.mark("iniciativas", "data_entrada")
     return out
 
@@ -400,11 +411,13 @@ def c_intervencoes(c):
         w, p = "(i.data >= ? OR i.data IN (SELECT data FROM src.intervencoes WHERE rowid > ? AND data >= ?))", [c.lo, cur, c.late_floor]
     sql = ("SELECT i.data AS d, v.bid AS bid, v.ref AS ref, COUNT(*) AS n, COUNT(DISTINCT i.orador) AS o, GROUP_CONCAT(DISTINCT i.partido) AS ps "
            f"FROM src.intervencoes i JOIN src.iv_ini v ON v.iv_id = i.id WHERE {w} GROUP BY i.data, v.bid HAVING COUNT(*) >= 2")
-    for r in c.q(sql, p):
+    rows = c.q(sql, p)
+    urls = {k: v.get("source_url") for k, v in c.by_ids("iniciativas", "bid", [r["bid"] for r in rows], ["bid", "source_url"]).items()}
+    for r in rows:
         ps = sorted({x.strip() for x in str(r["ps"] or "").split(",") if x.strip()})
         out.append(c.ev("intervencoes", f"{r['bid']}", "debate", r["d"], "parlamento", f"Debate no Plenário: {clean(r['ref'])}",
                         f"{r['n']} intervenções de {r['o']} {'orador' if r['o'] == 1 else 'oradores'} a {pdate(r['d'])}" + (f" ({', '.join(ps)})." if ps else "."),
-                        "#/parlamento", None, [ent(r["ref"], "iniciativa", r["bid"])]))
+                        ini_route(r["bid"], "iv"), urls.get(r["bid"]), [ent(r["ref"], "iniciativa", r["bid"])]))
     c.mark("intervencoes", "data")
     return out
 
@@ -417,7 +430,7 @@ def c_posicoes(c):
         resumo += " Voto e declaração coincidem." if str(r["coincide"]) == "1" else " Voto e declaração não coincidem." if str(r["coincide"]) == "0" else ""
         out.append(c.ev("decl", r["id"], "declaracao_voto", r["data_voto"], "parlamento",
                         f"{clean(r['orador'])} ({clean(r['partido'])}) vota {r['voto']} após declarar-se {r['declarado']}: «{cut(r['titulo'], 110)}»",
-                        resumo, "#/posicoes", r["voto_url"], [ent(r["orador"], "deputado"), ent(r["partido"], "partido")], rid=r["_rid"]))
+                        resumo, ini_route(r["bid"]), r["voto_url"], [ent(r["orador"], "deputado"), ent(r["partido"], "partido")] + ([ent("Iniciativa", "iniciativa", r["bid"])] if r["bid"] else []), rid=r["_rid"]))
     c.mark("decl", "data_voto")
     return out
 
@@ -433,7 +446,7 @@ def c_presidencia(c):
         if r["desfecho"]:
             resumo += f" Desfecho: {r['desfecho']}."
         out.append(c.ev("vetos", r["id"], "veto", r["data"], "governo", f"Presidente da República veta: {cut(r['titulo'], 170)}", resumo,
-                        "#/poderes/presidente", r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"]))
+                        route("#/atos-presidente", r["id"]), r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"]))
     c.mark("vetos", "data")
     w, p = c.win("atos", "data", ext=True)
     for r in c.rows("atos", ["id", "data", "tipo", "titulo", "texto", "mensagem_url", "source_url"], ["id", "data", "tipo"], w, p):
@@ -442,11 +455,11 @@ def c_presidencia(c):
         body = [x.strip() for x in str(r["texto"] or "").split("\n") if x.strip()][2:]
         tipo = "promulgacao" if r["tipo"] == "promulgacao" else "ato_presidente"
         out.append(c.ev("atos", r["id"], tipo, r["data"], "governo", clean(r["titulo"]).rstrip("."), cut(" ".join(body), 260) or None,
-                        "#/poderes/presidente", r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"], sub=r["tipo"]))
+                        route("#/atos-presidente", r["id"]), r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"], sub=r["tipo"]))
     c.mark("atos", "data")
     w, p = c.win("comunicados", "data")
     for r in c.rows("comunicados", ["url", "data", "titulo", "tipo", "ato_id"], ["url", "data"], f"ato_id IS NULL AND {w}", p):
-        out.append(c.ev("comunicados", r["url"], "comunicado", r["data"], "governo", clean(r["titulo"]), None, "#/poderes/presidente", r["url"],
+        out.append(c.ev("comunicados", r["url"], "comunicado", r["data"], "governo", clean(r["titulo"]), None, route("#/atos-presidente", r["ato_id"]) if r["ato_id"] else "#/presidencia", r["url"],
                         [ent("Presidente da República", "orgao")], rid=r["_rid"]))
     c.mark("comunicados", "data")
     return out
@@ -469,7 +482,7 @@ def c_dre(c):
         sec, tipo = DRE_KINDS[r["kind"]]
         t = clean(r["title"])
         s = clean(r["summary"])
-        out.append(c.ev("acts", r["id"], tipo, r["date"], sec, f"{t}: {cut(s, 150)}" if s else t, cut(s, 300) or None, "#/dre", r["url"] or r["source_url"],
+        out.append(c.ev("acts", r["id"], tipo, r["date"], sec, f"{t}: {cut(s, 150)}" if s else t, cut(s, 300) or None, route("#/dre", r["id"]), r["url"] or r["source_url"],
                         [ent(r["issuer"], "orgao")] if r["issuer"] else [], rid=r["_rid"]))
     c.mark("acts", "date")
     return out
@@ -490,7 +503,7 @@ def c_justica(c):
         resumo = f"O Tribunal de Contas publicou a {pdate(r['publicado'])} {clean(r['titulo_ref'])}" + (f", de {pdate(r['data'])}" if valid_date(r["data"]) else "") + "."
         if r["descricao"]:
             resumo += f" Assunto: {cut(r['descricao'], 240)}"
-        out.append(c.ev("tcontas_docs", r["id"], tipo, r["publicado"], "fiscalizacao", titulo, resumo, "#/justica", r["pdf_url"] or r["source_url"],
+        out.append(c.ev("tcontas_docs", r["id"], tipo, r["publicado"], "fiscalizacao", titulo, resumo, route("#/justica/contas", q=r["titulo_ref"] or r["descricao"]), r["pdf_url"] or r["source_url"],
                         [ent(r["entity_name"], "entidade", r["entity_nif"])] if r["entity_name"] else [], rid=r["_rid"]))
     c.mark("tcontas_docs", "publicado")
     return out
@@ -504,7 +517,7 @@ def c_igf(c):
         out.append(c.ev("reports", r["code"], "relatorio_igf_municipal" if muni else "relatorio_igf", c.today, "poder-local" if muni else "fiscalizacao",
                         f"IGF publica relatório: {cut(r['title'], 160)}",
                         f"Relatório {r['code']} da Inspeção-Geral de Finanças" + (f" sobre {clean(r['entity_name'] or r['subject'])}." if (r["entity_name"] or r["subject"]) else "."),
-                        "#/igf", r["report_url"] or r["source_url"], [ent(r["entity_name"], "entidade", r["entity_nif"])] if r["entity_name"] else [], rid=r["_rid"], once=True))
+                        route("#/igf", q=r["code"]), r["report_url"] or r["source_url"], [ent(r["entity_name"], "entidade", r["entity_nif"])] if r["entity_name"] else [], rid=r["_rid"], once=True))
     c.mark("reports", None)
     return out
 
@@ -514,7 +527,7 @@ def c_provedor(c):
     w, p = c.win("reports", "published", ext=True)
     for r in c.rows("reports", ["year", "title", "published", "page_url", "pdf_url"], ["published", "title"], w, p):
         out.append(c.ev("reports", r["year"] or r["title"], "relatorio_provedor", r["published"], "fiscalizacao", f"Provedor de Justiça publica: {cut(r['title'], 160)}",
-                        f"Relatório do Provedor de Justiça publicado a {pdate(r['published'])}.", "#/provedor", r["page_url"] or r["pdf_url"],
+                        f"Relatório do Provedor de Justiça publicado a {pdate(r['published'])}.", route("#/provedor", ano=r["year"] or str(r["published"])[:4]), r["page_url"] or r["pdf_url"],
                         [ent("Provedor de Justiça", "orgao")], rid=r["_rid"]))
     c.mark("reports", "published")
     return out
@@ -536,7 +549,7 @@ def c_reguladores(c):
         elif r["subject"]:
             resumo += f" Assunto: {cut(r['subject'], 200)}"
         out.append(c.ev("decisions", r["id"], "sancao_regulador" if sanc else "decisao_regulador", r["date"], "fiscalizacao", cut(r["title"], 200) or f"Decisão de {name}",
-                        resumo, "#/reguladores", r["url"] or r["source_url"], [ent(b.get("name") or name, "regulador", r["body"])], amount=amount if sanc else None,
+                        resumo, route(f"#/reguladores/{quote(str(r['body']), safe='')}", q=r["ref"]) if r["body"] else "#/reguladores", r["url"] or r["source_url"], [ent(b.get("name") or name, "regulador", r["body"])], amount=amount if sanc else None,
                         rid=r["_rid"], sub=r["body"]))
     c.mark("decisions", "date")
     return out
@@ -550,14 +563,14 @@ def c_responsaveis(c):
         board = bool(r["entity_nif"] and str(r["entity_nif"]) in c.shared["board_nifs"]) or bool(BOARD_RE.search(f"{r['role'] or ''} {r['entity'] or ''}"))
         tipo = "exoneracao" if action.startswith("exoner") else ("nomeacao_conselho" if board else "nomeacao")
         titulo = f"{action.capitalize()}: {clean(r['person'])}, {cut(r['role'], 110)}" + (f" ({cut(r['entity'], 80)})" if r["entity"] else "")
-        out.append(c.ev("nomeacoes", r["id"], tipo, r["date"], "nomeacoes", titulo, f"Publicado em {clean(r['act'])}." if r["act"] else None, "#/responsaveis", r["source_url"],
+        out.append(c.ev("nomeacoes", r["id"], tipo, r["date"], "nomeacoes", titulo, f"Publicado em {clean(r['act'])}." if r["act"] else None, route("#/responsaveis/nomeacoes", q=r["person"], year=str(r["date"])[:4]), r["source_url"],
                         [ent(r["person"], "pessoa")] + ([ent(r["entity"], "entidade", r["entity_nif"])] if r["entity"] else []), rid=r["_rid"]))
     c.mark("nomeacoes", "date")
     w, p = c.win("appointments", "start")
     for r in c.rows("appointments", ["id", "person", "role", "organ", "ministry", "start", "act", "source_url"], ["id", "start"], w, p):
         out.append(c.ev("appointments", r["id"], "nomeacao_gabinete", r["start"], "nomeacoes",
                         f"Gabinete: {clean(r['person'])}, {cut(r['role'], 80)}" + (f" ({cut(r['organ'], 90)})" if r["organ"] else ""),
-                        f"Início de funções a {pdate(r['start'])}." + (f" Ato: {clean(r['act'])}." if r["act"] else ""), "#/responsaveis", r["source_url"],
+                        f"Início de funções a {pdate(r['start'])}." + (f" Ato: {clean(r['act'])}." if r["act"] else ""), f"#/responsaveis/a{r['id']}", r["source_url"],
                         [ent(r["person"], "pessoa")] + ([ent(r["organ"], "entidade")] if r["organ"] else []), rid=r["_rid"]))
     c.mark("appointments", "start")
     return out
@@ -628,7 +641,7 @@ def c_anuncios(c):
         if price >= BIG_NOTICE:
             out.append(c.ev("announcements", r["id"], "anuncio_grande", r["published"], "dinheiro",
                             f"{clean(r['buyer_name'])} anuncia procedimento de {eur(price)}: {cut(r['description'], 120)}",
-                            f"{clean(r['tipo_acto'])} publicado a {pdate(r['published'])}. Preço base: {eur(price)}.", "#/anuncios", r["url"] or r["source_url"],
+                            f"{clean(r['tipo_acto'])} publicado a {pdate(r['published'])}. Preço base: {eur(price)}.", route("#/anuncios", r["buyer_nif"]) if r["buyer_nif"] else "#/anuncios", r["url"] or r["source_url"],
                             [ent(r["buyer_name"], "entidade_publica", r["buyer_nif"])], rid=r["_rid"]))
         elif valid_date(r["published"]):
             d = valid_date(r["published"])
@@ -823,6 +836,42 @@ def apply_events(con, events, now, only=None, prune_from=None):
     return stats
 
 
+ROTA_KEY = "_migracao.rota"
+ROTA_VERSION = 2
+
+
+def reroute_pending(con):
+    row = con.execute("SELECT max_rowid FROM cursores WHERE fonte = ?", (ROTA_KEY,)).fetchone()
+    return not (row and (row["max_rowid"] or 0) >= ROTA_VERSION)
+
+
+def reroute_gather(con, src, today):
+    lo = con.execute("SELECT MIN(data_evento) FROM eventos").fetchone()[0]
+    if not lo:
+        return [], []
+    events, _, skipped = gather(con, src, lo, today, {}, True)
+    return events, skipped
+
+
+def reroute_apply(con, events, skipped, now):
+    changed = 0
+    for e in events:
+        row = con.execute("SELECT id, rota, source_url, entidades FROM eventos WHERE hash = ?", (event_hash(e),)).fetchone()
+        if row is None and e.get("once"):
+            row = con.execute("SELECT id, rota, source_url, entidades FROM eventos WHERE fonte_modulo = ? AND fonte_ref = ? AND tipo = ?", (e["modulo"], e["ref"], e["tipo"])).fetchone()
+        if row is None:
+            continue
+        ents = json.dumps(e["ents"], ensure_ascii=False)
+        if (row["rota"], row["source_url"], row["entidades"]) != (e["rota"], e["url"], ents):
+            con.execute("UPDATE eventos SET rota=?, source_url=?, entidades=?, revisao=revisao+1 WHERE id=?", (e["rota"], e["url"], ents, row["id"]))
+            changed += 1
+    used = {r[0] for r in con.execute("SELECT DISTINCT fonte_modulo FROM eventos")}
+    if not any(x.split("(")[0] in used for x in skipped):
+        con.execute("INSERT INTO cursores (fonte, max_rowid, max_data, atualizado_em) VALUES (?,?,NULL,?) "
+                    "ON CONFLICT(fonte) DO UPDATE SET max_rowid = excluded.max_rowid, atualizado_em = excluded.atualizado_em", (ROTA_KEY, ROTA_VERSION, iso_utc(now)))
+    return changed
+
+
 def sync_editions(con, now):
     last = to_local(now).date()
     r = con.execute("SELECT MAX(edicao_data) FROM eventos").fetchone()[0]
@@ -866,7 +915,9 @@ def run(data, src=None, now=None, rebuild=None):
                 return {"erro": f"edicao {only.isoformat()} fechada ou inexistente", "codigo": 2}
         cursors = {r["fonte"]: r["max_rowid"] for r in con.execute("SELECT fonte, max_rowid FROM cursores")}
         events, marks, skipped = gather(con, src, lo_date.isoformat(), today, cursors, bool(only))
+        pend = [] if only or not reroute_pending(con) else reroute_gather(con, src, today)
         con.execute("BEGIN IMMEDIATE")
+        moved = reroute_apply(con, pend[0], pend[1], now) if pend else 0
         stats = apply_events(con, events, now, only, lo_date.isoformat() if only else None)
         sync_editions(con, now)
         if not only:
@@ -883,7 +934,7 @@ def run(data, src=None, now=None, rebuild=None):
     finally:
         con.close()
     return {"inseridos": dict(stats["inseridos"]), "atualizados": stats["atualizados"], "removidos": stats.get("removidos", 0),
-            "ignorados": stats["ignorados_antes_do_limiar"], "fontes_ignoradas": skipped, "segundos": round(time.time() - t0, 2)}
+            "ignorados": stats["ignorados_antes_do_limiar"], "reencaminhados": moved, "fontes_ignoradas": skipped, "segundos": round(time.time() - t0, 2)}
 
 
 def main(argv=None):

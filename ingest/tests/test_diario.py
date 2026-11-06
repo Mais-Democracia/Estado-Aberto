@@ -386,5 +386,94 @@ class TestLedger(Base):
         self.assertEqual(S.shortlist("2030-01-01", con=sqlite3.connect(self.dir / "diario.db")), [])
 
 
+class TestRoutes(Base):
+    def by(self):
+        return {(r["tipo"], r["fonte_ref"]): r for r in self.rows()}
+
+    def setup_more(self):
+        mk(self.dir / "dre.db", ["CREATE TABLE acts (id TEXT PRIMARY KEY, kind TEXT, title TEXT, summary TEXT, issuer TEXT, url TEXT, source_url TEXT, date TEXT)"], [
+            ("acts", {"id": "123/2026", "kind": "Lei", "title": "Lei n.º 1/2026", "summary": "Altera X", "issuer": "AR", "url": "https://dre.pt/1", "date": "2026-11-08"})])
+        mk(self.dir / "responsaveis.db", ["CREATE TABLE appointments (id INTEGER PRIMARY KEY, person TEXT, role TEXT, organ TEXT, ministry TEXT, start TEXT, act TEXT, source_url TEXT)"], [
+            ("appointments", {"id": 7, "person": "Fulano", "role": "Adjunto", "organ": "Gabinete", "start": "2026-11-08"})])
+        mk(self.dir / "reguladores.db", [BODIES, DECISIONS], [
+            ("bodies", {"slug": "adc", "short": "AdC", "name": "Autoridade da Concorrência", "nif": "5065"}),
+            ("decisions", {"id": "a2", "body": "adc", "kind": "deliberacao", "ref": "Proc. 5/2026", "date": "2026-11-08", "title": "Deliberação"})])
+        mk(self.dir / "igf.db", [IGF], [])
+        mk(self.dir / "provedor.db", ["CREATE TABLE reports (year INTEGER, title TEXT, published TEXT, page_url TEXT, pdf_url TEXT)"], [
+            ("reports", {"year": 2025, "title": "Relatório 2025", "published": "2026-11-08", "page_url": "https://pj.pt/r"})])
+
+    def test_object_routes(self):
+        self.setup_more()
+        self.run_job()
+        by = self.by()
+        self.assertEqual(by[("votacao_final", "1")]["rota"], "#/votacoes/1")
+        self.assertEqual(by[("veto", "1")]["rota"], "#/atos-presidente/1")
+        self.assertEqual(by[("lei_publicada", "123/2026")]["rota"], "#/dre/123%2F2026")
+        self.assertEqual(by[("nomeacao_gabinete", "7")]["rota"], "#/responsaveis/a7")
+        self.assertEqual(by[("decisao_regulador", "a2")]["rota"], "#/reguladores/adc?q=Proc.%205%2F2026")
+        self.assertEqual(by[("relatorio_provedor", "2025")]["rota"], "#/provedor?ano=2025")
+        self.assertEqual(by[("contrato_grande", "1")]["rota"], "#/contrato/1")
+        self.assertEqual(by[("lei_publicada", "123/2026")]["source_url"], "https://dre.pt/1")
+
+    def test_vote_carries_initiative_entity(self):
+        self.run_job()
+        ents = json.loads(self.by()[("votacao_final", "1")]["entidades"])
+        self.assertIn({"nome": "Projeto de Lei n.º 10/XVII", "tipo": "iniciativa", "id": "1"}, ents)
+
+    def test_route_patterns_match_router(self):
+        self.setup_more()
+        self.run_job()
+        pat = [r"^#/votacoes/\d+(\?tab=iv)?$", r"^#/atos-presidente/[^/?]+$", r"^#/dre/[^/?]+$", r"^#/contrato/\d+$", r"^#/responsaveis/a\d+$",
+               r"^#/reguladores/[^/?]+(\?q=.+)?$", r"^#/provedor\?ano=\d{4}$", r"^#/(contratos|anuncios|apoios|indicadores|imigracao|divida|justica/contas|responsaveis/nomeacoes|igf|presidencia)([/?].*)?$"]
+        import re
+        for r in self.rows():
+            self.assertTrue(any(re.match(p, r["rota"]) for p in pat), r["rota"])
+
+    def legacy(self):
+        con = sqlite3.connect(self.dir / "diario.db")
+        con.execute("UPDATE eventos SET rota = '#/votacoes', entidades = '[]' WHERE fonte_modulo = 'votacoes'")
+        con.execute("UPDATE eventos SET rota = '#/poderes/presidente' WHERE fonte_modulo = 'presidencia'")
+        con.execute("DELETE FROM cursores WHERE fonte = ?", (J.ROTA_KEY,))
+        con.commit()
+        con.close()
+
+    def test_reroute_fixes_legacy_rows_once(self):
+        self.run_job()
+        before = {r["id"]: r for r in self.rows()}
+        self.legacy()
+        res = self.run_job(self.now + dt.timedelta(hours=1))
+        self.assertEqual(res["reencaminhados"], 2)
+        after = {r["id"]: r for r in self.rows()}
+        for i, r in after.items():
+            self.assertEqual(r["edicao_data"], before[i]["edicao_data"])
+        self.assertEqual(self.by()[("votacao_final", "1")]["rota"], "#/votacoes/1")
+        self.assertEqual(self.by()[("veto", "1")]["rota"], "#/atos-presidente/1")
+        self.assertEqual(self.by()[("votacao_final", "1")]["revisao"], before[next(i for i, r in before.items() if r["tipo"] == "votacao_final")]["revisao"] + 1)
+        snap = self.rows()
+        res = self.run_job(self.now + dt.timedelta(hours=2))
+        self.assertEqual(res["reencaminhados"], 0)
+        self.assertEqual(self.rows(), snap)
+
+    def test_reroute_reaches_closed_editions(self):
+        self.run_job()
+        self.legacy()
+        res = self.run_job(self.now + dt.timedelta(days=3))
+        self.assertEqual(res["reencaminhados"], 2)
+        r = self.by()[("votacao_final", "1")]
+        self.assertEqual(r["rota"], "#/votacoes/1")
+        self.assertEqual(r["edicao_data"], "2026-11-09")
+
+    def test_reroute_not_marked_when_source_missing(self):
+        self.run_job()
+        self.legacy()
+        (self.dir / "presidencia.db").rename(self.dir / "p.bak")
+        self.run_job(self.now + dt.timedelta(hours=1))
+        self.assertEqual(self.rows("SELECT * FROM cursores WHERE fonte = ?", (J.ROTA_KEY,)), [])
+        (self.dir / "p.bak").rename(self.dir / "presidencia.db")
+        res = self.run_job(self.now + dt.timedelta(hours=2))
+        self.assertEqual(self.by()[("veto", "1")]["rota"], "#/atos-presidente/1")
+        self.assertEqual(len(self.rows("SELECT * FROM cursores WHERE fonte = ?", (J.ROTA_KEY,))), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

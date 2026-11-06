@@ -113,7 +113,9 @@ Notas:
 - `atos` de nomeação e exoneração do Presidente não são lidos (as mesmas decisões vêm de `responsaveis.nomeacoes`); condecorações e homologações ficam de fora.
 - Linhas novas na fonte (rowid acima do cursor) com data até 90 dias atrás entram como atrasadas; mais antigas são ignoradas.
 - Na primeira execução de uma fonte entra só a janela de 14 dias. Eventos com `data_evento + 1` anterior ao limiar só entram se forem linhas novas desde um cursor já existente.
-- Rotas (`rota`) usam rotas hash do site (`#/votacoes`, `#/contrato/<id>`, `#/igf`, `#/dre`, `#/poderes/presidente`, ...).
+- Rotas (`rota`) são sempre a página do objeto, por `fonte_ref`: votação, iniciativa e debate -> `#/votacoes/<bid>` (debate com `?tab=iv`); DRE -> `#/dre/<id>`; contrato -> `#/contrato/<id>`; anúncio grande -> `#/anuncios/<nif>`; veto e atos do Presidente -> `#/atos-presidente/<id>`; gabinete -> `#/responsaveis/a<id>`; relatório do Provedor -> `#/provedor?ano=<ano>`. Onde o portal não tem página de objeto (relatório do TC, IGF, decisão de regulador, nomeação), a rota é a lista já filtrada pelo registo (`#/justica/contas?q=`, `#/igf?q=`, `#/reguladores/<slug>?q=`, `#/responsaveis/nomeacoes?q=&year=`). `source_url` fica com o URL canónico da fonte quando existe.
+- `entidades` leva sempre `{tipo:'iniciativa', id:<bid>}` nos eventos ligados a uma iniciativa (votação, entrada, debate, declaração de voto).
+- Migração de rotas: na primeira execução com `ROTA_VERSION` nova (marcador `_migracao.rota` em `cursores`) recalcula-se `rota`, `source_url` e `entidades` de todas as linhas existentes (qualquer edição, aberta ou fechada) a partir das bases fonte, sem mexer em `edicao_data`; cada linha alterada sobe `revisao` em 1. Idempotente: com o marcador gravado não volta a correr, e não é gravado se uma fonte com linhas no livro estiver em falta (volta a tentar na execução seguinte).
 - Os textos usam só campos reais das fontes; o formato de valores e datas segue `server/modules/edicao.mjs`.
 
 ## Pontuação
