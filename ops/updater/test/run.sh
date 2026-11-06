@@ -112,5 +112,105 @@ bash "$HERE/../../install.sh" --dry-run --no-swap --node "$NODE_PATH_T" --python
 [ $? -ne 0 ] && grep -q "older than Python 3.12" "$T/i2.log"
 check "installer refuses Python older than 3.12" $?
 
+OPS="$(cd "$HERE/../.." && pwd)"
+LIB="$OPS/updater/lock.sh"
+LK="$T/lk"; mkdir -p "$LK"
+
+hold() {
+  STATE_DIR="$LK" bash -c '. "$1"; ea_lock_acquire "$2" 10 0.1 && sleep "$3"' _ "$LIB" "$1" "$2" &
+  HOLDER=$!
+  for _ in $(seq 50); do grep -q "^$1 " "$LK/update.lock" 2> /dev/null && break; sleep 0.1; done
+}
+
+hold ingest 3
+STATE_DIR="$LK" bash -c '. "$1"; ea_lock_acquire updater 1 0.1' _ "$LIB" > "$T/l1.log" 2>&1
+rc=$?
+[ "$rc" -ne 0 ] && grep -q "gave up after 1s waiting for update.lock held by ingest" "$T/l1.log"
+check "lock waits then gives up with a clear log" $?
+wait "$HOLDER"
+
+hold ai 2
+( STATE_DIR="$LK" bash -c '. "$1"; ea_lock_acquire ingest 20 0.1 && echo ingest >> "$2" && sleep 0.3' _ "$LIB" "$LK/order" ) &
+ING=$!
+sleep 0.5
+( STATE_DIR="$LK" bash -c '. "$1"; ea_lock_acquire updater 20 0.1 && echo updater >> "$2" && sleep 0.3' _ "$LIB" "$LK/order" ) &
+UPD=$!
+wait "$HOLDER" "$ING" "$UPD"
+[ "$(tr '\n' ' ' < "$LK/order")" = "updater ingest " ]
+check "pending updater is served before an earlier-waiting ingest run" $?
+
+hold ingest 2
+( STATE_DIR="$LK" bash -c '. "$1"; ea_lock_acquire ai 20 0.1 && echo ai >> "$2"' _ "$LIB" "$LK/order2" ) &
+AI=$!
+sleep 0.4
+( STATE_DIR="$LK" bash -c '. "$1"; ea_lock_acquire ingest 20 0.1 && echo ingest >> "$2" && sleep 0.3' _ "$LIB" "$LK/order2" ) &
+ING2=$!
+wait "$HOLDER" "$AI" "$ING2"
+[ "$(tr '\n' ' ' < "$LK/order2")" = "ingest ai " ]
+check "ingest is served before an earlier-waiting ai run" $?
+
+hold ingest 3
+STATE_DIR="$LK" UPDATER_LOCK_WAIT=1 EA_LOCK_POLL=0.1 EA_LOCK_LIB="$LIB" bash "$UPDATER" --check > "$T/l2.log" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && grep -q "gave up after 1s" "$T/l2.log" && grep -q "try again later" "$T/l2.log"
+check "updater gives up on a busy lock without failing the unit" $?
+wait "$HOLDER"
+
+STATE_DIR="$LK" EA_LOCK_POLL=0.1 bash "$OPS/updater/with-lock.sh" ai --wait 5 -- bash -c 'echo "held=$EA_LOCK_HELD" > "$1"' _ "$LK/wl" > /dev/null 2>&1
+[ "$(cat "$LK/wl" 2> /dev/null)" = "held=1" ]
+check "with-lock runs the command and marks the lock held" $?
+
+hold updater 3
+STATE_DIR="$LK" EA_LOCK_POLL=0.1 bash "$OPS/updater/with-lock.sh" ai --wait 1 -- true > "$T/l3.log" 2>&1
+rc=$?
+[ "$rc" -eq 75 ] && grep -q "gave up" "$T/l3.log"
+check "with-lock exits 75 on timeout" $?
+wait "$HOLDER"
+
+AS="$T/alert-state"; mkdir -p "$AS"
+STATE_DIR="$AS" JOURNAL_CMD="seq 1 40" ESTADO_ABERTO_PYTHON=python3 bash "$OPS/updater/alert.sh" estado-aberto-refresh.service
+STATE_DIR="$AS" JOURNAL_CMD="echo second" ESTADO_ABERTO_PYTHON=python3 bash "$OPS/updater/alert.sh" estado-aberto-daily.service
+python3 -I - "$AS/alerts.json" <<'PY'
+import json, sys
+a = json.load(open(sys.argv[1]))["alerts"]
+ok = len(a) == 2 and a[0]["unit"] == "estado-aberto-refresh.service" and len(a[0]["lines"]) == 20 and a[0]["lines"][-1] == "40" \
+    and a[1]["lines"] == ["second"] and a[1]["time"].endswith("+00:00")
+sys.exit(0 if ok else 1)
+PY
+check "alert writes unit, time and the last 20 lines, and appends" $?
+
+syn=0
+for f in "$OPS"/install.sh "$OPS"/updater/*.sh "$HERE"/run.sh "$OPS"/../update.sh "$OPS"/../daily.sh; do
+  bash -n "$f" || { echo "syntax error in $f"; syn=1; }
+done
+check "bash -n on every script" $syn
+
+bash "$OPS/install.sh" --dry-run --no-swap --node "$NODE_PATH_T" --python "$(command -v python3)" > "$T/i3.log" 2>&1
+bash "$OPS/install.sh" --dry-run --no-swap --node "$NODE_PATH_T" --python "$(command -v python3)" > "$T/i3b.log" 2>&1
+n=0
+for u in refresh.service refresh.timer daily.service daily.timer weekly.service weekly.timer "alert@.service"; do
+  grep -q "estado-aberto-$u" "$T/i3.log" && n=$((n + 1))
+done
+grep -q "estado-aberto-lock.sh" "$T/i3.log" && grep -q "estado-aberto-alert" "$T/i3.log" && grep -q "estado-aberto-with-lock" "$T/i3.log"
+r=$?
+[ "$n" -eq 7 ] && [ "$r" -eq 0 ] && cmp -s "$T/i3.log" "$T/i3b.log"
+check "installer installs the refresh, daily, weekly and alert units idempotently" $?
+! grep -q "enable.*refresh.timer" "$T/i3.log"
+check "installer enables no timer by default" $?
+bash "$OPS/install.sh" --dry-run --no-swap --enable-timers --node "$NODE_PATH_T" --python "$(command -v python3)" > "$T/i4.log" 2>&1
+grep -q "systemctl enable --now estado-aberto-updater.timer estado-aberto-refresh.timer estado-aberto-daily.timer estado-aberto-weekly.timer" "$T/i4.log"
+check "--enable-timers enables updater, refresh, daily and weekly" $?
+
+if command -v systemd-analyze > /dev/null 2>&1; then
+  UV="$T/units"; mkdir -p "$UV"
+  for u in "$OPS"/systemd/*.service "$OPS"/systemd/*.timer; do
+    sed -E 's#^(Exec[A-Za-z]*=)[^ ]+#\1/bin/true#; /^(User|Group)=/d; /^EnvironmentFile=/d; /^WorkingDirectory=/d' "$u" > "$UV/$(basename "$u")"
+  done
+  systemd-analyze verify "$UV"/estado-aberto-refresh.* "$UV"/estado-aberto-daily.* "$UV"/estado-aberto-weekly.* "$UV/estado-aberto-alert@.service" "$UV"/estado-aberto-updater.* "$UV/estado-aberto-ingest-queue.service" > "$T/sd.out" 2>&1
+  sdrc=$?
+  cat "$T/sd.out"
+  check "systemd-analyze verify accepts the units" $sdrc
+fi
+
 echo "passed=$pass failed=$failn"
 [ "$failn" -eq 0 ]

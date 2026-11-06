@@ -60,6 +60,9 @@ say "system user"
 if ! id "$SVC" > /dev/null 2>&1; then
   run useradd --system --home-dir /var/lib/$SVC --shell /usr/sbin/nologin "$SVC"
 fi
+if getent group systemd-journal > /dev/null 2>&1 && ! id -nG "$SVC" 2> /dev/null | tr ' ' '\n' | grep -qx systemd-journal; then
+  run usermod -aG systemd-journal "$SVC"
+fi
 
 say "directories"
 run install -d -m 0755 -o "$SVC" -g "$SVC" /opt/$SVC /opt/$SVC/releases
@@ -89,6 +92,9 @@ run ln -sfn "$NODE_BIN" /usr/local/bin/estado-aberto-node
 run ln -sfn "$PYTHON_BIN" /usr/local/bin/estado-aberto-python
 put 0755 "$HERE/updater/estado-aberto-updater.sh" /usr/local/sbin/estado-aberto-updater
 put 0755 "$HERE/updater/ingest-queue-runner.sh" /usr/local/sbin/estado-aberto-ingest-queue
+put 0644 "$HERE/updater/lock.sh" /usr/local/sbin/estado-aberto-lock.sh
+put 0755 "$HERE/updater/with-lock.sh" /usr/local/sbin/estado-aberto-with-lock
+put 0755 "$HERE/updater/alert.sh" /usr/local/sbin/estado-aberto-alert
 
 say "sudoers rule for the updater"
 SUDOERS_TMP="$(mktemp)"
@@ -113,7 +119,8 @@ done
 run systemctl daemon-reload
 run systemctl enable $SVC.service
 if [ "$TIMERS" -eq 1 ]; then
-  run systemctl enable --now $SVC-updater.timer $SVC-daily.timer
+  run systemctl enable --now $SVC-updater.timer $SVC-refresh.timer $SVC-daily.timer $SVC-weekly.timer
+  run systemctl try-restart $SVC-updater.timer $SVC-refresh.timer $SVC-daily.timer $SVC-weekly.timer
 else
   say "timers installed but not enabled; rerun with --enable-timers when ready"
 fi

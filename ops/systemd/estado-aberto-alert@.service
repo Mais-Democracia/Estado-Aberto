@@ -1,0 +1,11 @@
+[Unit]
+Description=Estado Aberto failure alert for %i
+
+[Service]
+Type=oneshot
+User=estado-aberto
+Group=estado-aberto
+Environment=STATE_DIR=/var/lib/estado-aberto/state
+ExecStart=/usr/local/sbin/estado-aberto-alert %i
+Nice=10
+SyslogIdentifier=estado-aberto-alert

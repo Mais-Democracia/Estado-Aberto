@@ -1,0 +1,22 @@
+[Unit]
+Description=Estado Aberto weekly ingest and rebuilds
+After=network-online.target
+Wants=network-online.target
+OnFailure=estado-aberto-alert@%n.service
+
+[Service]
+Type=oneshot
+User=estado-aberto
+Group=estado-aberto
+WorkingDirectory=/opt/estado-aberto/current
+EnvironmentFile=-/etc/estado-aberto/ingest.env
+Environment=ESTADO_ABERTO_DATA=/var/lib/estado-aberto/data
+Environment=STATE_DIR=/var/lib/estado-aberto/state
+ExecStart=/usr/local/bin/estado-aberto-python ingest/run_all.py --schedule weekly --profile server --lock-wait 7200
+TimeoutStartSec=28800
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=20
+MemoryHigh=350M
+MemoryMax=450M
+SyslogIdentifier=estado-aberto-weekly

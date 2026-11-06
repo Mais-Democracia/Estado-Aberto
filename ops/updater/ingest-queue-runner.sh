@@ -6,6 +6,13 @@ STATE_DIR="${STATE_DIR:-/var/lib/estado-aberto/state}"
 DATA_DIR="${DATA_DIR:-/var/lib/estado-aberto/data}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-90}"
 LOCK_WAIT="${LOCK_WAIT:-7200}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCK_LIB=""
+for c in "${EA_LOCK_LIB:-}" "$HERE/estado-aberto-lock.sh" "$HERE/lock.sh"; do
+  [ -n "$c" ] && [ -r "$c" ] && { LOCK_LIB="$c"; break; }
+done
+[ -n "$LOCK_LIB" ] || { echo "lock library not found" >&2; exit 1; }
+. "$LOCK_LIB"
 PY="${ESTADO_ABERTO_PYTHON:-}"
 if [ -z "$PY" ]; then
   if [ -x /usr/local/bin/estado-aberto-python ]; then PY=/usr/local/bin/estado-aberto-python; else PY=python3; fi
@@ -13,8 +20,8 @@ fi
 
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
 
-exec 9> "$STATE_DIR/update.lock"
-flock -w "$LOCK_WAIT" 9 || { log "could not get the lock; jobs stay queued"; exit 0; }
+ea_lock_acquire ingest "$LOCK_WAIT" || { log "could not get the lock; jobs stay queued"; exit 0; }
+export EA_LOCK_HELD=1
 
 shopt -s nullglob
 queue=("$STATE_DIR"/ingest-queue/*.json)

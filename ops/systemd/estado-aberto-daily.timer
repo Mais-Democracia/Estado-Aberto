@@ -1,8 +1,8 @@
 [Unit]
-Description=Estado Aberto daily ingest at 04:30
+Description=Estado Aberto daily ingest at 02:30
 
 [Timer]
-OnCalendar=*-*-* 04:30:00
+OnCalendar=*-*-* 02:30:00 Europe/Lisbon
 Persistent=true
 
 [Install]

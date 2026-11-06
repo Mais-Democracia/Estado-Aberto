@@ -13,6 +13,14 @@ RESTART_CMD="${RESTART_CMD:-sudo -n systemctl restart estado-aberto.service}"
 QUEUE_START_CMD="${QUEUE_START_CMD:-sudo -n systemctl start --no-block estado-aberto-ingest-queue.service}"
 MIN_FREE_GB="${MIN_FREE_GB:-5}"
 MIN_AVAIL_MB="${MIN_AVAIL_MB:-200}"
+LOCK_WAIT="${UPDATER_LOCK_WAIT:-7200}"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCK_LIB=""
+for c in "${EA_LOCK_LIB:-}" "$HERE/estado-aberto-lock.sh" "$HERE/lock.sh"; do
+  [ -n "$c" ] && [ -r "$c" ] && { LOCK_LIB="$c"; break; }
+done
+[ -n "$LOCK_LIB" ] || { echo "lock library not found" >&2; exit 1; }
+. "$LOCK_LIB"
 
 REPO="Mais-Democracia/Estado-Aberto"
 CHANNEL="stable"
@@ -40,8 +48,7 @@ log() { echo "[$(date -u +%FT%TZ)] $*"; }
 die() { log "ERROR: $*"; write_state failed "$*"; exit 1; }
 
 mkdir -p "$STATE_DIR" "$OPT_DIR/releases" 2>/dev/null || { echo "cannot create state dirs" >&2; exit 1; }
-exec 9> "$STATE_DIR/update.lock"
-flock -n 9 || { log "another update, ingest or daily run holds the lock; try again later"; exit 0; }
+ea_lock_acquire updater "$LOCK_WAIT" || { log "update.lock still busy after ${LOCK_WAIT}s; try again later"; exit 0; }
 
 write_state() {
   "$PY" -I - "$STATE_DIR/last_update.json" "$1" "${2:-}" "${TARGET_TAG:-}" <<'PY'

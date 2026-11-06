@@ -1,0 +1,9 @@
+[Unit]
+Description=Estado Aberto weekly ingest on Sunday at 01:00
+
+[Timer]
+OnCalendar=Sun *-*-* 01:00:00 Europe/Lisbon
+Persistent=true
+
+[Install]
+WantedBy=timers.target

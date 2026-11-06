@@ -12,5 +12,7 @@ TimeoutStartSec=14400
 Nice=10
 IOSchedulingClass=idle
 CPUWeight=20
-MemoryMax=400M
+MemoryHigh=350M
+MemoryMax=450M
+Environment=STATE_DIR=/var/lib/estado-aberto/state
 SyslogIdentifier=estado-aberto-ingest-queue
