@@ -1,6 +1,6 @@
 {
-  "version": "0.3.4",
-  "git_sha": "471899abf0f9a0330aaacfa358d29c5397aef9f9",
+  "version": "0.3.5",
+  "git_sha": "aeaf47011a307299705c7a51945386958fab2b56",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- AI verifier checks names in tiers: person names stay strict, while institutions, acronyms (also by their expansion in the evidence), legal acts and tax names are accepted when found in the evidence or in the maintainable list `ops/ai/instituicoes_publicas.json`.\n- Vote claims fall back to the votes written in the evidence text when no vote table exists.\n- The AI importer retries a locked ledger, tolerates a missing revision number and names the files it could not import."
+  "notes": "### Added\n- AI articles for every parliament event (votes, debates, initiatives, resolutions and recommendations) now carry the vote and debate blocks: the initiative, the party-by-party vote and up to six verbatim speech excerpts, with a dedicated vote-and-debate prompt.\n- `ops/ai/run.py --refresh-changed` update path (also run by the normal pipeline): published articles whose evidence gained votes or debate are redrafted outside triage and selection, within `AI_MAX_UPDATES` and the daily budget, and supersede the old article."
 }
