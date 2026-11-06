@@ -5,6 +5,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- AI explainers for laws: party votes, deputies' speeches and a plain-language explanation checked against the text.
+- Small-day mode: days with few candidates skip triage and selection.
+- Ledger object routes: items link to the law and object pages.
+- Login runtime mode for the AI service (`AI_AUTH_MODE=login`) with a systemd drop-in and installer option.
+
+### Changed
+- The front page no longer shows data-freshness notices.
+
 ## [0.2.2] - 2026-11-06
 
 ### Fixed
