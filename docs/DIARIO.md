@@ -42,10 +42,20 @@ artigos_ia(id INTEGER PRIMARY KEY, edicao_data TEXT NOT NULL, evidence_hash TEXT
            verificacao TEXT,         -- JSON
            estado TEXT NOT NULL,     -- 'publicado'|'rejeitado'
            criado_em TEXT, revisao INTEGER DEFAULT 1,
+           blocos TEXT,              -- JSON, ver API da edição
+           explicacao TEXT,          -- JSON, ver API da edição
            UNIQUE(edicao_data, evidence_hash))
 ```
 
 `artigos_ia` é escrita pelo agente de IA; este job só a cria.
+
+## API da edição (contrato do cliente)
+
+- `/api/edicao/dia` devolve `ia` (cartões) e `secoes` ou `tudo`. `frescura` continua na resposta apenas para monitorização; a interface nunca a mostra e `avisos` já não existe. Secções vazias da lista completa trazem sempre `motivo: "Sem registos para este dia"`.
+- Cada item traz `rota`, resolvida no servidor por `rotaObjeto(evento)`: se `rota` já é uma rota de objeto fica como está; se é uma rota genérica de lista, deriva-se de `fonte_modulo` + `tipo` + `fonte_ref` (e de `entidades` para votações: iniciativa -> `#/votacoes/<bid>`; DRE -> `#/dre/<id>`; contrato -> `#/artigo/contrato/<id>`; relatório do TC -> `#/artigo/relatorio/<id>`; nomeação -> `#/artigo/nomeacao/<id>`; ato do Presidente -> `#/atos-presidente/<id>`). Sem rota de objeto, `rota` vem vazia e a interface mostra o título sem ligação mais uma ligação «Fonte» (`source_url`, novo separador).
+- `artigos_ia.blocos` (JSON, nulo): `{lei:{titulo,tipo,numero,legislatura,autor,rota,texto_url}|null, votacao:{data,resultado,por_partido:[{partido,voto:favor|contra|abstencao|ausente,lugares}],totais:{favor,contra,abstencao}}|null, intervencoes:[{id,deputado,partido,data,excerto<=280,rota}]<=6}`. Construído deterministicamente pelo pipeline, não pelo modelo.
+- `artigos_ia.explicacao` (JSON, nulo): `{do_que_trata:str, o_que_muda:[str]}`, escrita pela IA e verificada.
+- `/api/edicao/artigo?id=` devolve `blocos` e `explicacao` já validados (rotas só `#/...`, votos fora do conjunto descartados, excertos cortados a 280) ou `null`. Os cartões de `ia` em `/api/edicao/dia` trazem `blocos:{lei,votacao}|null` e `tem_explicacao`. Colunas ausentes em bases antigas equivalem a `null`.
 
 ## Regras
 

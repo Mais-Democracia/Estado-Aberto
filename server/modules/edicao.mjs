@@ -466,7 +466,6 @@ export default function (ctx) {
     return {
       data: D, extenso: pdate(D), diaSemana: DIA[d.getUTCDay()], numero: days(MIN_DATE, D) + 1,
       defaultData: todayStr(), min: MIN_DATE, max: todayStr(),
-      desatualizado: rc < add(D, -3) ? { contratos: rc } : null,
       lead, leadNote, leadWhy: leadC ? { tipo: leadC.tipo, score: pct0(leadC.score), why: leadC.why, outros: runners } : null,
       seccoes: S, numeros, haUmAno: ago, ticker: tick.slice(0, 20),
       ...(partial ? { partial: true } : {}),
@@ -504,21 +503,68 @@ export default function (ctx) {
     return [...m.values()].map((x) => ({ fonte: x.fonte, ultima_data: x.ultima_data || null, atrasada: !x.ultima_data || x.ultima_data < lim, ultima_ok: x.ok || null })).sort((x, y) => (x.fonte < y.fonte ? -1 : 1));
   };
 
-  const avisos = () => {
-    const a = readJson("alerts.json");
-    const arr = Array.isArray(a) ? a : Array.isArray(a && a.alerts) ? a.alerts : [];
-    return arr.map((x) => (typeof x === "string" ? x : S(x && (x.mensagem || x.message || x.msg)))).filter(Boolean).slice(0, 5);
-  };
-
   const navOf = (D) => {
     const t = todayStr();
     return { anterior: D > MIN_DATE ? add(D, -1) : null, seguinte: D < t ? add(D, 1) : null, primeira: MIN_DATE, ultima: t };
   };
   const head = (D) => ({ data: D, numero: days(MIN_DATE, D) + 1, extenso: pdate(D), diaSemana: DIA[DT(D).getUTCDay()], reporta: add(D, -1), reporta_extenso: pdate(add(D, -1)), min: MIN_DATE, max: todayStr(), defaultData: todayStr(), navegacao: navOf(D) });
 
+  const VOTOS = new Set(["favor", "contra", "abstencao", "ausente"]);
+  const safeRota = (r) => (/^#\/[\w\-./%?=&|]+$/.test(S(r)) ? S(r) : "");
+  const blocosOf = (v) => {
+    const b = J(v, null);
+    if (!b || typeof b !== "object") return null;
+    const l = b.lei && typeof b.lei === "object" ? b.lei : null, vt = b.votacao && typeof b.votacao === "object" ? b.votacao : null;
+    const num = (x) => (Number.isFinite(Number(x)) && x !== null && x !== "" ? Math.max(0, Math.round(Number(x))) : null);
+    const lei = l ? { titulo: S(l.titulo), tipo: S(l.tipo), numero: S(l.numero), legislatura: S(l.legislatura), autor: S(l.autor), rota: safeRota(l.rota), texto_url: safeUrl(l.texto_url) } : null;
+    const votacao = vt ? {
+      data: day10(vt.data), resultado: S(vt.resultado),
+      por_partido: listOf(vt.por_partido).filter((p) => p && p.partido && VOTOS.has(p.voto)).map((p) => ({ partido: S(p.partido), voto: p.voto, lugares: num(p.lugares) })),
+      totais: { favor: num(vt.totais && vt.totais.favor) || 0, contra: num(vt.totais && vt.totais.contra) || 0, abstencao: num(vt.totais && vt.totais.abstencao) || 0 },
+    } : null;
+    const intervencoes = listOf(b.intervencoes).filter((x) => x && S(x.excerto)).slice(0, 6).map((x) => ({ id: S(x.id), deputado: S(x.deputado), partido: S(x.partido), data: day10(x.data), excerto: cut(S(x.excerto), 280), rota: safeRota(x.rota) }));
+    if (!lei && !votacao && !intervencoes.length) return null;
+    return { lei, votacao, intervencoes };
+  };
+  const explicacaoOf = (v) => {
+    const x = J(v, null);
+    if (!x || typeof x !== "object") return null;
+    const do_que_trata = S(x.do_que_trata).trim(), o_que_muda = listOf(x.o_que_muda).map(S).map((y) => y.trim()).filter(Boolean);
+    return do_que_trata || o_que_muda.length ? { do_que_trata, o_que_muda } : null;
+  };
+  let iaCols = null;
+  const iaSel = (dia) => {
+    iaCols ??= new Set(Q(dia, "PRAGMA table_info(artigos_ia)").map((c) => c.name));
+    return ["blocos", "explicacao"].map((c) => (iaCols.has(c) ? c : `NULL ${c}`)).join(", ");
+  };
+
+  const GENERIC_ROTA = /^#?\/?[a-z-]+(\/[a-z-]+)?(\?.*)?$/;
+  const enc = encodeURIComponent;
+  const entId = (e, tipo) => { const x = listOf(e.entidades).find((y) => y && y.tipo === tipo && y.id); return x ? S(x.id) : ""; };
+  const rotaObjeto = (e) => {
+    const rota = S(e.rota), ref = S(e.fonte_ref), mod = S(e.fonte_modulo), tipo = S(e.tipo);
+    if (rota && !GENERIC_ROTA.test(rota)) return rota;
+    let r = "";
+    if (mod === "votacoes") { const b = tipo === "iniciativa_entrada" ? ref : entId(e, "iniciativa"); if (/^\d+$/.test(b)) r = "#/votacoes/" + b; }
+    else if (mod === "intervencoes") { if (/^\d+$/.test(ref)) r = "#/votacoes/" + ref; }
+    else if (mod === "posicoes") { if (ref) r = "#/artigo/declaracao/" + enc(ref); }
+    else if (mod === "presidencia") { if (tipo === "comunicado") r = ""; else if (ref) r = "#/atos-presidente/" + enc(ref); }
+    else if (mod === "dre") { if (ref) r = "#/dre/" + enc(ref); }
+    else if (mod === "justica") { if (ref) r = "#/artigo/relatorio/" + enc(ref); }
+    else if (mod === "reguladores") { if (ref) r = "#/artigo/regulador/" + enc(ref); }
+    else if (mod === "responsaveis") { if (tipo === "nomeacao_gabinete") r = ""; else if (ref) r = "#/artigo/nomeacao/" + enc(ref); }
+    else if (mod === "politica") { const c = tipo === "alteracao_contrato" ? ref.split(":")[0] : ref; if (/^[\w-]+$/.test(c) && /^contrato|^alteracao/.test(tipo)) r = "#/artigo/contrato/" + enc(c); }
+    else if (mod === "apoios") { if (tipo === "apoio" && ref) r = "#/artigo/apoio/" + enc(ref); }
+    else if (mod === "provedor") { if (/^\d{4}$/.test(ref)) r = "#/provedor?ano=" + ref; }
+    else if (mod === "igf") { if (ref) r = "#/igf?q=" + enc(ref); }
+    else if (mod === "ine_series") { if (ref) r = "#/indicadores/" + enc(ref); }
+    return r || (rota && !/^#?\/?(parlamento|justica|responsaveis|dre|votacoes|igf|provedor|poderes\/presidente|anuncios|apoios)$/.test(rota) ? rota : "");
+  };
+
+  const cardBlocos = (b) => (b ? { lei: b.lei, votacao: b.votacao } : null);
   const itemOf = (e, D, art) => {
     const late = !!e.atrasado;
-    const it = { id: e.id, titulo: S(e.titulo), resumo_curto: S(e.resumo_curto), rota: S(e.rota), source_url: safeUrl(e.source_url), atrasado: late, tipo: S(e.tipo), hora: horaOf(e.ingerido_em), data_evento: day10(e.data_evento) };
+    const it = { id: e.id, titulo: S(e.titulo), resumo_curto: S(e.resumo_curto), rota: rotaObjeto(e), source_url: safeUrl(e.source_url), atrasado: late, tipo: S(e.tipo), hora: horaOf(e.ingerido_em), data_evento: day10(e.data_evento) };
     if (late && it.data_evento) it.atraso = `${D === todayStr() ? "Registado hoje" : "Registado a " + pshort(D)} · ocorreu a ${pdate(it.data_evento)}`;
     if (art) { it.ia = true; it.artigo_id = art; }
     return it;
@@ -528,9 +574,9 @@ export default function (ctx) {
     const dia = openData("diario");
     if (!dia) return null;
     const ed = Q1(dia, "SELECT numero, data, estado, fechada_em FROM edicoes WHERE data = ?", D);
-    const evs = Q(dia, "SELECT id, data_evento, ingerido_em, secao, tipo, titulo, resumo_curto, fonte_modulo, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE edicao_data = ? ORDER BY score DESC, id", D);
+    const evs = Q(dia, "SELECT id, data_evento, ingerido_em, secao, tipo, titulo, resumo_curto, fonte_modulo, fonte_ref, entidades, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE edicao_data = ? ORDER BY score DESC, id", D);
     if (!ed && !evs.length) return null;
-    const arts = Q(dia, "SELECT id, evidence_hash, evento_ids, titulo, lead, corpo, pontos_chave, fontes, entidades, confianca, modelo, revisor, verificacao, criado_em FROM artigos_ia WHERE edicao_data = ? AND estado = 'publicado' ORDER BY id", D);
+    const arts = Q(dia, `SELECT id, evidence_hash, evento_ids, titulo, lead, corpo, pontos_chave, fontes, entidades, confianca, modelo, revisor, verificacao, criado_em, ${iaSel(dia)} FROM artigos_ia WHERE edicao_data = ? AND estado = 'publicado' ORDER BY id`, D);
     const artIds = new Set(arts.map((a) => a.id));
     const byEv = new Map(evs.map((e) => [e.id, e]));
     const cover = new Map();
@@ -541,7 +587,7 @@ export default function (ctx) {
       const cnt = {};
       for (const e of linked) cnt[e.secao] = (cnt[e.secao] || 0) + 1;
       const secao = Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x] || (SEC_ORDER[x] ?? 99) - (SEC_ORDER[y] ?? 99))[0] || "governo";
-      return { id: a.id, secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead), corpo: S(a.corpo), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes), modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), confianca: a.confianca, rota_detalhe: `#/edicao/${D}/ia/${a.id}`, _s: linked.reduce((m, e) => Math.max(m, Number(e.score) || 0), 0) };
+      return { id: a.id, secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead), corpo: S(a.corpo), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes), modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), confianca: a.confianca, rota_detalhe: `#/edicao/${D}/ia/${a.id}`, blocos: cardBlocos(blocosOf(a.blocos)), tem_explicacao: !!explicacaoOf(a.explicacao), _s: linked.reduce((m, e) => Math.max(m, Number(e.score) || 0), 0) };
     }).sort((x, y) => y._s - x._s || x.id - y.id).map(({ _s, ...r }) => r);
     const fres = frescura(dia, D);
     const grupos = Object.fromEntries(SECS.map(([k]) => [k, []]));
@@ -552,19 +598,14 @@ export default function (ctx) {
     }).filter(Boolean);
     const upd = [ed && ed.fechada_em, ...evs.map((e) => e.ingerido_em), ...Q(dia, "SELECT atualizado_em FROM cursores").map((r) => r.atualizado_em)].filter(Boolean).map(S).sort().pop() || null;
     const out = {
-      fonte: "diario", vista, ...head(D), estado: ed ? ed.estado : "preliminar", atualizado_em: upd, frescura: fres, avisos: avisos(),
+      fonte: "diario", vista, ...head(D), estado: ed ? ed.estado : "preliminar", atualizado_em: upd, frescura: fres,
       ia, secoes, divisao: { rotulo: `Ver tudo o que aconteceu em ${pdate(add(D, -1))}`, total: evs.length },
     };
     if (vista === "tudo") {
-      const srcOf = {};
-      for (const r of Q(dia, "SELECT DISTINCT secao, fonte_modulo FROM eventos")) (srcOf[r.secao] ||= new Set()).add(r.fonte_modulo);
-      const stale = new Map(fres.filter((f) => f.atrasada && f.ultima_data).map((f) => [f.fonte, f]));
       out.tudo = SECS.map(([k, t]) => {
         const rows = grupos[k];
         if (rows.length) return { secao: k, titulo: t, vazio: false, motivo: null, itens: rows.map((e) => itemOf(e, D, cover.get(e.id))) };
-        const late = [...(srcOf[k] || [])].map((f) => stale.get(f)).filter(Boolean);
-        const motivo = late.length ? late.map((f) => `Dados de ${f.fonte} só até ${pdate(f.ultima_data)}`).join("; ") : "Sem registos para este dia";
-        return { secao: k, titulo: t, vazio: true, motivo, itens: [] };
+        return { secao: k, titulo: t, vazio: true, motivo: "Sem registos para este dia", itens: [] };
       });
     }
     return out;
@@ -606,7 +647,7 @@ export default function (ctx) {
     if (a.estado !== "publicado" && !ret) return null;
     const D = day10(a.edicao_data);
     const ids = new Set(listOf(a.evento_ids).map(Number));
-    const rows = Q(dia, "SELECT id, data_evento, ingerido_em, edicao_data, secao, tipo, titulo, resumo_curto, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE ia_artigo_id = ? OR edicao_data = ? ORDER BY score DESC, id", a.id, D);
+    const rows = Q(dia, "SELECT id, data_evento, ingerido_em, edicao_data, secao, tipo, titulo, resumo_curto, fonte_modulo, fonte_ref, entidades, rota, source_url, score, atrasado, ia_artigo_id FROM eventos WHERE ia_artigo_id = ? OR edicao_data = ? ORDER BY score DESC, id", a.id, D);
     const linked = rows.filter((e) => ids.has(e.id) || e.ia_artigo_id === a.id);
     const cnt = {};
     for (const e of linked) cnt[e.secao] = (cnt[e.secao] || 0) + 1;
@@ -619,6 +660,7 @@ export default function (ctx) {
       paragraphs: S(a.corpo).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes),
       numeros_citados: listOf(a.numeros_citados), entidades: listOf(a.entidades).map((x) => (typeof x === "string" ? x : S(x && (x.nome || x.name || x.label)))).filter(Boolean),
       confianca: a.confianca, modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), criado_em: S(a.criado_em), revisao: a.revisao,
+      blocos: blocosOf(a.blocos), explicacao: explicacaoOf(a.explicacao),
       eventos: linked.map((e) => itemOf(e, D)),
     };
   };

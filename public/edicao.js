@@ -54,7 +54,6 @@
       ${topbar(d)}
       <div class="dateline"><span><b>Edição de ${esc(d.extenso)}</b> · ${esc(d.diaSemana)}</span>
         <span>Edição n.º ${nf0.format(d.numero)}</span></div>
-      ${d.desatualizado ? `<div class="stale">Os contratos publicados mais recentes nas bases são de ${pd(d.desatualizado.contratos)}; os números de contratação desta edição referem-se a essa semana.</div>` : ""}
       <div class="ticker" aria-label="Últimas ocorrências"><div class="lab">Agora</div><div style="overflow:hidden;flex:1"><div class="track">${tick}</div></div></div>
       <div class="front">
         <div class="col">
@@ -65,7 +64,7 @@
           ${L ? `<article class="lede"><span class="kick reveal" style="--i:1">${esc(L.kicker)} · Manchete</span>
             <h2 class="lede-hed reveal" style="--i:2"><a href="${href(L.ref)}">${esc(L.hed)}</a></h2>
             <p class="lede-dek reveal" style="--i:4">${esc(L.dek || "")}</p>
-            <div class="byline fade" style="--i:6"><span>Redação automática</span><span>${L.when ? esc(L.when) : pd(L.date)}</span><span>${esc(L.section)}</span>${d.leadNote ? `<span>${esc(d.leadNote)}</span>` : ""}</div>
+            <div class="byline fade" style="--i:6"><span>Redação automática</span><span>${L.when ? esc(L.when) : pd(L.date)}</span><span>${esc(L.section)}</span></div>
             <div class="lede-body fade" style="--i:7">${L.lead.map((p) => `<p>${esc(p)}</p>`).join("")}</div>
             <a class="more" href="${href(L.ref)}">Ler a reportagem completa</a></article>` : '<p class="muted">Sem manchete para esta data.</p>'}
           <div class="bignum fade" style="--i:8">${n.destaques.map((x) => `<div><b>${esc(x.v)}</b><span>${esc(x.t)}</span></div>`).join("")}</div>
@@ -201,12 +200,9 @@
   const dayUrl = (date, vista) => "edicao/dia" + (date || vista === "tudo" ? "?" : "") + [date && "data=" + date, vista === "tudo" && "vista=tudo"].filter(Boolean).join("&");
   const SECTAG = { parlamento: "tag-par", governo: "tag-gov", fiscalizacao: "tag-jus", nomeacoes: "tag-nom", "poder-local": "tag-loc", dinheiro: "tag-din", indicadores: "tag-ind" };
   const safeHref = (u) => (/^https?:\/\//i.test(u || "") ? esc(u) : "");
-  const itemLink = (it) => {
-    if (it.rota) return `<a href="${esc(it.rota.startsWith("#") ? it.rota : href(it.rota))}">${esc(it.titulo)}</a>`;
-    if (safeHref(it.source_url)) return `<a href="${safeHref(it.source_url)}" target="_blank" rel="noopener">${esc(it.titulo)}</a>`;
-    return esc(it.titulo);
-  };
-  const srcLink = (it) => (safeHref(it.source_url) && it.rota ? `<a class="srcl" href="${safeHref(it.source_url)}" target="_blank" rel="noopener">Fonte original</a>` : "");
+  const itemRota = (it) => (it.rota ? (it.rota.startsWith("#") ? it.rota : href(it.rota)) : "");
+  const itemLink = (it) => (itemRota(it) ? `<a href="${esc(itemRota(it))}">${esc(it.titulo)}</a>` : esc(it.titulo));
+  const srcLink = (it) => (safeHref(it.source_url) ? `<a class="srcl" href="${safeHref(it.source_url)}" target="_blank" rel="noopener">${itemRota(it) ? "Fonte original" : "Fonte"}</a>` : "");
   const lateTag = (it) => (it.atrasado ? `<div class="late">${esc(it.atraso || "Registo tardio")}</div>` : "");
   const iaTag = (d, it) => `<a class="ia-tag" href="#/edicao/${d.data}/ia/${it.artigo_id}" title="Coberto por artigo gerado por IA">IA</a>`;
   const tipoLabel = (t) => String(t || "").replace(/_/g, " ");
@@ -214,18 +210,28 @@
   const colSection = (s) => `<section class="blk dsec ${SECTAG[s.secao] || ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${nf0.format(s.total)}</small></h2>${s.itens.map(colItem).join("")}${s.mais ? `<button type="button" class="linkbtn" data-open-tudo>+${nf0.format(s.mais)} na lista completa</button>` : ""}</section>`;
   const rowItem = (d, it) => `<li class="rw${it.ia ? " is-ia" : ""}"><span class="hh">${esc(it.hora || "—")}</span><div><div class="rk"><span class="kick">${esc(tipoLabel(it.tipo))}</span>${it.ia ? iaTag(d, it) : ""}</div><div class="rt">${itemLink(it)}</div>${it.resumo_curto ? `<p>${esc(it.resumo_curto)}</p>` : ""}${lateTag(it)}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</div></li>`;
   const fullSection = (d, s) => `<section class="blk fsec ${SECTAG[s.secao] || ""}${s.vazio ? " vazio" : ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${s.vazio ? "sem registos" : nf0.format(s.itens.length)}</small></h2>${s.vazio ? `<p class="motivo">${esc(s.motivo || "Sem registos para este dia")}</p>` : `<ul class="rows">${s.itens.map((it) => rowItem(d, it)).join("")}</ul>`}</section>`;
+  const VOTO = { favor: ["A favor", "✓", "favor"], contra: ["Contra", "✗", "contra"], abstencao: ["Abstenção", "○", "abst"], ausente: ["Ausente", "–", "aus"] };
+  const seatsTxt = (n) => (n == null ? "" : `${nf0.format(n)} ${n === 1 ? "lugar" : "lugares"}`);
+  const voteStrip = (v) => {
+    if (!v || !v.por_partido.length) return "";
+    const segs = v.por_partido.map((p) => `<li class="vs-${VOTO[p.voto][2]}" style="flex-grow:${p.lugares || 6}" title="${esc(p.partido)}: ${VOTO[p.voto][0]}${p.lugares != null ? " · " + seatsTxt(p.lugares) : ""}"><span aria-hidden="true">${VOTO[p.voto][1]}</span> ${esc(p.partido)}</li>`).join("");
+    const t = v.totais, res = v.resultado ? `<b>${esc(v.resultado)}</b> · ` : "";
+    return `<div class="vstrip"><ul class="vs-bar" aria-label="Como votaram os partidos">${segs}</ul><p class="vs-leg">${res}${nf0.format(t.favor)} a favor · ${nf0.format(t.contra)} contra · ${nf0.format(t.abstencao)} abstenções</p></div>`;
+  };
+  const voteTable = (v) => {
+    const mx = Math.max(...v.por_partido.map((p) => p.lugares || 0), 1), t = v.totais;
+    const seg = (k, n) => (n ? `<i class="vs-${VOTO[k][2]}" style="flex-grow:${n}" title="${VOTO[k][0]}: ${nf0.format(n)}"><span>${VOTO[k][1]} ${nf0.format(n)}</span></i>` : "");
+    return `<div class="vtab"><div class="vt-tot" role="img" aria-label="Totais: ${t.favor} a favor, ${t.contra} contra, ${t.abstencao} abstenções">${seg("favor", t.favor)}${seg("contra", t.contra)}${seg("abstencao", t.abstencao)}</div>
+      <p class="vt-res">${v.resultado ? `<b>${esc(v.resultado)}</b>` : ""}${v.data ? ` · votação de ${pd(v.data)}` : ""} · ${nf0.format(t.favor)} a favor, ${nf0.format(t.contra)} contra, ${nf0.format(t.abstencao)} abstenções</p>
+      <table class="vt-t"><thead><tr><th>Partido</th><th>Voto</th><th>Lugares</th></tr></thead><tbody>${v.por_partido.map((p) => `<tr><th scope="row">${esc(p.partido)}</th><td><span class="vchip vs-${VOTO[p.voto][2]}"><span aria-hidden="true">${VOTO[p.voto][1]}</span> ${VOTO[p.voto][0]}</span></td><td class="vt-b"><i class="vs-${VOTO[p.voto][2]}" style="width:${Math.max(3, ((p.lugares || 0) / mx) * 100).toFixed(1)}%"></i><span>${p.lugares != null ? nf0.format(p.lugares) : "—"}</span></td></tr>`).join("")}</tbody></table></div>`;
+  };
+  const leiBtn = (b) => (b && b.lei && b.lei.rota ? `<a class="btn-lei" href="${esc(b.lei.rota)}">Ver a lei</a>` : "");
   const iaCard = (d, a) => `<article class="ia-card" id="ia-${a.id}"><div class="ia-top"><span class="kick">${esc(a.secao_titulo)}</span><span class="ia-badge" title="Revisto por ${esc(a.revisor || "—")}">Gerado por IA · ${esc(a.modelo)} · verificado</span></div>
       <h2 class="ia-h"><a href="${esc(a.rota_detalhe)}">${esc(a.titulo)}</a></h2>
       <p class="ia-lead">${esc(a.lead)}</p>
-      ${a.pontos_chave.length ? `<ul class="ia-pts">${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
-      ${a.fontes.length ? `<div class="ia-src"><b>Fontes</b>${a.fontes.map((f) => (safeHref(f.href) ? `<a href="${safeHref(f.href)}" target="_blank" rel="noopener">${esc(f.label)}</a>` : `<span>${esc(f.label)}</span>`)).join("")}</div>` : ""}
-      <a class="more" href="${esc(a.rota_detalhe)}">Ler o artigo completo</a></article>`;
-  const staleNotice = (d) => {
-    const late = (d.frescura || []).filter((f) => f.atrasada), msgs = [];
-    if (late.length) msgs.push("Atualização incompleta: " + late.map((f) => (f.ultima_data ? `${esc(f.fonte)} só até ${pd(f.ultima_data)}` : `${esc(f.fonte)} sem data`)).join("; ") + ".");
-    for (const a of d.avisos || []) msgs.push(esc(a));
-    return msgs.length ? `<div class="stale" role="note">${msgs.join(" ")}</div>` : "";
-  };
+      ${a.pontos_chave.length ? `<ul class="ia-pts">${a.pontos_chave.slice(0, 3).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+      ${a.blocos ? voteStrip(a.blocos.votacao) : ""}
+      <div class="ia-act">${leiBtn(a.blocos)}<a class="more" href="${esc(a.rota_detalhe)}">${a.tem_explicacao ? "Ler explicação completa" : "Ler o artigo completo"}</a></div></article>`;
   const emptyList = (d) => `<p class="muted dempty">${d.divisao.total ? "Todos os registos do dia estão cobertos pelos artigos acima." : "Sem registos nesta edição."}</p>`;
   const listHtml = (d, v) => (v === "tudo" ? `<div class="fullgrid">${d.tudo.map((s) => fullSection(d, s)).join("")}</div>` : d.secoes.length ? `<div class="dgrid">${d.secoes.map(colSection).join("")}</div>` : emptyList(d));
   const listTitle = (v) => (v === "tudo" ? "Lista completa do dia" : "Mais registos do dia");
@@ -258,7 +264,6 @@
       ${topbar(d)}
       <div class="dateline"><span><b>Edição de ${esc(d.extenso)}</b> · ${esc(d.diaSemana)} · notícias de ${esc(d.reporta_extenso)}</span>
         <span>Edição n.º ${nf0.format(d.numero)} · ${d.estado === "fechada" ? "fechada" : "preliminar"}${updTxt && d.estado !== "fechada" ? " · atualizada às " + updTxt : ""}</span></div>
-      ${staleNotice(d)}
       ${d.ia.length ? `<section class="ia-col" aria-label="Artigos gerados por IA">${d.ia.map((a) => iaCard(d, a)).join("")}</section>` : ""}
       <div class="divwrap"><button type="button" class="divbar" id="ed-div" aria-expanded="${full}" aria-controls="ed-lista"><span class="divbar-t">${esc(d.divisao.rotulo)}</span><span class="divbar-n">${nf0.format(d.divisao.total)} ${d.divisao.total === 1 ? "registo" : "registos"}</span><span class="divbar-a" aria-hidden="true">${full ? "Fechar" : "Abrir"}</span><svg class="chev" viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false"><path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>
       <div id="ed-lista" role="region" aria-labelledby="ed-lista-h"><h2 id="ed-lista-h" class="lista-h" tabindex="-1">${listTitle(vista)}</h2><div id="ed-lista-body">${listHtml(d, vista)}</div></div>
@@ -303,6 +308,15 @@
     renderDaily(d, v, home, date);
   }
 
+  const explBlocks = (a) => {
+    const e = a.explicacao, b = a.blocos || {}, out = [];
+    if (e && e.do_que_trata) out.push(`<section class="xb"><h2>Do que trata</h2><p>${esc(e.do_que_trata)}</p></section>`);
+    if (e && e.o_que_muda.length) out.push(`<section class="xb"><h2>O que muda</h2><ul class="xb-ul">${e.o_que_muda.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></section>`);
+    if (b.votacao && b.votacao.por_partido.length) out.push(`<section class="xb"><h2>Como votaram os partidos</h2>${voteTable(b.votacao)}</section>`);
+    if (b.intervencoes && b.intervencoes.length) out.push(`<section class="xb"><h2>O que disseram os deputados</h2><div class="quotes">${b.intervencoes.map((q) => `<figure class="qc"><blockquote>«${esc(q.excerto)}»</blockquote><figcaption><b>${esc(q.deputado)}</b>${q.partido ? ` (${esc(q.partido)})` : ""}${q.data ? ` · ${pd(q.data)}` : ""}${q.rota ? ` <a href="${esc(q.rota)}">ver a intervenção completa</a>` : ""}</figcaption></figure>`).join("")}</div></section>`);
+    return out.join("");
+  };
+
   async function renderIa(date, id) {
     const a = await api("edicao/artigo?id=" + encodeURIComponent(id)).catch(() => null);
     window.onscroll = null;
@@ -325,13 +339,13 @@
     $app.innerHTML = `<div class="ed"><div class="progress" id="prog"></div>
       <div class="art-wrap"><div class="art-nav"><a href="${edHash(a.data)}">‹ Voltar à edição de ${pd(a.data)}</a><div><button class="btn-ed" id="fs-" aria-label="Diminuir letra">A−</button><button class="btn-ed" id="fs+" aria-label="Aumentar letra">A+</button></div></div>
       <header class="art-head"><span class="kick">${esc(a.secao_titulo)}</span><h1>${esc(a.titulo)}</h1><p class="dek">${esc(a.lead)}</p>
-        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div></header>
+        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div>${leiBtn(a.blocos) ? `<p class="lei-cta">${leiBtn(a.blocos)}${a.blocos.lei.titulo ? `<span>${esc(cutTxt(a.blocos.lei.titulo, 110))}</span>` : ""}</p>` : ""}</header>
       <div class="art-grid"><aside class="ficha"><h4>Ficha</h4><dl><dt>Modelo</dt><dd>${esc(a.modelo)}</dd><dt>Revisão</dt><dd>${esc(a.revisor || "—")}</dd>${conf ? `<dt>Confiança</dt><dd>${conf}</dd>` : ""}<dt>Estado</dt><dd>Verificado e publicado</dd>${a.entidades.length ? `<dt>Entidades</dt><dd>${a.entidades.map(esc).join(", ")}</dd>` : ""}</dl>${nums.length ? `<h4>Números citados</h4><ul class="nc">${nums.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</aside>
-      <div class="art-body">${a.pontos_chave.length ? `<div class="flags ia-key"><b>Pontos-chave</b><ul>${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
+      <div class="art-body">${explBlocks(a)}${a.pontos_chave.length ? `<div class="flags ia-key"><b>Pontos-chave</b><ul>${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
         ${a.paragraphs.map((p, k) => `<p class="${k === 0 ? "first" : ""}">${esc(p)}</p>`).join("")}
         ${a.fontes.length ? `<div class="fnotes"><h4>Fontes</h4><ol>${a.fontes.map((f) => `<li>${safeHref(f.href) ? `<a href="${safeHref(f.href)}" target="_blank" rel="noopener">${esc(f.label)}</a>` : esc(f.label)}</li>`).join("")}</ol></div>` : ""}
         ${a.eventos.length ? `<div class="fnotes"><h4>Registos em que o artigo se baseia</h4><ul class="evl">${a.eventos.map((e) => `<li>${itemLink(e)}${e.atrasado ? ` <span class="late">${esc(e.atraso || "")}</span>` : ""}</li>`).join("")}</ul></div>` : ""}
-        <div class="fnotes"><p style="color:var(--ed-mute)">Este texto foi gerado por um modelo de linguagem a partir dos registos acima e verificado automaticamente contra as fontes antes de ser publicado. Em caso de dúvida, os registos e as fontes originais prevalecem.</p></div></div></div></div></div>`;
+        <div class="fnotes ia-note"><p><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span></p><p style="color:var(--ed-mute)">Este texto foi gerado por um modelo de linguagem a partir dos registos acima. Antes de publicar, uma verificação automática confirmou que os números, nomes e datas coincidem com os registos e que as citações dos deputados são excertos literais das intervenções. Não foi revisto por um jornalista; em caso de dúvida, os registos e as fontes originais prevalecem.</p></div></div></div></div></div>`;
     let fs = 1; const root = $app.querySelector(".art-body");
     document.getElementById("fs+").onclick = () => { fs = Math.min(1.4, fs + 0.1); root.style.setProperty("--fs", fs); };
     document.getElementById("fs-").onclick = () => { fs = Math.max(0.8, fs - 0.1); root.style.setProperty("--fs", fs); };

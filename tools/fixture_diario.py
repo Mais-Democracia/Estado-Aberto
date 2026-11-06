@@ -10,15 +10,15 @@ CREATE TABLE eventos(id INTEGER PRIMARY KEY, hash TEXT UNIQUE, data_evento TEXT,
 CREATE INDEX eventos_ed ON eventos(edicao_data, secao);
 CREATE TABLE edicoes(numero INTEGER PRIMARY KEY, data TEXT UNIQUE, estado TEXT, fechada_em TEXT);
 CREATE TABLE cursores(fonte TEXT PRIMARY KEY, max_rowid INTEGER, max_data TEXT, atualizado_em TEXT);
-CREATE TABLE artigos_ia(id INTEGER PRIMARY KEY, edicao_data TEXT, evidence_hash TEXT, evento_ids TEXT, titulo TEXT, lead TEXT, corpo TEXT, pontos_chave TEXT, fontes TEXT, numeros_citados TEXT, entidades TEXT, confianca REAL, modelo TEXT, revisor TEXT, verificacao TEXT, estado TEXT, criado_em TEXT, revisao INTEGER DEFAULT 1);
+CREATE TABLE artigos_ia(id INTEGER PRIMARY KEY, edicao_data TEXT, evidence_hash TEXT, evento_ids TEXT, titulo TEXT, lead TEXT, corpo TEXT, pontos_chave TEXT, fontes TEXT, numeros_citados TEXT, entidades TEXT, confianca REAL, modelo TEXT, revisor TEXT, verificacao TEXT, estado TEXT, criado_em TEXT, revisao INTEGER DEFAULT 1, blocos TEXT, explicacao TEXT);
 """
 
 SECS = {
-    "parlamento": ("votacoes", "votação", "Plenário vota o projeto de lei sintético n.º {n}", "O plenário sintético aprovou a iniciativa {n} com votos a favor dos grupos A e B.", "voto/{n}"),
-    "governo": ("dre", "diploma", "Governo publica o decreto-lei sintético n.º {n}", "Diploma de teste sobre matéria fictícia número {n}, publicado em Diário sintético.", "ato/{n}"),
-    "fiscalizacao": ("tcontas", "auditoria", "Tribunal de Contas publica a auditoria sintética {n}", "Relatório fictício sobre a entidade de exemplo {n}.", "relatorio/{n}"),
-    "poder-local": ("base", "contrato", "Município de Exemplo {n} adjudica obra fictícia", "Contrato sintético de valor reduzido celebrado pelo município de exemplo {n}.", "contrato/{n}"),
-    "dinheiro": ("base", "contrato", "Entidade Modelo {n} contrata serviços por 120 mil euros", "Ajuste direto fictício com a empresa de teste {n}.", "contrato/{n}"),
+    "parlamento": ("votacoes", "votação", "Plenário vota o projeto de lei sintético n.º {n}", "O plenário sintético aprovou a iniciativa {n} com votos a favor dos grupos A e B.", "#/votacoes"),
+    "governo": ("dre", "diploma", "Governo publica o decreto-lei sintético n.º {n}", "Diploma de teste sobre matéria fictícia número {n}, publicado em Diário sintético.", "#/dre"),
+    "fiscalizacao": ("justica", "auditoria", "Tribunal de Contas publica a auditoria sintética {n}", "Relatório fictício sobre a entidade de exemplo {n}.", "#/justica"),
+    "poder-local": ("politica", "contrato", "Município de Exemplo {n} adjudica obra fictícia", "Contrato sintético de valor reduzido celebrado pelo município de exemplo {n}.", "#/contratos"),
+    "dinheiro": ("politica", "contrato", "Entidade Modelo {n} contrata serviços por 120 mil euros", "Ajuste direto fictício com a empresa de teste {n}.", "#/contratos"),
 }
 COUNTS = {"parlamento": 14, "governo": 4, "fiscalizacao": 3, "poder-local": 2, "dinheiro": 5}
 
@@ -58,26 +58,44 @@ def main():
                 ev = (D - dt.timedelta(days=3 if late else 1)).isoformat()
                 con.execute(
                     "INSERT INTO eventos VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (eid, f"h{eid}", ev, f"{ds}T{6 + (i % 14):02d}:{(i * 7) % 60:02d}:00Z", ds, sec, tipo, tit.format(n=eid), res.format(n=eid), fonte, str(eid), rota.format(n=eid), "https://example.org/fonte/%d" % eid, "[]", 1.0 - i / 40.0, 1, late, None),
+                    (eid, f"h{eid}", ev, f"{ds}T{6 + (i % 14):02d}:{(i * 7) % 60:02d}:00Z", ds, sec, tipo, tit.format(n=eid), res.format(n=eid), fonte, str(eid), rota, "https://example.org/fonte/%d" % eid, json.dumps([{"nome": "Projeto de Lei", "tipo": "iniciativa", "id": str(100 + eid)}] if sec == "parlamento" else []), 1.0 - i / 40.0, 1, late, None),
                 )
         longo = "\n\n".join(
             f"Parágrafo {j} do artigo sintético extenso. Este texto de teste serve para verificar a leitura de um corpo longo, com várias frases, números como 1 234 567 euros e datas como 5 de novembro de 2026. Nada aqui descreve factos reais; todas as entidades, valores e referências são inventados para validar a apresentação em colunas estreitas e largas."
             for j in range(1, 13)
         )
+        LEI = (
+            "Parlamento aprova a lei sintética da transparência nas contas públicas",
+            "O plenário de teste aprovou na especialidade uma lei fictícia que obriga as entidades públicas a publicar as contas trimestrais, com votos a favor de cinco partidos.",
+            "A lei sintética obriga as entidades de exemplo a publicar as contas todos os trimestres.\n\nA votação final global de teste terminou com 147 votos a favor, 58 contra e 25 abstenções.\n\nAs entidades abrangidas têm 180 dias para se adaptar, segundo o texto fictício.",
+            ids["parlamento"][3:6],
+            json.dumps({
+                "lei": {"titulo": "Projeto de Lei sintético 42/XVII — Transparência nas contas públicas", "tipo": "Projeto de Lei", "numero": "42", "legislatura": "XVII", "autor": "Grupo Parlamentar Exemplo", "rota": "#/votacoes/102", "texto_url": "https://example.org/texto/42"},
+                "votacao": {"data": ds, "resultado": "Aprovado", "por_partido": [
+                    {"partido": "PS", "voto": "favor", "lugares": 78}, {"partido": "PSD", "voto": "favor", "lugares": 40}, {"partido": "CH", "voto": "contra", "lugares": 50},
+                    {"partido": "IL", "voto": "abstencao", "lugares": 9}, {"partido": "BE", "voto": "favor", "lugares": 5}, {"partido": "PCP", "voto": "contra", "lugares": 3}, {"partido": "L", "voto": "ausente", "lugares": None}],
+                    "totais": {"favor": 123, "contra": 53, "abstencao": 9}},
+                "intervencoes": [
+                    {"id": "9001", "deputado": "Deputada Exemplo Um", "partido": "PS", "data": prev, "excerto": "Esta lei sintética devolve aos cidadãos o direito de saber, todos os trimestres, como é gasto o dinheiro de todos.", "rota": "#/votacoes/102"},
+                    {"id": "9002", "deputado": "Deputado Exemplo Dois", "partido": "CH", "data": prev, "excerto": "Votamos contra porque o custo administrativo de teste recai sobre as entidades mais pequenas, sem apoio nenhum.", "rota": "#/votacoes/102"},
+                    {"id": "9003", "deputado": "Deputado Exemplo Três", "partido": "IL", "data": prev, "excerto": "Abstemo-nos: concordamos com o princípio fictício, mas o prazo de 180 dias parece-nos irrealista.", "rota": "#/votacoes/102"}]}),
+            json.dumps({"do_que_trata": "A lei sintética obriga as entidades públicas de exemplo a publicar as suas contas todos os trimestres, num formato aberto e acessível a qualquer pessoa.", "o_que_muda": ["As contas passam a ser publicadas de três em três meses, e não apenas uma vez por ano.", "Os dados ficam disponíveis em formato aberto, sem necessidade de pedido.", "As entidades têm 180 dias para se adaptar."]}),
+        )
         arts = [
-            ("Parlamento aprova pacote sintético de medidas", "O plenário de teste aprovou ontem um pacote de medidas fictícias, com votos a favor de dois grupos.", "Primeiro parágrafo curto.\n\nSegundo parágrafo curto com um número: 42 votos.", ids["parlamento"][:3]),
-            ("Auditoria sintética aponta falhas em entidade de exemplo", "Uma auditoria fictícia identificou três falhas de controlo numa entidade de exemplo.", "A auditoria sintética descreve as falhas.\n\nAs recomendações constam do relatório de teste.", ids["fiscalizacao"][:2]),
-            ("Dossier extenso de teste sobre contratação fictícia", "Um dossier longo, inteiramente sintético, para testar corpos extensos e a quebra de linhas em ecrãs pequenos.", longo, ids["dinheiro"][:3] + ids["poder-local"][:1]),
+            ("Parlamento aprova pacote sintético de medidas", "O plenário de teste aprovou ontem um pacote de medidas fictícias, com votos a favor de dois grupos.", "Primeiro parágrafo curto.\n\nSegundo parágrafo curto com um número: 42 votos.", ids["parlamento"][:3], None, None),
+            ("Auditoria sintética aponta falhas em entidade de exemplo", "Uma auditoria fictícia identificou três falhas de controlo numa entidade de exemplo.", "A auditoria sintética descreve as falhas.\n\nAs recomendações constam do relatório de teste.", ids["fiscalizacao"][:2], None, None),
+            ("Dossier extenso de teste sobre contratação fictícia", "Um dossier longo, inteiramente sintético, para testar corpos extensos e a quebra de linhas em ecrãs pequenos.", longo, ids["dinheiro"][:3] + ids["poder-local"][:1], None, None),
+            LEI,
         ]
-        for n, (tit, lead, corpo, evs) in enumerate(arts, 1):
+        for n, (tit, lead, corpo, evs, blocos, expl) in enumerate(arts, 1):
             aid = (k * 10) + n
             con.execute(
-                "INSERT INTO artigos_ia VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (aid, ds, f"e{aid}", json.dumps(evs), tit, lead, corpo, json.dumps(["Ponto-chave sintético um", "Ponto-chave sintético dois com um valor de 120 mil euros", "Ponto-chave sintético três"]), json.dumps([{"label": "Fonte sintética A", "href": "https://example.org/a"}, {"label": "Fonte sintética B", "href": "https://example.org/b"}]), json.dumps([{"valor": "120 mil euros", "fonte": "A"}]), json.dumps(["Entidade Modelo 1", "Município de Exemplo 2"]), 0.9, "modelo-sintetico-1", "revisor-sintetico", json.dumps({"ok": True, "passos": 3}), "publicado", ds + "T05:30:00Z", 1),
+                "INSERT INTO artigos_ia(id, edicao_data, evidence_hash, evento_ids, titulo, lead, corpo, pontos_chave, fontes, numeros_citados, entidades, confianca, modelo, revisor, verificacao, estado, criado_em, revisao, blocos, explicacao) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (aid, ds, f"e{aid}", json.dumps(evs), tit, lead, corpo, json.dumps(["Ponto-chave sintético um", "Ponto-chave sintético dois com um valor de 120 mil euros", "Ponto-chave sintético três"]), json.dumps([{"label": "Fonte sintética A", "href": "https://example.org/a"}, {"label": "Fonte sintética B", "href": "https://example.org/b"}]), json.dumps([{"valor": "120 mil euros", "fonte": "A"}]), json.dumps(["Entidade Modelo 1", "Município de Exemplo 2"]), 0.9, "modelo-sintetico-1", "revisor-sintetico", json.dumps({"ok": True, "passos": 3}), "publicado", ds + "T05:30:00Z", 1, blocos, expl),
             )
             con.executemany("UPDATE eventos SET ia_artigo_id = ? WHERE id = ?", [(aid, e) for e in evs])
-        con.execute("INSERT INTO artigos_ia VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (k * 10 + 9, ds, "rej", "[]", "Rejeitado", "x", "x", "[]", "[]", "[]", "[]", 0.1, "m", "r", "{}", "rejeitado", ds + "T05:31:00Z", 1))
-    con.execute("INSERT INTO eventos VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (9999, "hold", "2026-10-30", "2026-10-31T08:00:00Z", "2026-10-31", "nomeacoes", "nomeação", "Nomeação sintética antiga", "x", "nomeacoes", "1", "ato/1", None, "[]", 0.5, 1, 0, None))
+        con.execute("INSERT INTO artigos_ia(id, edicao_data, evidence_hash, evento_ids, titulo, lead, corpo, pontos_chave, fontes, numeros_citados, entidades, confianca, modelo, revisor, verificacao, estado, criado_em, revisao) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (k * 10 + 9, ds, "rej", "[]", "Rejeitado", "x", "x", "[]", "[]", "[]", "[]", 0.1, "m", "r", "{}", "rejeitado", ds + "T05:31:00Z", 1))
+    con.execute("INSERT INTO eventos VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (9999, "hold", "2026-10-30", "2026-10-31T08:00:00Z", "2026-10-31", "nomeacoes", "nomeação", "Nomeação sintética antiga", "x", "responsaveis", "1", "#/responsaveis", None, "[]", 0.5, 1, 0, None))
     last = d0 + dt.timedelta(days=a.days - 1)
     for fonte, off in (("votacoes", 1), ("dre", 1), ("tcontas", 1), ("base", 1), ("nomeacoes", 4)):
         con.execute("INSERT INTO cursores VALUES(?,?,?,?)", (fonte, 100, (last - dt.timedelta(days=off)).isoformat(), last.isoformat() + "T07:00:00Z"))
