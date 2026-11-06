@@ -167,6 +167,51 @@ rc=$?
 check "with-lock exits 75 on timeout" $?
 wait "$HOLDER"
 
+BADLK="$T/badlk"; mkdir -p "$BADLK/update.lock"
+t0=$SECONDS
+STATE_DIR="$BADLK" EA_LOCK_POLL=0.1 bash "$OPS/updater/with-lock.sh" ai --wait 1500 -- true > "$T/u1.log" 2>&1
+rc=$?
+[ "$rc" -eq 77 ] && [ $((SECONDS - t0)) -lt 5 ] && grep -q "cannot open .*update.lock for writing" "$T/u1.log" && ! grep -q "waiting for" "$T/u1.log"
+check "unopenable lock file fails fast with exit 77 and never waits" $?
+
+t0=$SECONDS
+STATE_DIR="$BADLK" EA_LOCK_LIB="$LIB" bash "$UPDATER" --check > "$T/u2.log" 2>&1
+rc=$?
+[ "$rc" -eq 77 ] && [ $((SECONDS - t0)) -lt 5 ] && grep -q "unusable" "$T/u2.log"
+check "updater fails fast on an unusable lock" $?
+
+RO="$T/rolk"; mkdir -p "$RO"; chmod 0555 "$RO"
+if [ "$(id -u)" != 0 ]; then
+  t0=$SECONDS
+  STATE_DIR="$RO" EA_LOCK_POLL=0.1 bash "$OPS/updater/with-lock.sh" ai --wait 1500 -- true > "$T/u3.log" 2>&1
+  rc=$?
+  [ "$rc" -eq 77 ] && [ $((SECONDS - t0)) -lt 5 ]
+  check "read-only state directory fails fast with exit 77" $?
+fi
+chmod 0755 "$RO"
+
+NEWLK="$T/newlk/state"
+STATE_DIR="$NEWLK" bash "$OPS/updater/with-lock.sh" ai --wait 2 -- true > /dev/null 2>&1
+[ "$(stat -c %a "$NEWLK/update.lock")" = 660 ] && [ "$(stat -c %a "$NEWLK")" = 2770 ]
+check "lock file is created 0660 in a setgid group-writable directory" $?
+
+OLDLK="$T/oldlk"; mkdir -p "$OLDLK"; echo "ingest 1" > "$OLDLK/update.lock"; chmod 0644 "$OLDLK/update.lock"
+STATE_DIR="$OLDLK" bash "$OPS/updater/with-lock.sh" ai --wait 2 -- true > "$T/u4.log" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] && [ "$(stat -c %a "$OLDLK/update.lock")" = 660 ]
+check "an owned lock file that is not group-writable is repaired and taken" $?
+
+STATE_DIR="$OLDLK" bash -c '. "$1"; ea_lock_holder' _ "$LIB" > "$T/u5.log" 2>&1
+grep -q "nobody" "$T/u5.log"
+check "a free lock never reports a holder" $?
+
+hold ingest 3
+STATE_DIR="$LK" bash -c '. "$1"; ea_lock_holder' _ "$LIB" > "$T/u6.log" 2>&1
+grep -q "^ingest [0-9]" "$T/u6.log"
+check "a held lock reports its recorded owner" $?
+kill "$HOLDER" 2> /dev/null
+wait "$HOLDER" 2> /dev/null
+
 AS="$T/alert-state"; mkdir -p "$AS"
 STATE_DIR="$AS" JOURNAL_CMD="seq 1 40" ESTADO_ABERTO_PYTHON=python3 bash "$OPS/updater/alert.sh" estado-aberto-refresh.service
 STATE_DIR="$AS" JOURNAL_CMD="echo second" ESTADO_ABERTO_PYTHON=python3 bash "$OPS/updater/alert.sh" estado-aberto-daily.service

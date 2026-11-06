@@ -20,7 +20,10 @@ fi
 
 log() { echo "[$(date -u +%FT%TZ)] $*"; }
 
-ea_lock_acquire ingest "$LOCK_WAIT" || { log "could not get the lock; jobs stay queued"; exit 0; }
+ea_lock_acquire ingest "$LOCK_WAIT"
+rc=$?
+if [ "$rc" -eq "$EA_LOCK_UNAVAILABLE" ]; then log "lock unusable; jobs stay queued"; exit "$EA_LOCK_UNAVAILABLE"; fi
+[ "$rc" -eq 0 ] || { log "could not get the lock; jobs stay queued"; exit 0; }
 export EA_LOCK_HELD=1
 
 shopt -s nullglob

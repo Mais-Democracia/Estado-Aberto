@@ -17,6 +17,11 @@ if [ "${1:-}" = "--wait" ]; then WAIT="${2:?--wait needs seconds}"; shift 2; fi
 [ "${1:-}" = "--" ] && shift
 [ "$#" -gt 0 ] || { echo "with-lock: no command" >&2; exit 2; }
 
-ea_lock_acquire "$ROLE" "$WAIT" || exit 75
+ea_lock_acquire "$ROLE" "$WAIT"
+rc=$?
+if [ "$rc" -ne 0 ]; then
+  [ "$rc" -eq "$EA_LOCK_UNAVAILABLE" ] && exit "$EA_LOCK_UNAVAILABLE"
+  exit 75
+fi
 export EA_LOCK_HELD=1
 "$@"

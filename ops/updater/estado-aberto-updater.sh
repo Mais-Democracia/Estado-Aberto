@@ -48,7 +48,10 @@ log() { echo "[$(date -u +%FT%TZ)] $*"; }
 die() { log "ERROR: $*"; write_state failed "$*"; exit 1; }
 
 mkdir -p "$STATE_DIR" "$OPT_DIR/releases" 2>/dev/null || { echo "cannot create state dirs" >&2; exit 1; }
-ea_lock_acquire updater "$LOCK_WAIT" || { log "update.lock still busy after ${LOCK_WAIT}s; try again later"; exit 0; }
+ea_lock_acquire updater "$LOCK_WAIT"
+rc=$?
+if [ "$rc" -eq "$EA_LOCK_UNAVAILABLE" ]; then log "update.lock is unusable; fix its ownership or mode"; exit "$EA_LOCK_UNAVAILABLE"; fi
+[ "$rc" -eq 0 ] || { log "update.lock still busy after ${LOCK_WAIT}s; try again later"; exit 0; }
 
 write_state() {
   "$PY" -I - "$STATE_DIR/last_update.json" "$1" "${2:-}" "${TARGET_TAG:-}" <<'PY'
