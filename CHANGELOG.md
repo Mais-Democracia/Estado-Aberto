@@ -5,6 +5,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- AI articles for every parliament event (votes, debates, initiatives, resolutions and recommendations) now carry the vote and debate blocks: the initiative, the party-by-party vote and up to six verbatim speech excerpts, with a dedicated vote-and-debate prompt.
+- `ops/ai/run.py --refresh-changed` update path (also run by the normal pipeline): published articles whose evidence gained votes or debate are redrafted outside triage and selection, within `AI_MAX_UPDATES` and the daily budget, and supersede the old article.
+
 ## [0.3.4] - 2026-11-06
 
 ### Changed

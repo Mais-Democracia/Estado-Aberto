@@ -520,7 +520,7 @@ INSERT INTO voto_partido VALUES(5001,'PSD','favor','gp',NULL,NULL),(5001,'PS','a
         r = self.run_ai()
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.stages().count("triage") + self.stages().count("selecao"), 0)
-        self.assertEqual(self.stages().count("redacao_lei"), 2)
+        self.assertEqual(self.stages().count("redacao_votacao"), 2)
         bdir, facts, blocos = self.bundles()[1]
         lei = facts["lei"]
         self.assertEqual(lei["iniciativa"]["numero"], 7)
@@ -607,7 +607,8 @@ INSERT INTO voto_partido VALUES(5001,'PSD','favor','gp',NULL,NULL),(5001,'PS','a
         r = self.run_ai("--dry-run")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("dia pequeno", r.stdout)
-        self.assertIn("redacao_lei", r.stdout)
+        self.assertIn("redacao_votacao", r.stdout)
+        self.assertIn("VOTACAO evento 1", r.stdout)
         self.assertIn("PSD favor (89)", r.stdout)
         self.assertIn("texto_disponivel=True", r.stdout)
         self.assertIn("texto_disponivel=False", r.stdout)
@@ -683,6 +684,73 @@ INSERT INTO voto_partido VALUES(5001,'PSD','favor','gp',NULL,NULL),(5001,'PS','a
         self.assertEqual(imp().returncode, 0)
         self.assertEqual(con.execute("SELECT estado FROM artigos_ia WHERE id=?", (rows[0][0],)).fetchone()[0], "substituido")
         self.assertEqual(con.execute("SELECT COUNT(*) FROM artigos_ia WHERE evento_ids='[3]' AND estado='publicado'").fetchone()[0], 1)
+
+    def add_resolution_vote(self):
+        con = sqlite3.connect(self.data / "diario.db")
+        con.execute("INSERT INTO eventos(id,hash,data_evento,edicao_data,secao,tipo,titulo,resumo_curto,fonte_modulo,fonte_ref,rota,source_url,entidades,score) VALUES(4,'h4','2026-11-05',?,?,?,?,?,?,?,?,?,?,?)",
+                    (D, "parlamento", "votacao", "Parlamento aprova recomendação ao Governo sobre pensões", "Plenário, 5 de novembro de 2026.", "votacoes", "5020", "#/votacoes/400", None,
+                     json.dumps([{"nome": "Projeto de Resolução n.º 12/XVII", "tipo": "iniciativa", "id": "400"}]), 4))
+        con.commit()
+        con.close()
+        v = sqlite3.connect(self.src / "votacoes.db")
+        v.execute("INSERT INTO iniciativas VALUES(400,'Projeto de Resolução|12|XVII','Projeto de Resolução',12,'XVII','Recomenda ao Governo a revisão das pensões mínimas','Grupo A','Deputados','2026-06-01','Aprovado','Votação','Aprovado','2026-11-05',NULL,NULL,NULL,NULL,NULL)")
+        v.execute("INSERT INTO votos VALUES(5020,400,'2026-11-05','Votação na generalidade','Plenário','Aprovado',0)")
+        v.executemany("INSERT INTO voto_partido VALUES(5020,?,?,'gp',NULL,NULL)", [("PSD", "favor"), ("CH", "favor"), ("PS", "abstencao"), ("IL", "contra")])
+        v.commit()
+        v.close()
+        i = sqlite3.connect(self.src / "intervencoes.db")
+        for k, nome, par in ((60, "Ana Costa", "PSD"), (61, "Rui Dias", "PS"), (62, "Eva Lima", "CH")):
+            txt = f"Sr. Presidente, a bancada do {par} defende a revisão das pensões mínimas e a sua atualização anual. " * 4
+            i.execute("INSERT INTO intervencoes VALUES(?,?,?,?,?,?,?,?,?)", (k, "2026-11-05", nome, par, 1, "dep", None, len(txt.split()), txt))
+            i.execute("INSERT INTO iv_ini VALUES(?,?,?,?,?,?,?)", (k, 400, None, None, None, None, None))
+        i.commit()
+        i.close()
+
+    def test_resolution_vote_event_gets_party_votes_and_speeches(self):
+        self.add_resolution_vote()
+        r = self.run_ai()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        bdir, facts, blocos = self.bundles()[4]
+        self.assertEqual(facts["lei"]["variante"], "votacao")
+        self.assertEqual(blocos["lei"]["tipo"], "Projeto de Resolução")
+        self.assertEqual(blocos["lei"]["rota"], "#/votacoes/400")
+        self.assertEqual({(p["partido"], p["voto"]) for p in blocos["votacao"]["por_partido"]}, {("PSD", "favor"), ("CH", "favor"), ("PS", "abstencao"), ("IL", "contra")})
+        self.assertEqual({x["partido"] for x in blocos["intervencoes"]}, {"PSD", "PS", "CH"})
+        self.assertEqual(facts["lei"]["intervencoes_total"], 3)
+        self.assertEqual(self.stages().count("redacao_votacao"), 3)
+        self.assertIn(4, self.docs(), self.docs("rejected").get(4, {}).get("verificacao"))
+
+    def test_refresh_changed_supersedes_article_whose_evidence_grew(self):
+        self.add_unlinked_law()
+        self.assertEqual(self.run_ai().returncode, 0)
+        imp = lambda: subprocess.run([sys.executable, str(IMPORT), "--date", D], env=self.env, capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(imp().returncode, 0)
+        before = len(self.stages())
+        r = self.run_ai("--refresh-changed")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.stages()), before)
+        self.assertIn("0 candidata(s)", r.stdout)
+        self.add_speeches(((43, "Rui Dias", "PS"),))
+        r = self.run_ai("--refresh-changed", "--dry-run")
+        self.assertIn("1 candidata(s)", r.stdout)
+        self.assertEqual(len(self.stages()), before)
+        r = self.run_ai("--refresh-changed", AI_MAX_USD_DAY="0.01")
+        self.assertIn("0 dentro", r.stdout)
+        self.assertEqual(len(self.stages()), before)
+        r = self.run_ai("--refresh-changed")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("estimativa", r.stdout.splitlines()[0])
+        self.assertIn("atualizacoes publicadas=1", r.stdout)
+        self.assertEqual(self.stages()[before:], ["redacao_lei", "revisao"])
+        self.assertEqual(imp().returncode, 0)
+        con = sqlite3.connect(self.data / "diario.db")
+        rows = con.execute("SELECT estado, revisao, evento_ids FROM artigos_ia WHERE evento_ids='[3]' ORDER BY id").fetchall()
+        self.assertEqual([x[0] for x in rows], ["substituido", "publicado"])
+        self.assertGreaterEqual(rows[1][1], 1)
+        self.assertEqual(len(json.loads(con.execute("SELECT blocos FROM artigos_ia WHERE estado='publicado' AND evento_ids='[3]'").fetchone()[0])["intervencoes"]), 4)
+        r = self.run_ai("--refresh-changed")
+        self.assertIn("0 candidata(s)", r.stdout)
+        self.assertEqual(len(self.stages()), before + 2)
 
     def test_link_pass_links_unlinked_acts_idempotently_and_updates_initiative(self):
         self.add_unlinked_law()

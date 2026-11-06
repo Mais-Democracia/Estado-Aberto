@@ -13,7 +13,7 @@ from lib import ROOT, data_dir, open_ro, wrap
 sys.path.insert(0, str(ROOT / "ingest"))
 import linking  # noqa: E402
 
-LAW_TIPO = re.compile(r"\bLei\b", re.I)
+VOTE_MODS = ("votos", "votacoes", "intervencoes", "iniciativas")
 SENSOS = ("favor", "contra", "abstencao")
 SPEECH_CAP = 1800
 FACT_SPEECHES = 10
@@ -130,8 +130,18 @@ def locate(row):
     if bid is None:
         bid = entity_bid(row)
     if bid is None and act_id:
-        bid = match_bid(act_id)
+        bid = linked_bid(act_id) or match_bid(act_id)
     return bid, vote_id, act_id
+
+
+def linked_bid(act_id):
+    link = one(db("dre"), "SELECT initiative_key FROM act_initiatives WHERE act_id=? ORDER BY score DESC", (act_id,))
+    i = one(db("votacoes"), "SELECT bid FROM iniciativas WHERE key=?", (link["initiative_key"],)) if link else None
+    return i["bid"] if i else None
+
+
+def variante(row):
+    return "votacao" if row.get("fonte_modulo") in VOTE_MODS else "lei"
 
 
 def seats(vcon, leg):
@@ -251,8 +261,6 @@ def _build_lei(row):
     bid, vote_id, act_id = locate(row)
     vcon = db("votacoes")
     ini = one(vcon, "SELECT * FROM iniciativas WHERE bid=?", (bid,)) if bid else None
-    if ini and not LAW_TIPO.search(str(ini.get("tipo") or "")):
-        return None, empty_blocos()
     if not act_id and ini:
         act_id = ini.get("dre_act_id") or None
     act = dre_act(act_id)

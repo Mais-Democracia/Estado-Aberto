@@ -75,7 +75,7 @@ elif stage == "selecao":
     n = json.loads(rd("limite.json"))["max_historias"]
     out = {"historias": [{"evento_id": x["id"], "motivo": "importante"} for x in c[:n]]}
     usage = {"input_tokens": 12000, "output_tokens": 1000}
-elif stage in ("redacao", "redacao_lei"):
+elif stage in ("redacao", "redacao_lei", "redacao_votacao"):
     f = json.loads(rd("facts.json"))
     ev = f["eventos"][0]
     titulo, resumo = strip(ev["titulo"]), strip(ev["resumo_curto"])
@@ -88,7 +88,7 @@ elif stage in ("redacao", "redacao_lei"):
     out = {"titulo": titulo, "lead": resumo, "corpo": corpo,
            "pontos_chave": ["Facto registado.", "Fonte oficial.", "Dados do dia."],
            "fontes": [{"label": "Fonte", "href": hrefs[0]}], "numeros_citados": [], "calculos": [], "entidades": [], "confianca": float(os.environ.get("AI_STUB_CONFIANCA", "0.9"))}
-    if stage == "redacao_lei":
+    if stage in ("redacao_lei", "redacao_votacao"):
         lei = f.get("lei") or {}
         lines = [x.strip() for x in strip(rd("texto.txt")).splitlines() if len(x.strip()) >= 15]
         if lei.get("texto_disponivel") and len(lines) >= 3:

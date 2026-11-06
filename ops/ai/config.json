@@ -24,12 +24,14 @@
   "budgets": {
     "max_usd_day": 2.5,
     "max_usd_month": 60,
-    "max_articles": 5
+    "max_articles": 5,
+    "max_updates": 3
   },
   "pipeline": {
     "shortlist_size": 25,
     "select_from": 12,
-    "min_artigos_dia": 3
+    "min_artigos_dia": 3,
+    "refresh_dias": 2
   },
   "stages": {
     "triage": {
@@ -61,6 +63,12 @@
       "prompt": "redacao_lei",
       "schema": "artigo_lei",
       "max_usd": 0.5
+    },
+    "redacao_votacao": {
+      "tier": "sonnet",
+      "prompt": "redacao_votacao",
+      "schema": "artigo_lei",
+      "max_usd": 0.5
     }
   },
   "prompt_versions": {
@@ -68,7 +76,8 @@
     "selecao": "1",
     "redacao": "1",
     "revisao": "3",
-    "redacao_lei": "2"
+    "redacao_lei": "2",
+    "redacao_votacao": "1"
   },
   "estimates": {
     "triage": {
@@ -88,6 +97,10 @@
       "out": 600
     },
     "redacao_lei": {
+      "in": 45000,
+      "out": 2300
+    },
+    "redacao_votacao": {
       "in": 45000,
       "out": 2300
     }

@@ -52,6 +52,7 @@ def load_config():
     b["max_usd_day"] = float(os.environ.get("AI_MAX_USD_DAY", b["max_usd_day"]))
     b["max_usd_month"] = float(os.environ.get("AI_MAX_USD_MONTH", b["max_usd_month"]))
     b["max_articles"] = int(os.environ.get("AI_MAX_ARTICLES", b["max_articles"]))
+    b["max_updates"] = int(os.environ.get("AI_MAX_UPDATES", b.get("max_updates", 3)))
     cm = os.environ.get("AI_CONFIANCA_MIN")
     if cm:
         v = float(cm)

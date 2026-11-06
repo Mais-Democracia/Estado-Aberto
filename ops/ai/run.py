@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import datetime as dt
 import json
 import os
 import re
@@ -155,7 +156,7 @@ def stage_draft(ctx, items, chosen):
             t = b["dir"] / "texto.txt"
             ev = sha(b["evidence_hash"], hashed(t), hashed(b["dir"] / "facts.json"))
             (b["dir"] / "rascunho.json").unlink(missing_ok=True)
-            res = call_model(ctx, "redacao_lei" if b.get("lei") else "redacao", b["dir"], "Redige o artigo sobre o evento descrito nos ficheiros desta pasta.", ev)
+            res = call_model(ctx, stage_for(b), b["dir"], "Redige o artigo sobre o evento descrito nos ficheiros desta pasta.", ev)
             if not res:
                 continue
             jwrite(ctx.work / "drafts" / f"{b['evidence_hash']}.json", res["data"])
@@ -165,6 +166,113 @@ def stage_draft(ctx, items, chosen):
         except Exception as e:
             ctx.audit("draft", decision="erro", erro=type(e).__name__, evento=eid)
     return out
+
+
+def stage_for(b):
+    if b.get("lei"):
+        return "redacao_votacao" if b.get("variante") == "votacao" else "redacao_lei"
+    return "redacao"
+
+
+def live_count(ctx):
+    seen = set()
+    for p in ctx.published.glob("*.json"):
+        seen.add(tuple(sorted((jread(p, {}) or {}).get("evento_ids", [p.stem]))))
+    return len(seen)
+
+
+def known_hashes(ctx):
+    out = {p.stem for sub in ("published", "rejected") for p in (ctx.ai / sub).glob("*/*.json")}
+    return out | ({p.name for p in ctx.killed.glob("*")} if ctx.killed.is_dir() else set())
+
+
+VOLATILE = ("variante", "texto_disponivel", "texto_origem", "aviso_texto")
+
+
+def lei_core(facts):
+    return {k: v for k, v in ((facts or {}).get("lei") or {}).items() if k not in VOLATILE}
+
+
+def richer(old, new_blocos, new_facts, old_facts):
+    ob, nb = old.get("blocos") or {}, new_blocos or {}
+    if nb.get("votacao") and not ob.get("votacao"):
+        return True
+    if len(nb.get("intervencoes") or []) > len(ob.get("intervencoes") or []):
+        return True
+    if nb.get("lei") and not ob.get("lei"):
+        return True
+    return old_facts is not None and canon(lei_core(new_facts)) != canon(lei_core(old_facts))
+
+
+def refresh_candidates(ctx):
+    import tempfile
+    oldb = ctx.bundles
+    if ctx.dry:
+        ctx.bundles = Path(tempfile.mkdtemp(prefix="ea-dry-"))
+    base = dt.date.fromisoformat(ctx.date)
+    days = {(base - dt.timedelta(days=i)).isoformat() for i in range(ctx.cfg["pipeline"].get("refresh_dias", 2) + 1)}
+    known, bad = known_hashes(ctx), killed_events(ctx)
+    latest = {}
+    for d in days:
+        for p in (ctx.ai / "published" / d).glob("*.json"):
+            old = jread(p)
+            if not isinstance(old, dict) or old.get("estado") != "publicado" or "retirada" in (old.get("verificacao") or {}):
+                continue
+            ids = [int(x) for x in old.get("evento_ids", []) if str(x).isdigit()]
+            if len(ids) == 1 and ids[0] not in bad and str(old.get("criado_em") or "") >= str(latest.get(ids[0], {}).get("criado_em") or ""):
+                latest[ids[0]] = old
+    out = []
+    for eid, old in latest.items():
+        try:
+            b = B.build(ctx, [eid])
+        except Exception as e:
+            ctx.audit("refresh", decision="erro", erro=type(e).__name__, evento=eid)
+            continue
+        if not b or b["evidence_hash"] in known:
+            continue
+        nb, nf = jread(b["dir"] / "blocos.json", {}), jread(b["dir"] / "facts.json", {})
+        if richer(old, nb, nf, jread(oldb / str(old.get("evidence_hash")) / "facts.json")):
+            out.append((eid, b, old))
+    out.sort(key=lambda x: (-(x[1]["rows"][0].get("score") or 0), x[0]))
+    return out
+
+
+def update_cost(ctx, b):
+    return ctx.estimate_stage(stage_for(b)) + ctx.estimate_stage("revisao")
+
+
+def refresh_plan(ctx, cands):
+    cap = ctx.cfg["budgets"]["max_usd_day"]
+    month = ctx.cfg["budgets"]["max_usd_month"]
+    left = min(cap - ctx.spent_day(), month - ctx.spent_month())
+    chosen, total = [], 0.0
+    for c in cands[:ctx.cfg["budgets"]["max_updates"]]:
+        cost = update_cost(ctx, c[1])
+        if total + cost > left:
+            break
+        chosen.append(c)
+        total += cost
+    full = sum(update_cost(ctx, c[1]) for c in cands[:ctx.cfg["budgets"]["max_updates"]])
+    eur = ctx.cfg["eur_per_usd"]
+    print(f"atualizacoes: {len(cands)} candidata(s), {len(chosen)} dentro do limite de {ctx.cfg['budgets']['max_updates']} por execucao e do orcamento | "
+          f"estimativa ${full:.2f} / EUR {full * eur:.2f} (a gastar ${total:.2f}) | gasto hoje ${ctx.spent_day():.2f} de ${cap:.2f} (AI_MAX_USD_DAY)")
+    return chosen
+
+
+def stage_refresh(ctx):
+    cands = refresh_candidates(ctx)
+    chosen = refresh_plan(ctx, cands)
+    for eid, b, old in chosen:
+        ctx.audit("refresh", decision="atualizar", evento=eid, antigo=str(old.get("evidence_hash"))[:12], novo=b["evidence_hash"][:12])
+    if not chosen or ctx.dry:
+        for eid, b, old in cands:
+            print(f"  evento {eid}: {stage_for(b)} antigo {str(old.get('evidence_hash'))[:12]} novo {b['evidence_hash'][:12]}")
+        return {"publicado": 0, "rejeitado": 0}
+    drafts = stage_draft(ctx, [], [c[0] for c in chosen])
+    n = stage_verify_review(ctx, drafts)
+    ctx.audit("run", decision=f"atualizacoes publicados={n['publicado']} rejeitados={n['rejeitado']}")
+    print(f"atualizacoes publicadas={n['publicado']} rejeitadas={n['rejeitado']}")
+    return n
 
 
 def hashed(p):
@@ -261,7 +369,7 @@ def law_report(ctx, rows, fetch=True):
 
 def print_law(r, facts, blocos, txt, b):
     ini = facts.get("iniciativa") or {}
-    print(f"LEI evento {r['id']} ({r.get('tipo')}): {str(ini.get('tipo') or '')} n.o {ini.get('numero')}/{ini.get('legislatura')} | {lib.sanitize(str(blocos.get('lei', {}).get('titulo') or ''))[:90]}")
+    print(f"{'VOTACAO' if b.get('variante') == 'votacao' else 'LEI'} evento {r['id']} ({r.get('tipo')}): {str(ini.get('tipo') or '')} n.o {ini.get('numero')}/{ini.get('legislatura')} | {lib.sanitize(str(blocos.get('lei', {}).get('titulo') or ''))[:90]}")
     print(f"  rota {blocos.get('lei', {}).get('rota')} | lei_em_vigor={facts.get('lei_em_vigor')} | bundle {b['dir'].name[:12]}")
     v = blocos.get("votacao")
     if v:
@@ -299,6 +407,7 @@ def dry_run(ctx):
     if rows:
         laws = law_report(ctx, rows[:k], fetch=os.environ.get("AI_DRY_NO_FETCH") != "1")
     nl = len(laws)
+    nv = sum(1 for law in laws if law[4].get("variante") == "votacao")
     eur = c["eur_per_usd"]
     total = 0.0
     modo = "dia pequeno: sem triagem nem selecao" if small else "triagem + selecao"
@@ -306,7 +415,7 @@ def dry_run(ctx):
     plan = [("bundle", "-", 0, 0, 0.0, f"{n} bundles (sem modelo)"),
             ("verify", "-", 0, 0, 0.0, f"{k} verificacoes (sem modelo)")]
     steps = [] if small else [("triage", 1, n), ("selecao", 1, top)]
-    steps += [("redacao", k - nl, 1), ("redacao_lei", nl, 1), ("revisao", k, 1)]
+    steps += [("redacao", k - nl, 1), ("redacao_lei", nl - nv, 1), ("redacao_votacao", nv, 1), ("revisao", k, 1)]
     for st, cnt, m in steps:
         if cnt <= 0:
             continue
@@ -418,6 +527,8 @@ def pipeline(ctx, a):
     ctx.mkdirs()
     want = ORDER if a.stage == "all" else [a.stage]
     try:
+        if "draft" in want:
+            stage_refresh(ctx)
         items = jread(ctx.work / "shortlist.json", []) if "bundle" not in want else stage_bundle(ctx)
         if not items:
             ctx.audit("run", decision="sem candidatos")
@@ -430,7 +541,7 @@ def pipeline(ctx, a):
             top = jread(ctx.work / "triage.json", {}).get("top", []) if "triage" not in want else stage_triage(ctx, items)
             chosen = jread(ctx.work / "selecao.json", {}).get("escolhidas", []) if "select" not in want else stage_select(ctx, items, top)
         if {"draft", "verify", "review", "publish"} & set(want):
-            have = len(list(ctx.published.glob("*.json")))
+            have = live_count(ctx)
             room = max(0, ctx.cfg["budgets"]["max_articles"] - have)
             bad = killed_events(ctx)
             fresh = []
@@ -448,6 +559,16 @@ def pipeline(ctx, a):
             if "verify" in want or "review" in want or "publish" in want:
                 n = stage_verify_review(ctx, drafts, do_review="review" in want or "publish" in want)
                 ctx.audit("run", decision=f"publicados={n['publicado']} rejeitados={n['rejeitado']}")
+    except Halt as h:
+        ctx.audit("run", decision=h.reason)
+        print(f"parado: {h.reason}")
+    return 0
+
+
+def refresh_only(ctx):
+    ctx.mkdirs()
+    try:
+        stage_refresh(ctx)
     except Halt as h:
         ctx.audit("run", decision=h.reason)
         print(f"parado: {h.reason}")
@@ -496,12 +617,16 @@ def main(argv=None):
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--stage", choices=ORDER + ["all"], default="all")
     ap.add_argument("--reverify", metavar="DATE")
+    ap.add_argument("--refresh-changed", action="store_true", help="redraft published articles whose evidence gained votes, debate or other new data (at most AI_MAX_UPDATES, within AI_MAX_USD_DAY); prints the estimated cost first")
     ap.add_argument("--kill", metavar="HASH_OR_ARTICLE_ID")
     ap.add_argument("--unkill", metavar="HASH_OR_ARTICLE_ID")
     ap.add_argument("--motivo", default="retirado pelo editor")
     ap.add_argument("--wait", type=float, default=1500)
     a = ap.parse_args(argv)
     ctx = Ctx(a.reverify or a.date, a.dry_run)
+    if a.dry_run and a.refresh_changed:
+        stage_refresh(ctx)
+        return 0
     if a.dry_run:
         return dry_run(ctx)
     if not (a.kill or a.unkill):
@@ -520,6 +645,8 @@ def main(argv=None):
                 return unkill(ctx, a.unkill)
             if a.reverify:
                 return reverify(ctx)
+            if a.refresh_changed:
+                return refresh_only(ctx)
             return pipeline(ctx, a)
     except LockTimeout:
         print("bloqueio ocupado")
