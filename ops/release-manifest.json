@@ -1,6 +1,6 @@
 {
-  "version": "0.2.1",
-  "git_sha": "0e944102b1a5fd8ce9b931528447356efbbbd287",
+  "version": "0.2.2",
+  "git_sha": "b1db15e73813b14a7e048d3e44d4d210df3dfc1f",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- AI pipeline hardening: retraction command, stricter verifier, cost accounting, privacy rules, CLI flag validation."
+  "notes": "### Fixed\n- Refresh steps failing with 'database is locked' on the live server."
 }
