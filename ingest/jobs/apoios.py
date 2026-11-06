@@ -14,7 +14,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, connect_writer  # noqa: E402
 from jobs import apoios_pdf  # noqa: E402
 
 NAME = "apoios"
@@ -170,8 +170,7 @@ CREATE INDEX IF NOT EXISTS ben_nif ON ben(nif);
 
 def open_db():
     DB.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(DB, timeout=120)
-    db.execute("PRAGMA journal_mode=WAL")
+    db = connect_writer(DB)
     db.execute("PRAGMA synchronous=NORMAL")
     db.executescript(TABLES.format(p=""))
     db.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")

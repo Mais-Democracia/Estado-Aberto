@@ -26,7 +26,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 from since import cutoff, report, since_days  # noqa: E402
 
 NAME = "presidencia"
@@ -624,9 +624,7 @@ def finish(con, cur):
 
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB, timeout=60)
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA busy_timeout=60000")
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     cur = con.cursor()
     for t in ("atos", "vetos", "tc_pedidos") + (() if SINCE else ("comunicados",)):

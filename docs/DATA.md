@@ -189,3 +189,5 @@ WHERE s.buyer_nif = '506656128' ORDER BY s.score DESC, s.price DESC LIMIT 20;
 -- all members of a splitting group
 SELECT evidence_json FROM contract_flags WHERE contract_id = '1585049' AND flag = 'FRACIONAMENTO';
 ```
+
+Databases stay in WAL mode while the web app is running. The app opens them read-only, which still needs the `-shm` file: the data directory must be writable by the app user.

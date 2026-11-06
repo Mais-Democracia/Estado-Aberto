@@ -25,7 +25,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, connect_writer  # noqa: E402
 
 DB = DATA_DIR / "regioes.db"
 RAW = DATA_DIR / "raw" / "regioes"
@@ -965,7 +965,7 @@ def contracts(db):
 def main():
     if DB.exists():
         DB.unlink()
-    db = sqlite3.connect(DB)
+    db = connect_writer(DB)
     db.executescript(SCHEMA)
     steps = [("governo Açores", parse_az_government), ("governo Madeira", parse_mad_government), ("orçamento Madeira", parse_mad_budget),
              ("DRE", load_dre), ("ALRAA", alraa), ("ALRAM", alram), ("eleições", elections), ("contratos", contracts)]

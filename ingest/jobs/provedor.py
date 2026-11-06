@@ -11,7 +11,7 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 
 NAME = "provedor"
 DB = DATA_DIR / f"{NAME}.db"
@@ -125,8 +125,7 @@ def main():
     RAW.mkdir(parents=True, exist_ok=True)
     reports = discover()
     print("reports found:", len(reports))
-    con = sqlite3.connect(DB, timeout=60)
-    con.execute("PRAGMA journal_mode=WAL")
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     con.execute("DELETE FROM reports")
     con.execute("DELETE FROM stats")

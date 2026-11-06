@@ -19,7 +19,7 @@ import time
 import unicodedata
 import urllib.request
 
-from common import DATA_DIR, ROOT
+from common import DATA_DIR, ROOT, connect_writer
 
 NAME = "empresas_locais"
 DB = DATA_DIR / f"{NAME}.db"
@@ -157,9 +157,7 @@ def get_json(url, tag):
 
 def main():
     t0 = time.time()
-    con = sqlite3.connect(DB, timeout=60)
-    con.execute("PRAGMA journal_mode=WAL")
-    con.execute("PRAGMA busy_timeout=60000")
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     pol = sqlite3.connect(f"file:{POL}?mode=ro", uri=True, timeout=60)
     aut = sqlite3.connect(f"file:{AUT}?mode=ro", uri=True, timeout=60)

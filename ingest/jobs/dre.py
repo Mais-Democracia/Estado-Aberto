@@ -33,7 +33,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 from since import cutoff, report, since_days  # noqa: E402
 
 NAME = "dre"
@@ -504,9 +504,8 @@ def build_fts(con):
 
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
+    con = connect_writer(DB)
     con.row_factory = sqlite3.Row
-    con.execute("PRAGMA journal_mode=WAL")  # the portal server may read while we write
     con.executescript(SCHEMA)
     discover()
     phase_days(con)
@@ -523,7 +522,6 @@ def main():
         con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (k, str(v)))
     con.commit()
     ultima = con.execute("SELECT MAX(date) FROM acts WHERE in_window = 1").fetchone()[0]
-    con.execute("PRAGMA journal_mode=DELETE")  # read-only openers (node:sqlite readOnly) can't create the WAL -shm file
     con.close()
     log("done", stats)
     if SINCE:

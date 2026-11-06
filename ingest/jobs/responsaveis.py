@@ -38,7 +38,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 from since import since_days  # noqa: E402
 import migrations  # noqa: E402
 
@@ -498,8 +498,7 @@ def phase_match_and_links(con):
 
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
-    con.execute("PRAGMA busy_timeout=30000")
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     con.execute("DELETE FROM blocked")
     # privacy: never keep relatives' items, stake values or family relations

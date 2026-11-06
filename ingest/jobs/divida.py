@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, download, get  # noqa: E402
+from common import DATA_DIR, download, get, connect_writer  # noqa: E402
 
 NAME = "divida"
 DB = DATA_DIR / f"{NAME}.db"
@@ -90,7 +90,7 @@ def load(rows, date_row, spec, unit, grp, db):
 
 
 def run():
-    db = sqlite3.connect(DB)
+    db = connect_writer(DB)
     db.executescript(SCHEMA)
     db.execute("DELETE FROM series")
     n = load(read_sheet(fetch(FILES["stock"])), 4, STOCK_ROWS, "milhões de euros", "stock", db)

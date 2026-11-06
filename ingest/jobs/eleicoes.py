@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from common import DATA_DIR, ROOT, UA
+from common import DATA_DIR, ROOT, UA, connect_writer
 
 NAME = "eleicoes"
 DB = DATA_DIR / f"{NAME}.db"
@@ -544,8 +544,7 @@ def do_freguesias(con, municipios):
 
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB, timeout=60)
-    con.execute("PRAGMA journal_mode=WAL")  # readers (the portal server) must not be blocked by the long ingest
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     mun = load_municipios(con)
     print(f"  municipios from autarquias.db: {len(mun)}")

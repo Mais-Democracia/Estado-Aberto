@@ -26,7 +26,7 @@ import zipfile
 import xml.etree.ElementTree as ET
 from datetime import date
 
-from common import DATA_DIR, ROOT
+from common import DATA_DIR, ROOT, connect_writer
 from _xls import XlsBook
 
 NAME = "orcamento"
@@ -684,8 +684,7 @@ def eurostat(con):
 # ---------------------------------------------------------------- main
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB, timeout=60)
-    con.execute("PRAGMA journal_mode=WAL")
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     con.execute("DELETE FROM blocked")
     # SEO

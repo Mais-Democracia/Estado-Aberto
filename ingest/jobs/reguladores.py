@@ -18,7 +18,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, connect_writer  # noqa: E402
 from since import cutoff, report, since_days  # noqa: E402
 
 NAME = "reguladores"
@@ -292,8 +292,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 
 def open_db():
     DB.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(DB, timeout=60)
-    c.execute("PRAGMA journal_mode=WAL")
+    c = connect_writer(DB)
     c.execute("PRAGMA synchronous=NORMAL")
     c.executescript(SCHEMA)
     return c

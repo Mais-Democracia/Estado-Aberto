@@ -33,7 +33,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 
 NAME = "educacao"
 DB = DATA_DIR / f"{NAME}.db"
@@ -711,7 +711,7 @@ def step_link(con):
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
     steps = (os.environ.get("EDU_STEPS") or "units,he,stats,pe,teachers,link").split(",")
-    con = sqlite3.connect(DB)
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     for s in steps:
         t = time.time()

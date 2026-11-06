@@ -124,6 +124,46 @@ def db():
     return con
 
 
+LOCK_TRIES = 5
+
+
+def _retry_locked(fn, *a):
+    delay = 1.0
+    for i in range(LOCK_TRIES):
+        try:
+            return fn(*a)
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or i == LOCK_TRIES - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 3, 30)
+
+
+class WriterConnection(sqlite3.Connection):
+    def execute(self, *a):
+        return _retry_locked(super().execute, *a)
+
+    def executemany(self, *a):
+        return _retry_locked(super().executemany, *a)
+
+    def executescript(self, *a):
+        return _retry_locked(super().executescript, *a)
+
+    def commit(self):
+        return _retry_locked(super().commit)
+
+
+def connect_writer(path, timeout=60):
+    con = sqlite3.connect(path, timeout=timeout, factory=WriterConnection)
+    con.execute("PRAGMA busy_timeout=2000")
+    try:
+        sqlite3.Connection.execute(con, "PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass  # another process holds the DB; WAL or rollback mode both work for the writer
+    con.execute("PRAGMA busy_timeout=60000")
+    return con
+
+
 def set_meta(con, key, value):
     con.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
 

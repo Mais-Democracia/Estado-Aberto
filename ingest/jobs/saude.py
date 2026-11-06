@@ -28,7 +28,7 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, connect_writer  # noqa: E402
 
 NAME = "saude"
 DB = DATA_DIR / f"{NAME}.db"
@@ -516,7 +516,7 @@ def step_catalog(con):
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
     steps = (os.environ.get("SAUDE_STEPS") or "inst,ine,catalog").split(",")
-    con = sqlite3.connect(DB)
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     try:
         # evidence of the robots decision (robots.txt is always allowed to read)

@@ -28,7 +28,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 
 NAME = "anuncios"
 DB = DATA_DIR / f"{NAME}.db"
@@ -236,7 +236,7 @@ CREATE TABLE source_files (year INTEGER, title TEXT, url TEXT, filesize INTEGER,
 def main():
     files, ds = fetch_all()
     DB.parent.mkdir(exist_ok=True)
-    out = sqlite3.connect(DB)
+    out = connect_writer(DB)
     out.executescript(SCHEMA)
     pol = sqlite3.connect(f"file:{POLITICA}?mode=ro", uri=True)
     pol.row_factory = sqlite3.Row

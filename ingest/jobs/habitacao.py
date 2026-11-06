@@ -35,7 +35,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, connect_writer  # noqa: E402
 
 NAME = "habitacao"
 DB = DATA_DIR / f"{NAME}.db"
@@ -176,10 +176,8 @@ def get(url, cache, ttl_days=20, timeout=240, wait=1.4, transient=True):
 
 
 def connect():
-    con = sqlite3.connect(DB, timeout=120)
-    con.execute("PRAGMA journal_mode=WAL")
+    con = connect_writer(DB)
     con.execute("PRAGMA synchronous=NORMAL")
-    con.execute("PRAGMA busy_timeout=120000")
     con.executescript(SCHEMA)
     return con
 

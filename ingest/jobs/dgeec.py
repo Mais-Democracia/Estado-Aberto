@@ -19,7 +19,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT, UA  # noqa: E402
+from common import DATA_DIR, ROOT, UA, connect_writer  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from orcamento import Book  # noqa: E402
@@ -189,8 +189,7 @@ def step_municipal(con):
 
 
 def main():
-    con = sqlite3.connect(DB, timeout=60)
-    con.execute("PRAGMA journal_mode=WAL")
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     step_indicators(con)
     step_municipal(con)

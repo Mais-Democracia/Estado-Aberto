@@ -27,7 +27,7 @@ import urllib.robotparser
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from common import DATA_DIR, ROOT  # noqa: E402
+from common import DATA_DIR, ROOT, connect_writer  # noqa: E402
 from since import report, since_days  # noqa: E402
 
 NAME = "justica"
@@ -603,7 +603,7 @@ def visto_outcomes(con):
 def main():
     RAW.mkdir(parents=True, exist_ok=True)
     only = {"tc"} if SINCE else set((os.environ.get("JUSTICA_ONLY") or "registry,ine,tc,tcontas").split(","))
-    con = sqlite3.connect(DB)
+    con = connect_writer(DB)
     con.executescript(SCHEMA)
     if "registry" in only:
         print("registry")
