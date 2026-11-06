@@ -1,6 +1,6 @@
 {
-  "version": "0.3.1",
-  "git_sha": "c6de52e2f317bbb4e6ce3c0561eac8772d124426",
+  "version": "0.3.2",
+  "git_sha": "2586253d680e702c3ae31c1efb784a3ab5fa4446",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- AI verifier no longer rejects legitimate legal references.\n- `--reverify` republishes cached drafts without regenerating.\n- Lock helper fails fast and creates group-writable lock files.\n- Votacoes incremental step has deadlines and reports partial results.\n- Refresh no longer fails when optional steps are partial.\n- Front page layout for sparse days."
+  "notes": "### Changed\n- AI confidence gate 0.6 with `AI_CONFIANCA_MIN` override.\n- AI publish decisions log their reason."
 }
