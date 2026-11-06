@@ -1,6 +1,6 @@
 {
-  "version": "0.3.5",
-  "git_sha": "aeaf47011a307299705c7a51945386958fab2b56",
+  "version": "0.3.6",
+  "git_sha": "80d1ba9f22954dad7fc71b8775e2340fee7cbfb5",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Added\n- AI articles for every parliament event (votes, debates, initiatives, resolutions and recommendations) now carry the vote and debate blocks: the initiative, the party-by-party vote and up to six verbatim speech excerpts, with a dedicated vote-and-debate prompt.\n- `ops/ai/run.py --refresh-changed` update path (also run by the normal pipeline): published articles whose evidence gained votes or debate are redrafted outside triage and selection, within `AI_MAX_UPDATES` and the daily budget, and supersede the old article."
+  "notes": "### Fixed\n- Laws whose title changed in Parliament are linked to their initiative by guarded fuzzy matching (similarity, shared legal citations, unambiguous best candidate), so the AI bundle carries the vote and debate.\n- The AI verifier no longer requires declaring place names that appear verbatim in the evidence; only person names must be declared."
 }

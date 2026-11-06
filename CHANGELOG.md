@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-11-06
+
 ### Fixed
 - Laws whose title changed in Parliament are linked to their initiative by guarded fuzzy matching (similarity, shared legal citations, unambiguous best candidate), so the AI bundle carries the vote and debate.
 - The AI verifier no longer requires declaring place names that appear verbatim in the evidence; only person names must be declared.
