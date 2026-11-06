@@ -1,6 +1,6 @@
 {
-  "version": "0.3.8",
-  "git_sha": "06336d51893c8d1f9b9e07cd1626283fd7360c64",
+  "version": "0.3.9",
+  "git_sha": "dfb3195a8cab33108005c87eed078195e6093189",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Changed\n- AI bundles are built only from the site data; no external pages or documents are fetched while drafting."
+  "notes": "### Fixed\n- \"A minha lista\" is now per visitor (random id kept in the browser) instead of shared by everyone; existing shared entries are dropped."
 }
