@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- AI verifier no longer rejects legitimate legal references.
+- `--reverify` republishes cached drafts without regenerating.
+- Lock helper fails fast and creates group-writable lock files.
+- Votacoes incremental step has deadlines and reports partial results.
+- Refresh no longer fails when optional steps are partial.
+- Front page layout for sparse days.
+
 ## [0.3.0] - 2026-11-06
 
 ### Added
