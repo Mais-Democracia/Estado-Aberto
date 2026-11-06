@@ -1,6 +1,6 @@
 {
-  "version": "0.3.14",
-  "git_sha": "1f3c7fc122b9951fbfe72999b02a2b2ce5e15265",
+  "version": "0.3.15",
+  "git_sha": "45844ca9f6451463522b204b8b501ee47c443ffc",
   "min_updater_version": 1,
   "node_version": "22",
   "python_min": "3.12",
@@ -18,5 +18,5 @@
     "schedule_changes": []
   },
   "migrations": [],
-  "notes": "### Fixed\n- The AI verifier no longer reads parties named after \"exceto\" as having voted in the direction of the preceding clause."
+  "notes": "### Added\n- New daily stories: the President's press releases, the week agenda, laws in progress, Council of Ministers decisions, contract highlights, Constitutional Court rulings, EU funds, local power and regions.\n- Specific \"Ver a lei/ato/vota\u00e7\u00e3o\" links resolved when the page is built, friendly labels for every story type, and an \"Em arquivo\" tag on old items; the ledger no longer repeats stories that have an article.\n\n### Changed\n- Articles receive every plenary intervention in full and must cover every party that spoke; the body limit is 600 words.\n- Events more than 5 days old are no longer picked as news.\n\n### Fixed\n- AI verifier false positives (abstentions, party L, quoted titles, parties after \"exceto\").\n- Updated articles import cleanly (substituido state), and database errors while building evidence are retried instead of silently dropping votes and debate."
 }

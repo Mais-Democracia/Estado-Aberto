@@ -5,6 +5,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [0.3.15] - 2026-11-06
+
 ### Added
 - New daily stories: the President's press releases, the week agenda, laws in progress, Council of Ministers decisions, contract highlights, Constitutional Court rulings, EU funds, local power and regions.
 - Specific "Ver a lei/ato/votação" links resolved when the page is built, friendly labels for every story type, and an "Em arquivo" tag on old items; the ledger no longer repeats stories that have an article.
