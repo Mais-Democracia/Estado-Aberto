@@ -205,9 +205,27 @@
   const srcLink = (it) => (safeHref(it.source_url) ? `<a class="srcl" href="${safeHref(it.source_url)}" target="_blank" rel="noopener">${itemRota(it) ? "Fonte original" : "Fonte"}</a>` : "");
   const lateTag = (it) => (it.atrasado ? `<div class="late">${esc(it.atraso || "Registo tardio")}</div>` : "");
   const iaTag = (d, it) => `<a class="ia-tag" href="#/edicao/${d.data}/ia/${it.artigo_id}" title="Coberto por artigo gerado por IA">IA</a>`;
-  const tipoLabel = (t) => String(t || "").replace(/_/g, " ");
+  const TIPO_LABEL = {
+    votacao: "Votação", votacao_final: "Votação final", iniciativa_entrada: "Nova iniciativa", debate: "Debate no Plenário", declaracao_voto: "Declaração de voto",
+    presidencia_dia: "Presidência · atos do dia", agenda_semana: "Agenda da semana", leis_em_curso_dia: "Leis em curso", governo_cm: "Conselho de Ministros", contratos_destaque_dia: "Contratos em destaque", acordao_constitucional: "Acórdão do Tribunal Constitucional", fundos_dia: "Fundos europeus", poder_local_dia: "Poder local", regioes_dia: "Regiões", veto: "Veto presidencial", promulgacao: "Promulgação", ato_presidente: "Ato do Presidente", comunicado: "Comunicado da Presidência",
+    decreto_lei: "Decreto-Lei", resolucao_cm: "Resolução do Conselho de Ministros", decreto_regulamentar: "Decreto Regulamentar", lei_publicada: "Lei publicada", resolucao_ar: "Resolução da Assembleia",
+    auditoria_tc: "Auditoria do Tribunal de Contas", acordao_tc: "Acórdão do Tribunal de Contas", relatorio_tc: "Relatório do Tribunal de Contas",
+    relatorio_igf: "Relatório da IGF", relatorio_igf_municipal: "Relatório da IGF · autarquia", relatorio_provedor: "Relatório do Provedor de Justiça",
+    sancao_regulador: "Sanção de regulador", decisao_regulador: "Decisão de regulador",
+    nomeacao: "Nomeação", nomeacao_conselho: "Nomeação para conselho", exoneracao: "Exoneração", nomeacao_gabinete: "Nomeação de gabinete",
+    contrato_grande: "Contrato de grande valor", contrato_ajuste_direto: "Ajuste direto", contratos_resumo: "Contratos · resumo do dia", alteracao_contrato: "Alteração de contrato", alteracoes_resumo: "Alterações a contratos · resumo",
+    anuncio_grande: "Anúncio de contratação", anuncios_resumo: "Anúncios · resumo do dia", apoio: "Apoio público", apoios_resumo: "Apoios públicos · resumo",
+    divida_serie: "Dívida pública", indicador_ine: "Indicador do INE", indicador_imigracao: "Indicador de imigração", indicador_ama: "Indicador da AMA",
+  };
+  const tipoLabel = (t) => {
+    const k = String(t || "").trim();
+    if (!k) return "Registo";
+    if (Object.prototype.hasOwnProperty.call(TIPO_LABEL, k)) return TIPO_LABEL[k];
+    const w = k.replace(/_/g, " ");
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  };
   const LEI_RE = /^(Lei|Decreto|Resolução|Portaria)\b/i;
-  const colItem = (it, thin) => `<article class="st dst${thin ? " dlead" : ""}"><span class="kick">${esc(tipoLabel(it.tipo))}</span><h3>${itemLink(it)}</h3>${it.resumo_curto ? `<p>${esc(thin ? it.resumo_curto : cutTxt(it.resumo_curto, 170))}</p>` : ""}${lateTag(it)}${thin && itemRota(it) ? `<a class="more" href="${esc(itemRota(it))}">${LEI_RE.test(it.titulo) ? "Ver a lei" : "Ver o registo"}</a>` : ""}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</article>`;
+  const colItem = (it, thin) => `<article class="st dst${thin ? " dlead" : ""}"><span class="kick">${esc(tipoLabel(it.tipo))}</span><h3>${itemLink(it)}</h3>${it.resumo_curto ? `<p>${esc(thin ? it.resumo_curto : cutTxt(it.resumo_curto, 170))}</p>` : ""}${lateTag(it)}${thin && itemRota(it) ? `<a class="more" href="${esc(itemRota(it))}">${/^#\/dre\//.test(itemRota(it)) && LEI_RE.test(it.titulo) ? "Ver a lei" : /^#\/votacoes\//.test(itemRota(it)) ? "Ver a votação" : /^#\/atos-presidente\//.test(itemRota(it)) ? "Ver o ato" : "Ver o registo"}</a>` : ""}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</article>`;
   const colSection = (s, thin) => `<section class="blk dsec ${SECTAG[s.secao] || ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${nf0.format(s.total)}</small></h2>${s.itens.map((it) => colItem(it, thin)).join("")}${s.mais ? `<button type="button" class="linkbtn" data-open-tudo>+${nf0.format(s.mais)} na lista completa</button>` : ""}</section>`;
   const rowItem = (d, it) => `<li class="rw${it.ia ? " is-ia" : ""}"><span class="hh">${esc(it.hora || "—")}</span><div><div class="rk"><span class="kick">${esc(tipoLabel(it.tipo))}</span>${it.ia ? iaTag(d, it) : ""}</div><div class="rt">${itemLink(it)}</div>${it.resumo_curto ? `<p>${esc(it.resumo_curto)}</p>` : ""}${lateTag(it)}${srcLink(it) ? `<div class="meta">${srcLink(it)}</div>` : ""}</div></li>`;
   const fullSection = (d, s) => `<section class="blk fsec ${SECTAG[s.secao] || ""}${s.vazio ? " vazio" : ""}" id="sec-${esc(s.secao)}"><h2 class="sec-h">${esc(s.titulo)}<small>${s.vazio ? "sem registos" : nf0.format(s.itens.length)}</small></h2>${s.vazio ? `<p class="motivo">${esc(s.motivo || "Sem registos para este dia")}</p>` : `<ul class="rows">${s.itens.map((it) => rowItem(d, it)).join("")}</ul>`}</section>`;
@@ -246,13 +264,17 @@
     const t = v.totais, tot = t.favor + t.contra + t.abstencao ? `<small>${nf0.format(t.favor)} a favor · ${nf0.format(t.contra)} contra · ${nf0.format(t.abstencao)} abstenções</small>` : "";
     return `<li><div class="vt-h">${v.data ? `<time datetime="${esc(v.data)}">${pd(v.data)}</time>` : ""}<b>${esc(v.fase || "Votação")}</b>${v.orgao ? `<span class="vt-o">${esc(v.orgao)}</span>` : ""}${v.resultado ? `<span class="vt-r">${esc(v.resultado)}</span>` : ""}</div>${body}${tot}</li>`;
   }).join("")}</ol>`;
-  const leiBtn = (b) => (b && b.lei && b.lei.rota ? `<a class="btn-lei" href="${esc(b.lei.rota)}">Ver a lei</a>` : "");
+  const leiBtn = (a) => {
+    const v = a && a.ver && a.ver.rota ? a.ver : a && a.blocos && a.blocos.lei && a.blocos.lei.rota ? { rota: a.blocos.lei.rota, rotulo: "Ver a lei" } : null;
+    return v ? `<a class="btn-lei" href="${esc(v.rota)}">${esc(v.rotulo || "Ver o registo")}</a>` : "";
+  };
+  const prevLink = (a) => (a.versao_anterior ? `<a class="more" href="${esc(a.versao_anterior.rota_detalhe)}">Versão anterior</a>` : "");
   const iaCard = (d, a) => `<article class="ia-card" id="ia-${a.id}"><div class="ia-top"><span class="kick">${esc(a.secao_titulo)}</span><span class="ia-badge" title="Revisto por ${esc(a.revisor || "—")}">Gerado por IA · ${esc(a.modelo)} · verificado</span></div>
       <h2 class="ia-h"><a href="${esc(a.rota_detalhe)}">${esc(a.titulo)}</a></h2>
       <p class="ia-lead">${esc(a.lead)}</p>
       ${a.pontos_chave.length ? `<ul class="ia-pts">${a.pontos_chave.slice(0, 3).map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
       ${a.blocos ? voteStrip(a.blocos.votacao) : ""}
-      <div class="ia-act">${leiBtn(a.blocos)}<a class="more" href="${esc(a.rota_detalhe)}">${a.tem_explicacao ? "Ler explicação completa" : "Ler o artigo completo"}</a></div></article>`;
+      <div class="ia-act">${leiBtn(a)}<a class="more" href="${esc(a.rota_detalhe)}">${a.tem_explicacao ? "Ler explicação completa" : "Ler o artigo completo"}</a>${prevLink(a)}</div></article>`;
   const emptyList = (d) => `<p class="muted dempty">${d.divisao.total ? "Todos os registos do dia estão cobertos pelos artigos acima." : "Sem registos nesta edição."}</p>`;
   const listHtml = (d, v) => (v === "tudo" ? `<div class="fullgrid">${d.tudo.map((s) => fullSection(d, s)).join("")}</div>` : d.secoes.length ? `<div class="dgrid${d.secoes.every((s) => s.itens.length <= 2) ? " thin" : ""}" style="--cols:${Math.min(3, d.secoes.length)};--cols2:${Math.min(2, d.secoes.length)}">${d.secoes.map((s) => colSection(s, d.secoes.every((x) => x.itens.length <= 2))).join("")}</div>` : emptyList(d));
   const listTitle = (v, ia) => (v === "tudo" ? "Lista completa do dia" : ia ? "Mais registos do dia" : "Registos do dia");
@@ -376,7 +398,7 @@
     $app.innerHTML = `<div class="ed"><div class="progress" id="prog"></div>
       <div class="art-wrap"><div class="art-nav"><a href="${edHash(a.data)}">‹ Voltar à edição de ${pd(a.data)}</a><div><button class="btn-ed" id="fs-" aria-label="Diminuir letra">A−</button><button class="btn-ed" id="fs+" aria-label="Aumentar letra">A+</button></div></div>
       <header class="art-head"><span class="kick">${esc(a.secao_titulo)}</span><h1>${esc(a.titulo)}</h1><p class="dek">${esc(a.lead)}</p>
-        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div>${leiBtn(a.blocos) ? `<p class="lei-cta">${leiBtn(a.blocos)}${autorTxt(a.blocos.lei) ? `<b class="autor-t">${esc(autorTxt(a.blocos.lei))}</b>` : ""}${a.blocos.lei.titulo ? `<span>${esc(cutTxt(a.blocos.lei.titulo, 110))}</span>` : ""}</p>` : ""}</header>
+        <div class="byline"><span class="ia-badge">Gerado por IA · ${esc(a.modelo)} · verificado</span><span>${pd(a.data)}</span><span>${mins} min de leitura</span></div>${leiBtn(a) ? `<p class="lei-cta">${leiBtn(a)}${a.blocos && a.blocos.lei && autorTxt(a.blocos.lei) ? `<b class="autor-t">${esc(autorTxt(a.blocos.lei))}</b>` : ""}${a.blocos && a.blocos.lei && a.blocos.lei.titulo ? `<span>${esc(cutTxt(a.blocos.lei.titulo, 110))}</span>` : ""}</p>` : ""}</header>
       <div class="art-grid"><aside class="ficha"><h4>Ficha</h4><dl><dt>Modelo</dt><dd>${esc(a.modelo)}</dd><dt>Revisão</dt><dd>${esc(a.revisor || "—")}</dd>${conf ? `<dt>Confiança</dt><dd>${conf}</dd>` : ""}<dt>Estado</dt><dd>Verificado e publicado</dd>${a.entidades.length ? `<dt>Entidades</dt><dd>${a.entidades.map(esc).join(", ")}</dd>` : ""}</dl>${nums.length ? `<h4>Números citados</h4><ul class="nc">${nums.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}</aside>
       <div class="art-body">${explBlocks(a)}${a.pontos_chave.length ? `<div class="flags ia-key"><b>Pontos-chave</b><ul>${a.pontos_chave.map((p) => `<li>${esc(p)}</li>`).join("")}</ul></div>` : ""}
         ${a.paragraphs.map((p, k) => `<p class="${k === 0 ? "first" : ""}">${esc(p)}</p>`).join("")}

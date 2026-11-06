@@ -7,6 +7,7 @@ import unicodedata
 import urllib.parse
 import urllib.request
 
+import bundle_tipos as BT
 import lei as L
 from lib import ROOT, canon, data_dir, open_ro, sanitize, sha, wrap
 
@@ -68,7 +69,8 @@ def dia_block(row):
         return None
     day = str(row["fonte_ref"])
     atos = pres_atos(day=day)
-    if not atos:
+    noticias = BT.pres_noticias(day)
+    if not atos and not noticias:
         return None
     counts = {}
     for a in atos:
@@ -78,8 +80,13 @@ def dia_block(row):
     for a in top:
         dip = " ".join(x for x in (a.get("diploma_tipo"), a.get("diploma_ref") or a.get("decreto_ref")) if x)
         lista.append({k: v for k, v in {"tipo": a.get("tipo"), "titulo": a.get("titulo"), "diploma": dip, "rota": ato_route(a.get("id"))}.items() if v})
-    return {"data": day, "total": len(atos), "contagens": counts, "contagens_texto": [f"{n} {t}" for t, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))],
-            "atos_listados": len(lista), "atos": lista}
+    out = {"data": day, "total": len(atos), "contagens": counts, "contagens_texto": [f"{n} {t}" for t, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))],
+           "atos_listados": len(lista), "atos": lista}
+    if noticias:
+        out["noticias_total"] = len(noticias)
+        out["noticias_listadas"] = len(noticias[:DIA_CAP])
+        out["noticias"] = noticias[:DIA_CAP]
+    return out
 
 
 def same_act_events(con, row):
@@ -107,6 +114,10 @@ def same_act_events(con, row):
     return out
 
 
+def agregado_block(row):
+    return BT.block(row)
+
+
 def ledger():
     return open_ro(data_dir() / "diario.db")
 
@@ -125,7 +136,7 @@ def shortlist(ctx):
         except Exception:
             pass
     con = ledger()
-    q = "SELECT id, secao, tipo, titulo, resumo_curto, fonte_modulo, fonte_ref, rota, source_url, entidades, score FROM eventos WHERE edicao_data=? ORDER BY score DESC, id LIMIT ?"
+    q = "SELECT id, secao, tipo, titulo, resumo_curto, fonte_modulo, fonte_ref, rota, source_url, entidades, score FROM eventos WHERE edicao_data=? AND data_evento >= date(edicao_data, '-6 days') ORDER BY score DESC, id LIMIT ?"
     return [dict(r) for r in con.execute(q, (ctx.date, n))]
 
 
@@ -202,7 +213,7 @@ def related(ctx, rows):
                 if x["id"] not in seen:
                     seen.add(x["id"])
                     rel["eventos_anteriores"].append(dict(x))
-        tmpl = ctx.cfg["related_api"].get(r.get("fonte_modulo") or "")
+        tmpl = None if r.get("tipo") in BT.TIPOS else ctx.cfg["related_api"].get(r.get("fonte_modulo") or "")
         if tmpl and r.get("fonte_ref"):
             d = api_get(ctx, tmpl.format(fonte_ref=urllib.parse.quote(str(r["fonte_ref"]))))
             if d is not None:
@@ -211,7 +222,7 @@ def related(ctx, rows):
     return rel
 
 
-def allowed_hrefs(ctx, rows, rel, lei=None, dia=None):
+def allowed_hrefs(ctx, rows, rel, lei=None, dia=None, agg=None):
     hrefs = set(ctx.cfg["site_routes"])
     ini = (lei or {}).get("iniciativa") or {}
     dre = (lei or {}).get("dre") or {}
@@ -221,6 +232,10 @@ def allowed_hrefs(ctx, rows, rel, lei=None, dia=None):
     for a in (dia or {}).get("atos", []):
         if a.get("rota"):
             hrefs.add(a["rota"])
+    for a in (dia or {}).get("noticias", []):
+        if a.get("url"):
+            hrefs.add(a["url"])
+    hrefs.update(agg[1] if agg else [])
     for r in list(rows) + rel["eventos_anteriores"]:
         for k in ("rota", "source_url"):
             v = r.get(k)
@@ -234,10 +249,10 @@ def build(ctx, ids):
     if not rows or any(excluded(ctx.cfg, r) for r in rows):
         return None
     lei, blocos = (None, L.empty_blocos())
-    ato = dia = None
+    ato = dia = agg = None
     if len(rows) == 1:
-        ato, dia = ato_block(rows[0]), dia_block(rows[0])
-    if len(rows) == 1 and not dia:
+        ato, dia, agg = ato_block(rows[0]), dia_block(rows[0]), agregado_block(rows[0])
+    if len(rows) == 1 and not dia and not agg and rows[0].get("tipo") not in BT.TIPOS:
         try:
             lei, blocos = L.build_lei(rows[0])
         except Exception as e:
@@ -248,6 +263,8 @@ def build(ctx, ids):
         ev = sha("ev", ev, canon({"lei": lei, "blocos": blocos}))
     if ato or dia:
         ev = sha("ev", ev, canon({"ato": ato, "dia": dia}))
+    if agg:
+        ev = sha("ev", ev, canon({"agregado": agg[0]}))
     d = ctx.bundles / ev
     marker = d / "bundle.ok"
     if marker.exists():
@@ -260,11 +277,13 @@ def build(ctx, ids):
         facts["ato"] = clean(ato)
     if dia:
         facts["dia"] = clean(dia)
+    if agg:
+        facts["agregado"] = clean(agg[0])
     if lei:
         facts["lei"] = clean(dict(lei, variante=L.variante(rows[0])))
     (d / "blocos.json").write_text(json.dumps(blocos, ensure_ascii=False, indent=1), encoding="utf-8")
     (d / "facts.json").write_text(json.dumps(facts, ensure_ascii=False, indent=1), encoding="utf-8")
-    (d / "fontes.json").write_text(json.dumps({"hrefs_permitidos": allowed_hrefs(ctx, rows, rel, lei, dia)}, ensure_ascii=False, indent=1), encoding="utf-8")
+    (d / "fontes.json").write_text(json.dumps({"hrefs_permitidos": allowed_hrefs(ctx, rows, rel, lei, dia, agg)}, ensure_ascii=False, indent=1), encoding="utf-8")
     marker.write_text(ev)
     return {"evidence_hash": ev, "dir": d, "rows": rows, "lei": bool(lei), "variante": L.variante(rows[0]) if lei else None}
 

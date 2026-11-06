@@ -1534,5 +1534,261 @@ class VoteClaimsExcept(unittest.TestCase):
         self.assertEqual([(p, d) for p, d, _ in claims], [("PSD", "contra")])
 
 
+OLD_ARTIGOS_DDL = """CREATE TABLE artigos_ia (
+  id INTEGER PRIMARY KEY,
+  edicao_data TEXT NOT NULL,
+  evidence_hash TEXT NOT NULL,
+  evento_ids TEXT NOT NULL,
+  titulo TEXT, lead TEXT, corpo TEXT, pontos_chave TEXT, fontes TEXT, numeros_citados TEXT, entidades TEXT,
+  confianca REAL, modelo TEXT, revisor TEXT, verificacao TEXT,
+  estado TEXT NOT NULL CHECK (estado IN ('publicado','rejeitado')),
+  criado_em TEXT,
+  revisao INTEGER DEFAULT 1, blocos TEXT, explicacao TEXT,
+  UNIQUE(edicao_data, evidence_hash)
+)"""
+
+
+class VerifyVoteDirection(unittest.TestCase):
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import verify
+        self.verify = verify
+
+    def claims(self, text, table=None):
+        return [(p, d) for p, d, _ in self.verify.vote_claims(text, table)]
+
+    def test_verb_before_party_list(self):
+        self.assertEqual(self.claims("Abstiveram-se PSD e CDS-PP."), [("PSD", "abstencao"), ("CDS-PP", "abstencao")])
+
+    def test_party_list_before_verb(self):
+        self.assertEqual(self.claims("PSD e CDS-PP abstiveram-se."), [("PSD", "abstencao"), ("CDS-PP", "abstencao")])
+
+    def test_semicolon_separates_vote_lists(self):
+        got = self.claims("Contra votaram PSD e CDS-PP, com 91 lugares; IL e PCP abstiveram-se, com 12 lugares.")
+        self.assertEqual(got, [("PSD", "contra"), ("CDS-PP", "contra"), ("IL", "abstencao"), ("PCP", "abstencao")])
+        got = self.claims("Votaram a favor PSD, CH, IL, Livre, BE e JPP; abstiveram-se PS, PCP e CDS-PP.")
+        self.assertEqual(dict(got), {"PSD": "favor", "CH": "favor", "IL": "favor", "Livre": "favor", "BE": "favor", "JPP": "favor", "PS": "abstencao", "PCP": "abstencao", "CDS-PP": "abstencao"})
+
+    def test_clause_after_conjunction_with_article(self):
+        table = {("psd", "contra"), ("cds-pp", "contra"), ("il", "abstencao")}
+        got = self.claims("Votaram contra PSD e CDS-PP (91 lugares) e a IL absteve-se (9).", table)
+        self.assertTrue(all((self.verify.party_key(p), d) in table for p, d in got), got)
+
+    def test_proposer_before_abstention_noun_is_not_a_vote(self):
+        got = self.claims("O projeto do Chega foi aprovado em plenário, com abstenção de PSD, PS, L, PCP e BE.")
+        self.assertEqual(dict(got), {"PSD": "abstencao", "PS": "abstencao", "L": "abstencao", "PCP": "abstencao", "BE": "abstencao"})
+
+    def test_livre_and_l_are_the_same_party(self):
+        self.assertEqual(self.verify.party_key("Livre"), self.verify.party_key("L"))
+
+    def test_wrong_direction_is_still_reported(self):
+        self.assertEqual(self.claims("O PSD votou contra."), [("PSD", "contra")])
+        self.assertEqual(self.claims("Abstiveram-se PS e CH."), [("PS", "abstencao"), ("CH", "abstencao")])
+
+
+class VerifyNamesAndQuotes(unittest.TestCase):
+    setUp = V.setUp
+    tearDown = V.tearDown
+    bundle = V.bundle
+    art = V.art
+    check = V.check
+    good = V.good
+    bad = V.bad
+
+    def votes_bundle(self, rows, titulo="Votacao de teste"):
+        api = [{"fonte_modulo": "votacoes", "dados": {"votos": [{"partido": p, "sentido": s} for p, s in rows]}}]
+        return self.bundle(titulo=titulo, api=api)
+
+    def test_abstained_sentence_with_capitalised_verb_and_l_party_pass(self):
+        b = self.votes_bundle([("PSD", "abstencao"), ("CDS-PP", "abstencao"), ("PS", "favor"), ("L", "favor"), ("BE", "favor")])
+        self.good(self.art("Abstiveram-se PSD e CDS-PP. Votaram a favor PS, L e BE.", entidades=[{"nome": n, "tipo": "organizacao"} for n in ("PSD", "CDS-PP", "PS", "L", "BE")]), b)
+
+    def test_livre_with_l_in_brackets_and_livre_entity_pass(self):
+        b = self.votes_bundle([("L", "favor"), ("PS", "favor")])
+        self.good(self.art("A iniciativa do Livre (L) teve o voto a favor do PS.", entidades=[{"nome": n, "tipo": "organizacao"} for n in ("Livre", "L", "PS")]), b)
+
+    def test_semicolon_vote_lists_pass(self):
+        rows = [("PSD", "favor"), ("CH", "favor"), ("IL", "favor"), ("Livre", "favor"), ("BE", "favor"), ("JPP", "favor"), ("PS", "abstencao"), ("PCP", "abstencao"), ("CDS-PP", "abstencao")]
+        b = self.votes_bundle(rows)
+        corpo = "Votaram a favor PSD, CH, IL, Livre, BE e JPP; abstiveram-se PS, PCP e CDS-PP."
+        self.good(self.art(corpo, entidades=[{"nome": p, "tipo": "organizacao"} for p, _ in rows]), b)
+
+    def test_wrong_vote_is_still_rejected(self):
+        b = self.votes_bundle([("PSD", "favor"), ("PS", "contra")])
+        self.bad(self.art("Abstiveram-se PSD e PS.", entidades=[{"nome": "PSD", "tipo": "organizacao"}, {"nome": "PS", "tipo": "organizacao"}]), b, "voto_incoerente")
+
+    def test_title_quoted_from_facts_needs_no_declaration(self):
+        titulo = "Parlamento aprova «Saúde e Direitos das Mulheres na Menopausa»"
+        b = self.bundle(titulo=titulo)
+        self.good(self.art("O projeto «Saúde e Direitos das Mulheres na Menopausa» foi aprovado."), b)
+
+    def test_quote_not_in_facts_is_still_rejected(self):
+        b = self.bundle(titulo="Parlamento aprova um projeto")
+        self.bad(self.art("O projeto «Saúde e Direitos das Mulheres na Menopausa» foi aprovado."), b, "citacao_nao_literal")
+
+    def test_max_words_allows_long_debate_and_rejects_beyond(self):
+        self.assertEqual(self.cfg["max_words"], 600)
+        b = self.bundle()
+        self.assertNotIn("corpo_excede_palavras", self.check(self.art(" ".join(["palavra"] * 590)), b)["problemas"])
+        self.assertIn("corpo_excede_palavras", self.check(self.art(" ".join(["palavra"] * 610)), b)["problemas"])
+
+    def test_schemas_fit_a_long_body(self):
+        for name in ("artigo", "artigo_lei"):
+            sch = json.loads((ROOT / "ops" / "ai" / "schemas" / f"{name}.json").read_text(encoding="utf-8"))
+            self.assertGreaterEqual(sch["properties"]["corpo"]["maxLength"], 600 * 9)
+            self.assertGreaterEqual(sch["properties"]["entidades"]["maxItems"], 50)
+
+    def test_writer_prompts_require_every_speaking_party_and_600_words(self):
+        for name in ("redacao_lei.md", "redacao_votacao.md"):
+            txt = (ROOT / "ops" / "ai" / "prompts" / name).read_text(encoding="utf-8")
+            self.assertIn("600 palavras", txt)
+            self.assertNotIn("250 palavras", txt)
+            self.assertIn("não omitas nenhum partido que tenha intervindo", txt)
+            self.assertIn("pelo menos uma frase concreta", txt)
+            self.assertIn("O corpo abre com o que a lei ou iniciativa diz e faz", txt)
+
+
+class LeiDebateAndLinking(unittest.TestCase):
+    setUp = L.setUp
+    tearDown = L.tearDown
+    run_ai = L.run_ai
+    stages = L.stages
+    bundles = L.bundles
+    docs = L.docs
+    add_unlinked_law = L.add_unlinked_law
+    add_speeches = L.add_speeches
+    TITULO = L.TITULO
+    PARTIES = ("PS", "PSD", "CH", "IL", "BE", "PCP", "PAN", "L", "CDS-PP", "JPP")
+
+    def add_long_debate(self, n=16, bid=300, first=100):
+        i = sqlite3.connect(self.src / "intervencoes.db")
+        for k in range(n):
+            par = self.PARTIES[k % len(self.PARTIES)]
+            txt = f"Sr. Presidente, a bancada do {par} defende o ponto numero {k} sobre combustiveis e rastreabilidade. " * 40
+            if k == n - 1:
+                txt = "Sr. Presidente, intervenção curta do JPP."
+            i.execute("INSERT INTO intervencoes VALUES(?,?,?,?,?,?,?,?,?)", (first + k, "2026-10-09", f"Orador {k}", par, 1, "dep", None, len(txt.split()), txt))
+            i.execute("INSERT INTO iv_ini VALUES(?,?,?,?,?,?,?)", (first + k, bid, None, None, None, None, None))
+        i.commit()
+        i.close()
+        return n
+
+    def test_every_speech_reaches_the_writer_with_full_text(self):
+        self.add_unlinked_law()
+        n = self.add_long_debate() + 3
+        r = self.run_ai()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        bdir, facts, blocos = self.bundles()[3]
+        lei = facts["lei"]
+        self.assertEqual(lei["iniciativa"]["bid"], 300)
+        self.assertEqual(lei["intervencoes_total"], n)
+        self.assertEqual(len(lei["intervencoes"]), n)
+        self.assertGreater(max(len(x["detalhe"].replace("<fonte_nao_confiavel>\n", "").replace("\n</fonte_nao_confiavel>", "")) for x in lei["intervencoes"]), 3000)
+        full = {s[0]: s[1] for s in sqlite3.connect(self.src / "intervencoes.db").execute("SELECT id, texto FROM intervencoes")}
+        for x in lei["intervencoes"]:
+            self.assertIn(full[x["id"]].strip()[:200], x["detalhe"])
+            self.assertIn(full[x["id"]].strip()[-100:], x["detalhe"])
+        self.assertEqual({x["partido"] for x in blocos["intervencoes"]}, {"PS", "PSD", "CH", "IL", "BE", "PCP", "PAN", "L", "CDS-PP", "JPP"})
+
+    def test_lei_constants_do_not_cap_the_debate(self):
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import lei
+        self.assertGreaterEqual(lei.SPEECH_CAP, 20000)
+        self.assertFalse(hasattr(lei, "FACT_SPEECHES"))
+        self.assertGreaterEqual(lei.BLOCO_SPEECHES, 16)
+
+    def test_published_law_with_amended_title_links_to_government_proposal(self):
+        self.add_unlinked_law()
+        sumario = "Altera o Código do Imposto sobre o Valor Acrescentado e o Código dos Impostos Especiais de Consumo, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos, e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional."
+        titulo = "Altera o Código do Imposto sobre o Valor Acrescentado, alargando o âmbito de aplicação do regime de tributação aplicável aos revendedores dos combustíveis líquidos e o Decreto-Lei n.º 31/2006, de 15 de fevereiro, reforçando a rastreabilidade, a certificação e o controlo das atividades do Sistema Petrolífero Nacional"
+        d = sqlite3.connect(self.src / "dre.db")
+        d.execute("UPDATE acts SET summary=? WHERE id='A3'", (sumario,))
+        d.commit()
+        d.close()
+        v = sqlite3.connect(self.src / "votacoes.db")
+        v.execute("UPDATE iniciativas SET titulo=? WHERE bid=300", (titulo,))
+        v.commit()
+        v.close()
+        self.assertEqual(self.run_ai().returncode, 0)
+        _, facts, blocos = self.bundles()[3]
+        self.assertEqual(facts["lei"]["iniciativa"]["key"], "Proposta de Lei|86|XVII")
+        self.assertNotIn("aviso_votacao", facts["lei"])
+        self.assertEqual(len(facts["lei"]["votacoes"]), 1)
+        self.assertEqual(len(facts["lei"]["intervencoes"]), 3)
+
+    def test_locked_votacoes_is_an_error_not_a_silent_unlinked_law(self):
+        sys.path.insert(0, str(ROOT / "ops" / "ai"))
+        import lei
+
+        class Locked:
+            def execute(self, *a):
+                raise sqlite3.OperationalError("database is locked")
+
+        with mock.patch.object(lei, "DB_WAIT", 0):
+            with self.assertRaises(lei.DataUnavailable):
+                lei.q(Locked(), "SELECT 1")
+            with mock.patch.dict(os.environ, {"ESTADO_ABERTO_SOURCE_DATA": str(self.src)}), mock.patch.object(lei, "open_ro", side_effect=FileNotFoundError("x")):
+                with self.assertRaises(lei.DataUnavailable):
+                    lei.db("votacoes")
+        self.assertEqual(lei.q(sqlite3.connect(":memory:"), "SELECT * FROM inexistente"), [])
+
+    def old_check_diario(self):
+        con = sqlite3.connect(self.data / "diario.db")
+        con.execute("DROP TABLE artigos_ia")
+        con.execute(OLD_ARTIGOS_DDL)
+        con.commit()
+        con.close()
+
+    def test_import_replaces_older_article_when_ledger_has_the_original_check_constraint(self):
+        self.add_unlinked_law()
+        self.old_check_diario()
+        self.assertEqual(self.run_ai().returncode, 0)
+        env = dict(self.env)
+
+        def imp():
+            return subprocess.run([sys.executable, str(IMPORT), "--date", D], env=env, capture_output=True, text=True, cwd=ROOT)
+        r = imp()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("ignorado", r.stdout)
+        self.add_speeches(((43, "Rui Dias", "PS"),))
+        self.assertEqual(self.run_ai().returncode, 0)
+        r = imp()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("ignorado", r.stdout)
+        self.assertNotIn("IntegrityError", r.stdout + r.stderr)
+        con = sqlite3.connect(self.data / "diario.db")
+        rows = con.execute("SELECT id, estado FROM artigos_ia WHERE evento_ids='[3]' ORDER BY id").fetchall()
+        self.assertEqual([x[1] for x in rows], ["substituido", "publicado"])
+        self.assertEqual(con.execute("SELECT ia_artigo_id FROM eventos WHERE id=3").fetchone()[0], rows[1][0])
+        self.assertIn("'substituido'", con.execute("SELECT sql FROM sqlite_master WHERE name='artigos_ia'").fetchone()[0])
+
+    def test_migration_widens_estado_check_and_keeps_rows(self):
+        sys.path.insert(0, str(ROOT / "ingest"))
+        import migrations
+        con = sqlite3.connect(":memory:")
+        con.execute(OLD_ARTIGOS_DDL)
+        con.execute("INSERT INTO artigos_ia(edicao_data, evidence_hash, evento_ids, estado, revisao, blocos) VALUES('d','h1','[1]','publicado',2,'{}')")
+        con.execute("INSERT INTO artigos_ia(edicao_data, evidence_hash, evento_ids, estado) VALUES('d','h2','[2]','rejeitado')")
+        con.commit()
+        with con:
+            migrations.ensure_artigos_ia(con)
+        self.assertEqual(con.execute("SELECT id, evidence_hash, estado, revisao, blocos FROM artigos_ia ORDER BY id").fetchall(), [(1, "h1", "publicado", 2, "{}"), (2, "h2", "rejeitado", 1, None)])
+        con.execute("UPDATE artigos_ia SET estado='substituido' WHERE id=1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            con.execute("UPDATE artigos_ia SET estado='outro' WHERE id=1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            con.execute("INSERT INTO artigos_ia(edicao_data, evidence_hash, evento_ids, estado) VALUES('d','h1','[1]','publicado')")
+        with con:
+            migrations.ensure_artigos_ia(con)
+        self.assertEqual(con.execute("SELECT COUNT(*) FROM artigos_ia").fetchone()[0], 2)
+
+    def test_fresh_diario_schema_allows_substituido(self):
+        sys.path.insert(0, str(ROOT / "ingest" / "jobs"))
+        import diario
+        con = sqlite3.connect(":memory:")
+        con.executescript(diario.SCHEMA)
+        con.execute("INSERT INTO artigos_ia(edicao_data, evidence_hash, evento_ids, estado) VALUES('d','h','[1]','substituido')")
+
+
 if __name__ == "__main__":
     unittest.main()

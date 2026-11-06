@@ -78,13 +78,13 @@
     }
   },
   "prompt_versions": {
-    "triage": "1",
-    "selecao": "1",
-    "redacao": "1",
-    "revisao": "3",
-    "redacao_lei": "3",
-    "redacao_votacao": "2",
-    "redacao_agregado": "1"
+    "triage": "2",
+    "selecao": "2",
+    "redacao": "2",
+    "revisao": "4",
+    "redacao_lei": "4",
+    "redacao_votacao": "3",
+    "redacao_agregado": "2"
   },
   "estimates": {
     "triage": {
@@ -219,7 +219,7 @@
     "version_verified": "2.1.314"
   },
   "confianca_min": 0.6,
-  "max_words": 250,
+  "max_words": 600,
   "pdf": {
     "max_bytes": 10485760,
     "timeout_s": 20,

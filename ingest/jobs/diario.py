@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS artigos_ia (
   evento_ids TEXT NOT NULL,
   titulo TEXT, lead TEXT, corpo TEXT, pontos_chave TEXT, fontes TEXT, numeros_citados TEXT, entidades TEXT,
   confianca REAL, modelo TEXT, revisor TEXT, verificacao TEXT,
-  estado TEXT NOT NULL CHECK (estado IN ('publicado','rejeitado')),
+  estado TEXT NOT NULL CHECK (estado IN ('publicado','rejeitado','substituido')),
   criado_em TEXT,
   revisao INTEGER DEFAULT 1,
   UNIQUE(edicao_data, evidence_hash)
@@ -443,24 +443,48 @@ ATO_PLURAL = {"promulgacao": ("promulgação", "promulgações"), "veto": ("veto
               "ratificacao": ("ratificação", "ratificações"), "indulto": ("indulto", "indultos"), "outro": ("outro ato", "outros atos")}
 
 
-def presidencia_dia(c, days):
-    if not days or "tipo" not in c.cols("atos") or "data" not in c.cols("atos"):
-        return []
-    canon = " AND (canon IS NULL OR canon = 1)" if "canon" in c.cols("atos") else ""
-    rows = c.q(f"SELECT data, tipo, COUNT(*) AS n, MAX(rowid) AS rid FROM src.atos WHERE data IN ({','.join('?' * len(days))}){canon} GROUP BY data, tipo", days)
+PRES_BODY = "Presidência da República"
+
+
+def pres_news(c):
+    src = c.shared.get("src")
+    if not src:
+        return {}
+    con = ro_connect(Path(src) / "politica.db")
+    if not con:
+        return {}
+    try:
+        return {r[0]: r[1] for r in con.execute("SELECT substr(date, 1, 10), COUNT(*) FROM news WHERE body = ? AND substr(date, 1, 10) >= ? AND substr(date, 1, 10) <= ? GROUP BY 1", (PRES_BODY, c.lo, c.today))}
+    except sqlite3.Error:
+        return {}
+    finally:
+        con.close()
+
+
+def presidencia_dia(c, days, news=None):
+    news = news or {}
     by = defaultdict(dict)
     rid = {}
-    for r in rows:
-        by[r["data"]][r["tipo"] or "outro"] = r["n"]
-        rid[r["data"]] = max(rid.get(r["data"], 0), r["rid"] or 0)
+    if days and {"tipo", "data"} <= c.cols("atos"):
+        canon = " AND (canon IS NULL OR canon = 1)" if "canon" in c.cols("atos") else ""
+        for r in c.q(f"SELECT data, tipo, COUNT(*) AS n, MAX(rowid) AS rid FROM src.atos WHERE data IN ({','.join('?' * len(days))}){canon} GROUP BY data, tipo", days):
+            by[r["data"]][r["tipo"] or "outro"] = r["n"]
+            rid[r["data"]] = max(rid.get(r["data"], 0), r["rid"] or 0)
     out = []
-    for d in sorted(by):
-        counts = by[d]
+    for d in sorted(set(by) | set(news)):
+        counts = by.get(d, {})
         total = sum(counts.values())
-        if total < 2:
+        nn = int(news.get(d, 0))
+        if total < 2 and nn < 1:
             continue
         parts = [f"{n} {ATO_PLURAL.get(t, (t, t))[0 if n == 1 else 1]}" for t, n in sorted(counts.items(), key=lambda x: (-x[1], x[0]))]
-        out.append(c.ev("atos", d, "presidencia_dia", d, "governo", f"Presidente da República: {total} atos em {pdate(d)}", "Atos do dia: " + ", ".join(parts) + ".",
+        head = []
+        if total:
+            head.append(f"{total} {'ato' if total == 1 else 'atos'}")
+        if nn:
+            head.append(f"{nn} {'notícia' if nn == 1 else 'notícias'}")
+        resumo = ("Atos do dia: " + ", ".join(parts) + "." if parts else "") + (f" Notícias da Presidência da República: {nn}." if nn else "")
+        out.append(c.ev("atos", d, "presidencia_dia", d, "governo", f"Presidente da República: {' e '.join(head)} em {pdate(d)}", resumo.strip(),
                         "#/presidencia", None, [ent("Presidente da República", "orgao")], rid=rid.get(d)))
     return out
 
@@ -485,7 +509,7 @@ def c_presidencia(c):
         tipo = "promulgacao" if r["tipo"] == "promulgacao" else "ato_presidente"
         out.append(c.ev("atos", r["id"], tipo, r["data"], "governo", clean(r["titulo"]).rstrip("."), cut(" ".join(body), 260) or None,
                         route("#/atos-presidente", r["id"]), r["mensagem_url"] or r["source_url"], [ent("Presidente da República", "orgao")], rid=r["_rid"], sub=r["tipo"]))
-    out += presidencia_dia(c, sorted(d for d in days if d))
+    out += presidencia_dia(c, sorted(d for d in days if d), pres_news(c))
     c.mark("atos", "data")
     w, p = c.win("comunicados", "data")
     for r in c.rows("comunicados", ["url", "data", "titulo", "tipo", "ato_id"], ["url", "data"], f"ato_id IS NULL AND {w}", p):
@@ -738,10 +762,173 @@ def c_imigracao(c):
     return out
 
 
+REGIAO_NOME = {"acores": "Açores", "madeira": "Madeira"}
+
+
+def plural(n, um, varios):
+    return f"{nf(n)} {um if n == 1 else varios}"
+
+
+def c_agenda(c):
+    if not {"id", "title", "start"} <= c.cols("events"):
+        return []
+    out = []
+    today = dt.date.fromisoformat(c.today)
+    for d in (today - dt.timedelta(days=1), today):
+        a, b = (d + dt.timedelta(days=1)).isoformat(), (d + dt.timedelta(days=S.AGENDA_DIAS)).isoformat()
+        cls = Counter()
+        for r in c.q("SELECT section FROM src.events WHERE substr(start, 1, 10) BETWEEN ? AND ?", (a, b)):
+            cls[S.agenda_classe(r["section"])] += 1
+        n = sum(cls.values())
+        if not n:
+            continue
+        out.append(c.ev("events", d.isoformat(), "agenda_semana", d.isoformat(), "parlamento", f"O que vem aí: {plural(n, 'evento agendado', 'eventos agendados')} entre {pshort(a)} e {pshort(b)}",
+                        f"Agenda do Parlamento de {pdate(a)} a {pdate(b)}: {plural(cls['plenario'], 'sessão de plenário', 'sessões de plenário')}, {plural(cls['comissoes'], 'reunião de comissões e audições', 'reuniões de comissões e audições')} e {plural(cls['outros'], 'outro evento', 'outros eventos')}.",
+                        "#/calendario", None, [ent("Assembleia da República", "orgao")]))
+    return out
+
+
+def c_leis_curso(c):
+    if not {"initiative_key", "date", "phase"} <= c.cols("initiative_steps"):
+        return []
+    out = []
+    w, p = c.win_days("initiative_steps", "substr(date, 1, 10)")
+    rows = c.q(f"SELECT substr(date, 1, 10) AS d, phase, COUNT(*) AS n, COUNT(DISTINCT initiative_key) AS i FROM src.initiative_steps WHERE substr(date, 1, 10) <= ? AND {w} GROUP BY 1, 2", [c.today] + p)
+    days = defaultdict(list)
+    for r in rows:
+        days[r["d"]].append(r)
+    for d, rs in sorted(days.items()):
+        n = sum(r["n"] for r in rs)
+        keys = c.q("SELECT COUNT(DISTINCT initiative_key) AS i FROM src.initiative_steps WHERE substr(date, 1, 10) = ?", (d,))
+        i = keys[0]["i"] if keys else 0
+        fases = ", ".join(f"{r['n']} {clean(r['phase']).lower() or 'fase por indicar'}" for r in sorted(rs, key=lambda x: (-x["n"], str(x["phase"])))[:4])
+        out.append(c.ev("initiative_steps", d, "leis_em_curso_dia", d, "parlamento", f"Leis em curso: {plural(n, 'novo passo', 'novos passos')} em {plural(i, 'iniciativa', 'iniciativas')} a {pshort(d)}",
+                        f"Passos do processo legislativo registados a {pdate(d)}: {fases}.", "#/leis", None, [ent("Assembleia da República", "orgao")]))
+    c.mark("initiative_steps", "date")
+    return out
+
+
+def c_contratos_destaque(c):
+    if not {"id", "published", "price"} <= c.cols("contracts"):
+        return []
+    out = []
+    w, p = c.win_days("contracts", "published")
+    days = [r["d"] for r in c.q(f"SELECT DISTINCT published AS d FROM src.contracts WHERE {w} AND published <= ?", p + [c.today]) if valid_date(r["d"])]
+
+    def q(sql, args=()):
+        return c.q(sql.replace(" FROM contracts", " FROM src.contracts").replace(" FROM buyer_stats", " FROM src.buyer_stats"), args)
+    for d in sorted(days):
+        dest = S.destaques(q, d)
+        k = len(dest["itens"])
+        if not k:
+            continue
+        cont = dest["contagens"]
+        out.append(c.ev("contracts", d, "contratos_destaque_dia", d, "dinheiro", f"Contratos em destaque: {plural(k, 'contrato', 'contratos')} entre {nf(dest['total_dia'])} publicados a {pshort(d)}",
+                        f"Destaques de {pdate(d)}: {plural(cont['valor_atipico'], 'contrato muito acima da média do adjudicante', 'contratos muito acima da média do adjudicante')}, {plural(cont['ajuste_direto'], 'ajuste direto de valor elevado', 'ajustes diretos de valor elevado')} e {plural(cont['proposta_unica'], 'concurso com um só concorrente', 'concursos com um só concorrente')}.",
+                        "#/contratos", None, []))
+    return out
+
+
+def c_governo_cm(c):
+    w, p = c.win("decisions", "cm_date")
+    rows = c.rows("decisions", ["id", "ministry", "cm_date", "cm_title", "text", "source_url"], ["id", "cm_date"], w, p)
+    groups = {}
+    for r in rows:
+        key = (valid_date(r["cm_date"]), clean(r["cm_title"]) or cut(r["text"], 120))
+        if key[0] and key[1]:
+            groups.setdefault(key, []).append(r)
+    out = []
+    for (d, t), rs in sorted(groups.items()):
+        first = min(rs, key=lambda x: x["id"])
+        mins = sorted({clean(x["ministry"]) for x in rs if x["ministry"]})
+        out.append(c.ev("decisions", first["id"], "governo_cm", d, "governo", f"Conselho de Ministros de {pshort(d)}: {cut(t, 170)}",
+                        f"Comunicado do Conselho de Ministros de {pdate(d)}." + (f" Áreas atribuídas: {', '.join(m.replace('-', ' ') for m in mins[:6])}." if mins else ""),
+                        route("#/ministerios", mins[0]) if mins else "#/ministerios", first["source_url"], [ent("Conselho de Ministros", "orgao")], rid=max(x["_rid"] for x in rs)))
+    c.mark("decisions", "cm_date")
+    return out
+
+
+def c_acordaos_tc(c):
+    out = []
+    w, p = c.win("tc_acordaos", "data")
+    for r in c.rows("tc_acordaos", ["id", "processo", "tipo", "especie", "data", "norma", "resultado", "url", "source_url"], ["id", "data"], w, p):
+        assunto = cut(r["norma"], 130) or clean(r["processo"])
+        res = clean(r["resultado"])
+        out.append(c.ev("tc_acordaos", r["id"], "acordao_constitucional", r["data"], "fiscalizacao", f"Tribunal Constitucional decide: {assunto}" + (f" ({lower_first(res)})" if res else ""),
+                        f"Acórdão do Tribunal Constitucional de {pdate(r['data'])}, processo {clean(r['processo'])}" + (f", {lower_first(clean(r['tipo'] or r['especie']))}" if (r["tipo"] or r["especie"]) else "") + (f". Resultado: {res}." if res else "."),
+                        route("#/justica/tc", q=r["processo"]), r["url"] or r["source_url"], [ent("Tribunal Constitucional", "orgao")], rid=r["_rid"]))
+    c.mark("tc_acordaos", "data")
+    return out
+
+
+def novos(c, table):
+    cur = c.cursor(table)
+    if cur is None or not c.cols(table):
+        return None
+    rows = c.q(f"SELECT MIN(rowid) AS lo, MAX(rowid) AS hi, COUNT(*) AS n FROM src.{table} WHERE rowid > ?", (cur,))
+    return rows[0] if rows and rows[0]["n"] else None
+
+
+def c_fundos(c):
+    out = []
+    r = novos(c, "awards")
+    if r:
+        tot = c.q("SELECT SUM(aprovado) AS a FROM src.awards WHERE rowid BETWEEN ? AND ?", (r["lo"], r["hi"]))
+        a = float(tot[0]["a"] or 0) if tot else 0.0
+        out.append(c.ev("awards", f"{r['lo']}-{r['hi']}", "fundos_dia", c.today, "dinheiro", f"Fundos europeus: {plural(r['n'], 'nova operação registada', 'novas operações registadas')}",
+                        f"{plural(r['n'], 'operação aprovada', 'operações aprovadas')} nos fundos europeus, no valor aprovado de {eur(a)}.", "#/fundos", None, [], rid=r["hi"]))
+    c.mark("awards", None)
+    return out
+
+
+def c_autarquias(c):
+    out = []
+    r = novos(c, "pmp")
+    if r:
+        st = c.q("SELECT AVG(days) AS m, MAX(days) AS mx FROM src.pmp WHERE rowid BETWEEN ? AND ?", (r["lo"], r["hi"]))
+        m = round(float(st[0]["m"] or 0)) if st else 0
+        out.append(c.ev("pmp", f"pmp:{r['lo']}-{r['hi']}", "poder_local_dia", c.today, "poder-local", f"Autarquias: {plural(r['n'], 'novo registo', 'novos registos')} de prazo médio de pagamento",
+                        f"{plural(r['n'], 'município com novo prazo médio de pagamento', 'municípios com novo prazo médio de pagamento')}; média de {nf(m)} dias.", "#/autarquias", None, [], rid=r["hi"]))
+    c.mark("pmp", None)
+    r = novos(c, "finance")
+    if r:
+        out.append(c.ev("finance", f"fin:{r['lo']}-{r['hi']}", "poder_local_dia", c.today, "poder-local", f"Autarquias: {plural(r['n'], 'novo registo', 'novos registos')} de contas municipais",
+                        f"Atualizadas {plural(r['n'], 'rubrica', 'rubricas')} de finanças municipais.", "#/autarquias", None, [], rid=r["hi"]))
+    c.mark("finance", None)
+    return out
+
+
+def c_empresas_locais(c):
+    out = []
+    w, p = c.win_days("company", "last_signed")
+    for r in c.q(f"SELECT last_signed AS d, COUNT(*) AS n FROM src.company WHERE last_signed <= ? AND {w} GROUP BY last_signed", [c.today] + p):
+        if valid_date(r["d"]):
+            out.append(c.ev("company", r["d"], "poder_local_dia", r["d"], "poder-local", f"Empresas locais: {plural(r['n'], 'empresa municipal', 'empresas municipais')} com contratos a {pshort(r['d'])}",
+                            f"{plural(r['n'], 'empresa local', 'empresas locais')} assinou contratos públicos a {pdate(r['d'])}.", "#/empresas-locais", None, []))
+    c.mark("company", "last_signed")
+    return out
+
+
+def c_regioes(c):
+    out = []
+    w, p = c.win("acts", "date")
+    rows = c.q(f"SELECT region, date AS d, COUNT(*) AS n, MAX(rowid) AS rid FROM src.acts WHERE {w} AND date <= ? GROUP BY region, date", p + [c.today]) if {"region", "date"} <= c.cols("acts") else []
+    for r in rows:
+        if not valid_date(r["d"]) or not r["region"]:
+            continue
+        nome = REGIAO_NOME.get(r["region"], clean(r["region"]).title())
+        out.append(c.ev("acts", f"{r['region']}:{r['d']}", "regioes_dia", r["d"], "governo", f"Região Autónoma dos {nome}: {plural(r['n'], 'ato publicado', 'atos publicados')} a {pshort(r['d'])}",
+                        f"{plural(r['n'], 'ato oficial', 'atos oficiais')} da Região Autónoma dos {nome} a {pdate(r['d'])}.", route("#/regioes", r["region"]), None,
+                        [ent(f"Região Autónoma dos {nome}", "orgao")], rid=r["rid"]))
+    c.mark("acts", "date")
+    return out
+
+
 COLLECTORS = [
     ("votacoes", c_votacoes), ("intervencoes", c_intervencoes), ("posicoes", c_posicoes), ("presidencia", c_presidencia), ("dre", c_dre),
     ("justica", c_justica), ("igf", c_igf), ("provedor", c_provedor), ("reguladores", c_reguladores), ("responsaveis", c_responsaveis),
-    ("politica", c_contracts), ("anuncios", c_anuncios), ("apoios", c_apoios), ("divida", c_divida), ("ine_series", c_ine), ("imigracao", c_imigracao),
+    ("politica", c_contracts), ("politica", c_agenda), ("politica", c_leis_curso), ("politica", c_contratos_destaque), ("ministerios", c_governo_cm), ("justica", c_acordaos_tc),
+    ("fundos", c_fundos), ("autarquias", c_autarquias), ("empresas_locais", c_empresas_locais), ("regioes", c_regioes), ("anuncios", c_anuncios), ("apoios", c_apoios), ("divida", c_divida), ("ine_series", c_ine), ("imigracao", c_imigracao),
 ]
 
 
@@ -763,12 +950,13 @@ def mark_first(events):
 
 
 def gather(con, src, lo, today, cursors, rebuild):
-    shared = {"seats": load_seats(src), "risk": load_risk(src), "board_nifs": load_board_nifs(src)}
+    shared = {"seats": load_seats(src), "risk": load_risk(src), "board_nifs": load_board_nifs(src), "src": str(src)}
     events, marks, skipped = [], {}, []
     for db, fn in COLLECTORS:
         path = Path(src) / ("politica.db" if db == "politica" else f"{db}.db")
         if not path.exists():
-            skipped.append(db)
+            if db not in skipped:
+                skipped.append(db)
             continue
         try:
             con.execute("ATTACH DATABASE ? AS src", (ro_uri(path),))

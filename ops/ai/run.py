@@ -31,7 +31,7 @@ def jread(path, default=None):
 
 
 def cand_view(rows, limit=None):
-    return [{"id": r["id"], "secao": r.get("secao"), "tipo": r.get("tipo"), "titulo": wrap(r.get("titulo") or ""),
+    return [{"id": r["id"], "secao": r.get("secao"), "tipo": r.get("tipo"), "data_evento": r.get("data_evento"), "titulo": wrap(r.get("titulo") or ""),
              "resumo": wrap(r.get("resumo_curto") or ""), "entidades": B._json(r.get("entidades")), "score": r.get("score")}
             for r in (rows[:limit] if limit else rows)]
 
@@ -169,7 +169,7 @@ def stage_draft(ctx, items, chosen):
 
 
 def stage_for(b):
-    if any(r.get("tipo") == "presidencia_dia" for r in b.get("rows", [])):
+    if any(r.get("tipo") == "presidencia_dia" or r.get("tipo") in B.BT.TIPOS for r in b.get("rows", [])):
         return "redacao_agregado"
     if b.get("lei"):
         return "redacao_votacao" if b.get("variante") == "votacao" else "redacao_lei"
@@ -281,7 +281,7 @@ def hashed(p):
     return sha(p.read_bytes()) if p.exists() else "-"
 
 
-CAPS = {"titulo": 160, "lead": 400, "corpo": 2400}
+CAPS = {"titulo": 160, "lead": 400, "corpo": 6000}
 TAGRX = re.compile(r"</?\s*(?:fonte_nao_confiavel|rascunho_nao_confiavel)\s*>", re.I)
 
 
@@ -294,7 +294,7 @@ def review_input(art):
     d["pontos_chave"] = [cap(x, 240) for x in art.get("pontos_chave", [])[:5]]
     d["fontes"] = [{"label": cap(f.get("label", ""), 120), "href": cap(f.get("href", ""), 600)} for f in art.get("fontes", [])[:8]]
     d["numeros_citados"] = [cap(x, 40) for x in art.get("numeros_citados", [])[:30]]
-    d["entidades"] = [{"nome": cap(e.get("nome", ""), 120), "tipo": cap(e.get("tipo", ""), 20), "cargo_publico": cap(e.get("cargo_publico", ""), 80)} if isinstance(e, dict) else cap(e, 120) for e in art.get("entidades", [])[:30]]
+    d["entidades"] = [{"nome": cap(e.get("nome", ""), 120), "tipo": cap(e.get("tipo", ""), 20), "cargo_publico": cap(e.get("cargo_publico", ""), 80)} if isinstance(e, dict) else cap(e, 120) for e in art.get("entidades", [])[:60]]
     d["calculos"] = [{"expr": cap(c.get("expr", ""), 120), "resultado": cap(c.get("resultado", ""), 40)} for c in art.get("calculos", [])[:10]]
     if isinstance(art.get("explicacao"), dict):
         e = art["explicacao"]

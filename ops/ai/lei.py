@@ -3,6 +3,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 from pathlib import Path
 
 from lib import ROOT, data_dir, open_ro, wrap
@@ -12,12 +13,12 @@ import linking  # noqa: E402
 
 VOTE_MODS = ("votos", "votacoes", "intervencoes", "iniciativas")
 SENSOS = ("favor", "contra", "abstencao")
-SPEECH_CAP = 1800
-FACT_SPEECHES = 10
+SPEECH_CAP = 20000
 FACT_VOTES = 12
 LISTA_CAP = 200
-BLOCO_SPEECHES = 6
-MIN_WORDS = 60
+BLOCO_SPEECHES = 20
+DB_TRIES = 5
+DB_WAIT = 2
 EXCERTO_MAX = 280
 MAX_EARLIER = 8
 MAX_ANEXOS = 30
@@ -36,16 +37,24 @@ def src_dir():
 _OPEN = []
 
 
+class DataUnavailable(RuntimeError):
+    pass
+
+
 def db(name):
     p = src_dir() / f"{name}.db"
     if not p.exists():
         return None
-    try:
-        con = open_ro(p)
-    except Exception:
-        return None
-    _OPEN.append(con)
-    return con
+    for attempt in range(DB_TRIES):
+        try:
+            con = open_ro(p)
+        except Exception:
+            if attempt + 1 < DB_TRIES:
+                time.sleep(DB_WAIT)
+            continue
+        _OPEN.append(con)
+        return con
+    raise DataUnavailable(f"{name}.db")
 
 
 def close_all():
@@ -59,10 +68,17 @@ def close_all():
 def q(con, sql, args=()):
     if con is None:
         return []
-    try:
-        return [dict(r) for r in con.execute(sql, args)]
-    except sqlite3.Error:
-        return []
+    for attempt in range(DB_TRIES):
+        try:
+            return [dict(r) for r in con.execute(sql, args)]
+        except sqlite3.OperationalError as e:
+            if not re.search(r"locked|busy|I/O", str(e)):
+                return []
+            if attempt + 1 < DB_TRIES:
+                time.sleep(DB_WAIT)
+        except sqlite3.Error:
+            return []
+    raise DataUnavailable(sql[:40])
 
 
 def one(con, sql, args=()):
@@ -95,8 +111,9 @@ def match_bid(act_id):
     act = dre_act(act_id)
     if not act or act.get("kind") not in linking.ACT_KINDS:
         return None
-    hit = linking.best(act, db("votacoes"))
-    return hit["bid"] if hit else None
+    inis = q(db("votacoes"), "SELECT bid, key, tipo, numero, leg, titulo, lei_ref, estado, resultado_final, data_votacao_final FROM iniciativas WHERE titulo IS NOT NULL")
+    hits = linking.match(act, inis)
+    return max(hits, key=lambda h: h["score"])["bid"] if hits else None
 
 
 def locate(row):
@@ -190,7 +207,7 @@ def plenary_votes(vcon, bid, seat_map, main_id):
 
 
 def ordered_speeches(rows):
-    good = [r for r in rows if (r.get("palavras") or 0) >= MIN_WORDS and r.get("texto")] or [r for r in rows if r.get("texto")]
+    good = [r for r in rows if r.get("texto")]
     groups = {}
     for r in sorted(good, key=lambda r: (-(r.get("palavras") or 0), r["id"])):
         groups.setdefault(r.get("partido") or "", []).append(r)
@@ -304,8 +321,7 @@ def _build_lei(row):
             ex = excerto(s["texto"] or "")
             if ex and ex in s["texto"]:
                 picked.append((s, ex))
-        shown = [s for s, _ in picked]
-        shown += [s for s in speeches if s not in shown][:max(0, FACT_SPEECHES - len(shown))]
+        shown = speeches
         facts["intervencoes"] = [{"id": s["id"], "orador": s["orador"], "partido": s["partido"], "cargo": s["cargo"], "tipo": s.get("kind"), "data": s["data"],
                                   "rota": rota, "source_url": s.get("source_url"), "detalhe": (s["texto"] or "")[:SPEECH_CAP]} for s in shown]
         blocos["lei"] = {"titulo": ini.get("titulo"), "tipo": ini.get("tipo"), "numero": ini.get("numero"), "legislatura": ini.get("leg"),

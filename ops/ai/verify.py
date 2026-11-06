@@ -30,7 +30,9 @@ TAIL = re.compile(
 SCALES = {"mil": 10 ** 3, "milhao": 10 ** 6, "milhoes": 10 ** 6, "mil milhoes": 10 ** 9, "biliao": 10 ** 12, "bilioes": 10 ** 12}
 OPS_TOKEN = re.compile(r"\s*(?:(?P<num>(?:" + NUMTXT + r")\s*(?:%|mil\s+milh(?:ões|oes)|milh(?:ões|oes|ão|ao)|mil)?)|(?P<op>[-+*/()]))")
 SENSOS = {"favor": "favor", "contra": "contra", "abstencao": "abstencao", "abstenção": "abstencao"}
-PARTIDOS = ["PS", "PSD", "CH", "IL", "BE", "PCP", "PAN", "Livre", "CDS-PP", "CDS", "JPP", "PEV", "Chega", "Iniciativa Liberal", "Bloco de Esquerda"]
+PARTIDOS = ["PS", "PSD", "CH", "IL", "BE", "PCP", "PAN", "Livre", "L", "CDS-PP", "CDS", "JPP", "PEV", "Chega", "Iniciativa Liberal", "Bloco de Esquerda"]
+PARTY_CODE = {"chega": "CH", "livre": "L", "iniciativa liberal": "IL", "bloco de esquerda": "BE", "cds": "CDS-PP"}
+LEAD_VERB = re.compile(r"^(?:vot(?:ou|aram|ando)|abst(?:eve|iveram|endo)-se|abst[eé]m-se|aprovou|aprovaram|rejeitou|rejeitaram|contra)$", re.I)
 VOTE_VERB = re.compile(r"\bvot(?:ou|aram|ando)\b|\babst(?:eve|iveram|endo)[- ]se\b|\babsten[cç][aã]o\b|\babst[eé]m[- ]se\b", re.I)
 DIR = re.compile(r"\ba\s+favor\b|\bcontra\b|\babst(?:eve|iveram|endo)[- ]se\b|\babsten[cç][aã]o\b", re.I)
 
@@ -452,6 +454,8 @@ def name_runs(text, commons):
         if run:
             runs.append(run)
         for r in runs:
+            if r[0][0] == 0 and len(r) > 1 and LEAD_VERB.match(r[0][1]):
+                r = r[1:]
             words = [w for _, w in r]
             core = [w for w in words if w.lower() not in CONNECT and w not in commons]
             if not core:
@@ -506,6 +510,17 @@ def cap_mid(struct):
     return out
 
 
+def party_supported(name, ev):
+    f = fold(name)
+    codes = {name, PARTY_CODE.get(f, name)}
+    hay = ev["struct"] + "\n" + ev["texto"]
+    return any(re.search(r"(?<![\w-])" + re.escape(c) + r"(?![\w-])", hay) for c in codes)
+
+
+def is_party(name):
+    return name in PARTIDOS or fold(name) in PARTY_CODE
+
+
 def ent_list(art):
     out = []
     for e in art.get("entidades", []) or []:
@@ -544,34 +559,79 @@ def blocos_com_dados(blocos):
 EXCETO = re.compile(r"\b(?:exce(?:t|p)o|exce[cç][aã]o|salvo)\b", re.I)
 
 
-def vote_claims(blob):
+ANNOT = re.compile(r"\([^()]{0,30}\)|\bcom\s+\d+\s+(?:lugares?|deputados|votos)\b|\b\d+\s+(?:lugares?|deputados|votos)\b", re.I)
+SEP_WORDS = {"e", "o", "a", "os", "as"}
+FILL_WORDS = SEP_WORDS | {"votaram", "votou", "tambem", "igualmente", "ainda", "mas", "de", "do", "da", "dos", "das", "pelo", "pelos"}
+VERB_BETWEEN = re.compile(r"\bvot(?:ou|aram|ando)\b|\babst(?:eve|iveram|endo)[- ]se\b|\babst[eé]m[- ]se\b", re.I)
+PARTY_RX = {p: re.compile(r"(?<![\w-])" + re.escape(p) + r"(?![\w-])") for p in PARTIDOS}
+
+
+def only_words(text, allowed):
+    t = ANNOT.sub(" ", text)
+    return all(w in allowed for w in re.findall(r"[^\W\d_]+", fold(t)))
+
+
+def dir_sense(d):
+    return "favor" if "favor" in d else "contra" if "contra" in d else "abstencao"
+
+
+def clause_claims(clause, table):
+    dirs = [(m.start(), m.end(), dir_sense(fold(m.group(0)))) for m in DIR.finditer(clause)]
+    ex = EXCETO.search(clause)
+    pars = []
+    for p, rx in PARTY_RX.items():
+        for m in rx.finditer(clause):
+            if not (ex and m.start() > ex.start()):
+                pars.append((m.start(), m.end(), p))
+    pars.sort()
+    runs = []
+    for par in pars:
+        if runs and only_words(clause[runs[-1][-1][1]:par[0]].replace(",", " "), SEP_WORDS):
+            runs[-1].append(par)
+        else:
+            runs.append([par])
+    used = set()
+    out = []
+    for run in runs:
+        rs, re_ = run[0][0], run[-1][1]
+        opts = []
+        for i, d in enumerate(dirs):
+            if d[1] <= rs and i not in used and only_words(clause[d[1]:rs].replace(",", " ").replace(":", " "), FILL_WORDS):
+                opts.append((0, i))
+        for i, d in enumerate(dirs):
+            if d[0] >= re_ and i not in used and only_words(clause[re_:d[0]].replace(",", " "), FILL_WORDS):
+                nxt = re.sub(r"^d[aeo]s?\s+", "", clause[d[1]:].lstrip())
+                if not any(PARTY_RX[p].match(nxt) for p in PARTIDOS):
+                    opts.append((1, i))
+                    break
+        opts.sort(key=lambda o: (o[0], abs(dirs[o[1]][0] - rs)))
+        if not opts:
+            after = next(((1, i) for i, d in enumerate(dirs) if d[0] >= re_ and i not in used and VERB_BETWEEN.search(clause[re_:d[0]])), None)
+            before = next(((0, i) for i, d in reversed(list(enumerate(dirs))) if d[1] <= rs and i not in used and VERB_BETWEEN.search(clause[d[1]:rs])), None)
+            fb = after or before
+            opts = [fb] if fb else []
+        if not opts:
+            continue
+        used.add(opts[0][1])
+        senses = [dirs[i][2] for _, i in opts]
+        for _, _, p in run:
+            pick = next((x for x in senses if table and (party_key(p), x) in table), senses[0])
+            out.append((p, pick))
+    return out
+
+
+def vote_claims(blob, table=None):
     claims = []
     for sent in re.split(r"(?<=[.!?])\s+|\n", blob):
         if not VOTE_VERB.search(sent):
             continue
-        ev = []
-        for m in DIR.finditer(sent):
-            d = fold(m.group(0))
-            ev.append((m.start(), "dir", "favor" if "favor" in d else "contra" if "contra" in d else "abstencao"))
-        for p in PARTIDOS:
-            for m in re.finditer(r"(?<![\w-])" + re.escape(p) + r"(?![\w-])", sent):
-                ev.append((m.start(), "par", p))
-        ev.sort()
-        ex = EXCETO.search(sent)
-        for i, (pos, kind, val) in enumerate(ev):
-            if kind != "par":
-                continue
-            if ex and pos > ex.start():
-                continue
-            after = next((v for _, k, v in ev[i + 1:] if k == "dir"), None)
-            before = next((v for _, k, v in reversed(ev[:i]) if k == "dir"), None)
-            d = after or before
-            if d:
-                claims.append((val, d, sent.strip()))
+        for clause in sent.split(";"):
+            for p, d in clause_claims(clause, table):
+                claims.append((p, d, sent.strip()))
     return claims
 
 
-PARTY_ALIAS = {"chega": "ch", "iniciativa liberal": "il", "bloco de esquerda": "be", "cds": "cds-pp"}
+PARTY_ALIAS = {"chega": "ch", "iniciativa liberal": "il", "bloco de esquerda": "be", "cds": "cds-pp", "livre": "l"}
 
 
 def party_key(p):
@@ -670,6 +730,7 @@ def _verify(art, bdir, cfg):
         if span not in ev["coll"]:
             problems.append(f"citacao_nao_literal:{span[:40]}")
     blob0 = blob
+    blob = QUOTE.sub(lambda m: " " if ws(next(g for g in m.groups() if g)) in ev["coll"] else m.group(0), blob)
     commons = set(cfg.get("nomes_comuns", []))
     al = load_allow(cfg)
     publicas = {toks(x) for x in cfg.get("instituicoes_publicas", [])}
@@ -682,6 +743,8 @@ def _verify(art, bdir, cfg):
     st, tx = " " + toks(ev["struct"]) + " ", " " + toks(ev["texto"]) + " "
     cargos = [fold(c) for c in cfg.get("cargos_publicos", [])]
     for key, e in declared.items():
+        if is_party(e["nome"]) and e["tipo"] != "pessoa" and party_supported(e["nome"], ev):
+            continue
         if f" {key} " not in st and f" {key} " not in tx and (e["tipo"] == "pessoa" or (key not in publicas and not inst_ok(e["nome"], ev, al))):
             problems.append(f"entidade_sem_suporte:{e['nome']}")
         if e["tipo"] == "pessoa":
@@ -709,6 +772,8 @@ def _verify(art, bdir, cfg):
         key = toks(" ".join(words))
         pk = f" {key} "
         if any(pk in d for d in dkeys) or any(pk in p for p in phrases):
+            continue
+        if all(is_party(w) for w in words) and all(party_supported(w, ev) for w in words):
             continue
         if inst_ok(" ".join(words), ev, al):
             continue
@@ -739,20 +804,19 @@ def _verify(art, bdir, cfg):
             if f" {alt} " in st or alt in declared:
                 continue
         problems.append(f"nome_sem_suporte:{' '.join(words)}")
-    claims = vote_claims(blob)
     earlier = []
-    if claims:
-        table = {(party_key(p), s) for p, s in ev["votes"]}
-        if blocos and blocos.get("votacao"):
-            table = {(party_key(r["partido"]), r["voto"]) for r in blocos["votacao"].get("por_partido", [])}
-            earlier = blocos.get("votacoes_anteriores") or []
+    table = {(party_key(p), s) for p, s in ev["votes"]}
+    if blocos and blocos.get("votacao"):
+        table = {(party_key(r["partido"]), r["voto"]) for r in blocos["votacao"].get("por_partido", [])}
+        earlier = blocos.get("votacoes_anteriores") or []
+    if not table:
+        table = text_votes(ev["struct"] + "\n" + ev["texto"])
+    claims = vote_claims(blob, table)
+    for p, d, s in claims:
         if not table:
-            table = text_votes(ev["struct"] + "\n" + ev["texto"])
-        for p, d, s in claims:
-            if not table:
-                problems.append(f"voto_sem_tabela:{p}")
-            elif (party_key(p), d) not in table and not earlier_vote_ok(p, d, s, earlier):
-                problems.append(f"voto_incoerente:{p}:{d}")
+            problems.append(f"voto_sem_tabela:{p}")
+        elif (party_key(p), d) not in table and not earlier_vote_ok(p, d, s, earlier):
+            problems.append(f"voto_incoerente:{p}:{d}")
     for f in art.get("fontes", []):
         if f.get("href") not in allowed:
             problems.append(f"href_nao_permitido:{f.get('href')}")

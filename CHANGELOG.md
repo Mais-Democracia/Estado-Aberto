@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Added
+- New daily stories: the President's press releases, the week agenda, laws in progress, Council of Ministers decisions, contract highlights, Constitutional Court rulings, EU funds, local power and regions.
+- Specific "Ver a lei/ato/votação" links resolved when the page is built, friendly labels for every story type, and an "Em arquivo" tag on old items; the ledger no longer repeats stories that have an article.
+
+### Changed
+- Articles receive every plenary intervention in full and must cover every party that spoke; the body limit is 600 words.
+- Events more than 5 days old are no longer picked as news.
+
+### Fixed
+- AI verifier false positives (abstentions, party L, quoted titles, parties after "exceto").
+- Updated articles import cleanly (substituido state), and database errors while building evidence are retried instead of silently dropping votes and debate.
+
 ## [0.3.14] - 2026-11-06
 
 ### Fixed

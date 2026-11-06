@@ -550,7 +550,7 @@ export default function (ctx) {
     if (mod === "votacoes") { const b = tipo === "iniciativa_entrada" ? ref : entId(e, "iniciativa"); if (/^\d+$/.test(b)) r = "#/votacoes/" + b; }
     else if (mod === "intervencoes") { if (/^\d+$/.test(ref)) r = "#/votacoes/" + ref; }
     else if (mod === "posicoes") { if (ref) r = "#/artigo/declaracao/" + enc(ref); }
-    else if (mod === "presidencia") { if (tipo === "comunicado") r = ""; else if (ref) r = "#/atos-presidente/" + enc(ref); }
+    else if (mod === "presidencia") { if (tipo === "comunicado") r = ""; else if (tipo === "presidencia_dia") r = ""; else if (ref) r = "#/atos-presidente/" + enc(ref); }
     else if (mod === "dre") { if (ref) r = "#/dre/" + enc(ref); }
     else if (mod === "justica") { if (ref) r = "#/artigo/relatorio/" + enc(ref); }
     else if (mod === "reguladores") { if (ref) r = "#/artigo/regulador/" + enc(ref); }
@@ -563,11 +563,39 @@ export default function (ctx) {
     return r || (rota && !/^#?\/?(parlamento|justica|responsaveis|dre|votacoes|igf|provedor|poderes\/presidente|anuncios|apoios)$/.test(rota) ? rota : "");
   };
 
+  const SPEC_ROTA = /^#\/(dre|leis|atos-presidente|votacoes)\/[\w\-.%]+$/;
+  const VER = { dre: [0, "Ver a lei"], leis: [1, "Ver a lei"], "atos-presidente": [2, "Ver o ato"], votacoes: [3, "Ver a votação"] };
+  const verKind = (r) => { const m = SPEC_ROTA.exec(r); return m ? m[1] : ""; };
+  const resolveVer = (linked, stored) => {
+    const cand = [];
+    const st = safeRota(stored);
+    if (verKind(st)) cand.push(st);
+    for (const e of linked) { const r = safeRota(rotaObjeto(e)); if (verKind(r)) cand.push(r); }
+    cand.sort((x, y) => VER[verKind(x)][0] - VER[verKind(y)][0]);
+    if (cand.length) return { rota: cand[0], rotulo: VER[verKind(cand[0])][1] };
+    for (const e of linked) { const r = safeRota(rotaObjeto(e)); if (r && !GENERIC_ROTA.test(r)) return { rota: r, rotulo: "Ver o registo" }; }
+    for (const e of linked) { const r = safeRota(rotaObjeto(e)) || safeRota(e.rota); if (r) return { rota: r, rotulo: "Ver o registo" }; }
+    return null;
+  };
+  const withVer = (blocos, linked) => {
+    const ver = resolveVer(linked, blocos && blocos.lei ? blocos.lei.rota : "");
+    if (blocos && blocos.lei && ver && !verKind(blocos.lei.rota)) blocos.lei.rota = ver.rota;
+    return ver;
+  };
+  const iniKey = (e) => {
+    const mod = S(e.fonte_modulo), ref = S(e.fonte_ref);
+    const k = mod === "votacoes" ? (S(e.tipo) === "iniciativa_entrada" ? ref : entId(e, "iniciativa")) : mod === "intervencoes" ? ref : "";
+    return /^\d+$/.test(k) ? k : "";
+  };
+  const ARQUIVO_DIAS = 3;
   const cardBlocos = (b) => (b ? { lei: b.lei, votacao: b.votacao } : null);
   const itemOf = (e, D, art) => {
-    const late = !!e.atrasado;
+    const idade = e.data_evento && day10(e.data_evento) ? days(day10(e.data_evento), add(D, -1)) : 0;
+    const old = idade > ARQUIVO_DIAS;
+    const late = !!e.atrasado || old;
     const it = { id: e.id, titulo: S(e.titulo), resumo_curto: S(e.resumo_curto), rota: rotaObjeto(e), source_url: safeUrl(e.source_url), atrasado: late, tipo: S(e.tipo), hora: horaOf(e.ingerido_em), data_evento: day10(e.data_evento) };
-    if (late && it.data_evento) it.atraso = `${D === todayStr() ? "Registado hoje" : "Registado a " + pshort(D)} · ocorreu a ${pdate(it.data_evento)}`;
+    if (late && it.data_evento) it.atraso = `${old ? "Em arquivo" : D === todayStr() ? "Registado hoje" : "Registado a " + pshort(D)} · ocorreu a ${pdate(it.data_evento)}`;
+    if (old) it.arquivo = true;
     if (art) { it.ia = true; it.artigo_id = art; }
     return it;
   };
@@ -584,24 +612,35 @@ export default function (ctx) {
     const cover = new Map();
     for (const a of arts) for (const id of listOf(a.evento_ids)) if (!cover.has(Number(id))) cover.set(Number(id), a.id);
     for (const e of evs) if (e.ia_artigo_id != null && artIds.has(e.ia_artigo_id)) cover.set(e.id, e.ia_artigo_id);
+    const coverAll = new Set(cover.keys());
+    for (const a of Q(dia, "SELECT id, evento_ids FROM artigos_ia WHERE estado = 'publicado' AND edicao_data <> ?", D)) for (const id of listOf(a.evento_ids)) coverAll.add(Number(id));
     const ia = arts.map((a) => {
       const linked = listOf(a.evento_ids).map((id) => byEv.get(Number(id))).filter(Boolean);
       const cnt = {};
       for (const e of linked) cnt[e.secao] = (cnt[e.secao] || 0) + 1;
       const secao = Object.keys(cnt).sort((x, y) => cnt[y] - cnt[x] || (SEC_ORDER[x] ?? 99) - (SEC_ORDER[y] ?? 99))[0] || "governo";
-      return { id: a.id, secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead), corpo: S(a.corpo), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes), modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), confianca: a.confianca, rota_detalhe: `#/edicao/${D}/ia/${a.id}`, blocos: cardBlocos(blocosOf(a.blocos)), tem_explicacao: !!explicacaoOf(a.explicacao), _s: linked.reduce((m, e) => Math.max(m, Number(e.score) || 0), 0) };
-    }).sort((x, y) => y._s - x._s || x.id - y.id).map(({ _s, ...r }) => r);
+      return { id: a.id, secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead), corpo: S(a.corpo), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes), modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), confianca: a.confianca, rota_detalhe: `#/edicao/${D}/ia/${a.id}`, blocos: null, ver: null, tem_explicacao: !!explicacaoOf(a.explicacao), _s: linked.reduce((m, e) => Math.max(m, Number(e.score) || 0), 0), _k: linked.map(iniKey).filter(Boolean), _b: blocosOf(a.blocos), _l: linked };
+    });
+    const claimed = new Map();
+    const kept = [];
+    for (const a of [...ia].sort((x, y) => y.id - x.id)) {
+      const hit = a._k.map((k) => claimed.get(k)).find(Boolean);
+      if (hit) { if (!hit.versao_anterior) hit.versao_anterior = { id: a.id, titulo: a.titulo, rota_detalhe: a.rota_detalhe }; continue; }
+      for (const k of a._k) claimed.set(k, a);
+      kept.push(a);
+    }
+    const iaOut = kept.sort((x, y) => y._s - x._s || x.id - y.id).map(({ _s, _k, _b, _l, ...r }) => { r.ver = withVer(_b, _l); r.blocos = cardBlocos(_b); return r; });
     const fres = frescura(dia, D);
     const grupos = Object.fromEntries(SECS.map(([k]) => [k, []]));
     for (const e of evs) if (grupos[e.secao]) grupos[e.secao].push(e);
     const secoes = SECS.map(([k, t]) => {
-      const rest = grupos[k].filter((e) => !cover.has(e.id));
+      const rest = grupos[k].filter((e) => !coverAll.has(e.id));
       return rest.length ? { secao: k, titulo: t, total: rest.length, mais: Math.max(0, rest.length - RESUMO_MAX), itens: rest.slice(0, RESUMO_MAX).map((e) => itemOf(e, D)) } : null;
     }).filter(Boolean);
     const upd = [ed && ed.fechada_em, ...evs.map((e) => e.ingerido_em), ...Q(dia, "SELECT atualizado_em FROM cursores").map((r) => r.atualizado_em)].filter(Boolean).map(S).sort().pop() || null;
     const out = {
       fonte: "diario", vista, ...head(D), estado: ed ? ed.estado : "preliminar", atualizado_em: upd, frescura: fres,
-      ia, secoes, divisao: { rotulo: `Ver tudo o que aconteceu em ${pdate(add(D, -1))}`, total: evs.length },
+      ia: iaOut, secoes, divisao: { rotulo: `Ver tudo o que aconteceu em ${pdate(add(D, -1))}`, total: evs.length },
     };
     if (vista === "tudo") {
       out.tudo = SECS.map(([k, t]) => {
@@ -645,7 +684,7 @@ export default function (ctx) {
     if (!dia) return null;
     const a = Q1(dia, "SELECT * FROM artigos_ia WHERE id = ?", id);
     if (!a) return null;
-    const ver = J(a.verificacao, null), ret = ver && ver.retirada ? ver.retirada : null;
+    const vf = J(a.verificacao, null), ret = vf && vf.retirada ? vf.retirada : null;
     if (a.estado !== "publicado" && !ret) return null;
     const D = day10(a.edicao_data);
     const ids = new Set(listOf(a.evento_ids).map(Number));
@@ -657,12 +696,14 @@ export default function (ctx) {
     if (a.estado !== "publicado") {
       return { tipo: "ia", id: a.id, data: D, ...head(D), secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: "", paragraphs: [], pontos_chave: [], fontes: [], numeros_citados: [], entidades: [], confianca: null, modelo: S(a.modelo), revisor: "", verificacao: null, criado_em: S(a.criado_em), revisao: a.revisao, retirado: { motivo: S(ret.motivo).slice(0, 300), em: S(ret.em).slice(0, 25) }, eventos: linked.map((e) => itemOf(e, D)) };
     }
+    const blocos = blocosOf(a.blocos);
+    const ver = withVer(blocos, linked);
     return {
       tipo: "ia", id: a.id, data: D, ...head(D), secao, secao_titulo: SEC_TITLE[secao] || "", titulo: S(a.titulo), lead: S(a.lead),
       paragraphs: S(a.corpo).split(/\n{2,}/).map((x) => x.trim()).filter(Boolean), pontos_chave: listOf(a.pontos_chave).map(S).filter(Boolean), fontes: fontesOf(a.fontes),
       numeros_citados: listOf(a.numeros_citados), entidades: listOf(a.entidades).map((x) => (typeof x === "string" ? x : S(x && (x.nome || x.name || x.label)))).filter(Boolean),
       confianca: a.confianca, modelo: S(a.modelo), revisor: S(a.revisor), verificacao: J(a.verificacao, null), criado_em: S(a.criado_em), revisao: a.revisao,
-      blocos: blocosOf(a.blocos), explicacao: explicacaoOf(a.explicacao),
+      blocos, ver, explicacao: explicacaoOf(a.explicacao),
       eventos: linked.map((e) => itemOf(e, D)),
     };
   };

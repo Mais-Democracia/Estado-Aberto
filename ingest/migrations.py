@@ -66,8 +66,33 @@ def ensure_estado_empresas(con):
 ARTIGOS_IA_COLUMNS = {"artigos_ia": [("blocos", "TEXT"), ("explicacao", "TEXT")]}
 
 
+ESTADO_OLD = "estado IN ('publicado','rejeitado')"
+ESTADO_NEW = "estado IN ('publicado','rejeitado','substituido')"
+
+
+def widen_artigos_estado(con):
+    row = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='artigos_ia'").fetchone()
+    if not row or not row[0] or ESTADO_OLD not in row[0]:
+        return 0
+    if not con.in_transaction:
+        con.execute("BEGIN")
+    cols = [r[1] for r in con.execute("PRAGMA table_info(artigos_ia)")]
+    indexes = [r[0] for r in con.execute("SELECT sql FROM sqlite_master WHERE type='index' AND tbl_name='artigos_ia' AND sql IS NOT NULL")]
+    con.execute("DROP TABLE IF EXISTS artigos_ia_new")
+    con.execute(row[0].replace(ESTADO_OLD, ESTADO_NEW).replace("CREATE TABLE artigos_ia", "CREATE TABLE artigos_ia_new", 1))
+    names = ", ".join(cols)
+    con.execute(f"INSERT INTO artigos_ia_new ({names}) SELECT {names} FROM artigos_ia")
+    con.execute("DROP TABLE artigos_ia")
+    con.execute("ALTER TABLE artigos_ia_new RENAME TO artigos_ia")
+    for sql in indexes:
+        con.execute(sql)
+    return 1
+
+
 def ensure_artigos_ia(con):
-    return add_columns(con, ARTIGOS_IA_COLUMNS)
+    n = add_columns(con, ARTIGOS_IA_COLUMNS)
+    widen_artigos_estado(con)
+    return n
 
 
 def ensure_diario(con):
